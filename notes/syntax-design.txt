@@ -1,6 +1,19 @@
 Overhauled Cene syntax:
 
 
+In these examples, let "abc" represent identifier text, let "_" represent optional whitespace, and let "#" represent any character other than an identifier character, a whitespace character, `[`, `]`, `(`, `)`, `\`, `.`, or `:`. Let "<op>" represent any of the following patterns, where `markup` means that part of the text is read and processed as markup where interpolations are not allowed.
+
+  _#
+  _abc_:
+  _abc_
+  _(markup)_:
+  _(markup)_
+  _[markup]_:
+  _[markup]_
+
+When "<op>" is used in one of these examples, let `op` refer to the text of `#` or of `abc` or of the result of processing the markup.
+
+
 In an expression context, end of file accumulates zero expressions, then ends.
 
 
@@ -12,33 +25,35 @@ In an expression context, a span of identifier text accumulates one expression c
   abc
 
 
-In an expression context, \ followed by optional whitespace and a non-identifier character invokes that character's freestanding expression reader macro, then proceeds as usual.
+In an expression context, this invokes the freestanding expression reader macro of `op`, then proceeds as usual.
 
-  \#...
-
-
-In an expression context, \ followed by optional whitespace and a span of identifier text, followed by either a span of whitespace or a colon, invokes that identifier's freestanding expression reader macro, then proceeds as usual.
-
-  \abc ...
-  \abc:...
+  \<op>...
 
 
-In an expression context, this runs the bounded expression reader macro `abc`, then assumes the next character is a closing bracket and consumes it, then proceeds as usual.
+In an expression context, this runs the bounded expression reader macro of `op`, then assumes the next character is a closing bracket and consumes it, then proceeds as usual.
 
 (The whitespace versions consume all the whitespace that occurs after the identifier before they invoke the reader macro.)
 
-  (abc ...)
-  (abc:...)
-  [abc ...]
-  [abc:...]
+(These are usually written without the dot, taking advantage of the usual nameless bounded expression reader macros for `(` and `[`. The dot version is supported primarily for consistency with the markup syntax.)
+
+  (.<op>...)
+  [.<op>...]
 
 
-In an expression context, this runs the bounded expression reader macro `abc`. It does not consume the character after that, even though it's usually a closing bracket. Then it proceeds as usual.
+In an expression context, this runs the bounded expression reader macro of `op`. It does not consume the character after that, even though it's usually a closing bracket. Then it proceeds as usual.
 
 (The whitespace version consumes all the whitespace that occurs after the identifier before it invokes the reader macro.)
 
-  /abc ...
-  /abc:...
+(These are usually written without the dot, taking advantage of the usual nameless bounded expression reader macro for `/`. The dot version is supported primarily for consistency with the markup syntax.)
+
+  /.<op>...
+
+
+In an expression context, an opening bracket or / not followed by . behaves similarly to if it were followed by . but it uses a nameless bounded expression reader macro corresponding to `(`, `[`, or `/` instead of a named macro.
+
+  (...)
+  [...]
+  /
 
 
 In an expression context, this causes an unmatched bracket error.
@@ -52,49 +67,28 @@ In a markup context, end of file accumulates no text, then ends.
 
 In a markup context, a span of typical characters (whitespace and non-whitespace) accumulates corresponding text, then proceeds as usual.
 
-  abc
+
+In an expression context, this invokes the freestanding expression reader macro of `op` (while remembering the literal text that started this macro call), then proceeds as usual.
+
+  \<op>...
 
 
-In a markup context, \ followed by optional whitespace and a non-identifier character invokes that character's freestanding markup reader macro, then proceeds as usual.
-
-  \#...
-
-
-In a markup context, \ followed by optional whitespace and a span of identifier text, followed by either a span of whitespace or a colon, invokes that identifier's freestanding markup reader macro, then proceeds as usual.
-
-  \abc ...
-  \abc:...
-
-
-In a markup context, this runs the bounded markup reader macro `abc`, then assumes the next character is a closing bracket and consumes it, then proceeds as usual.
+In a markup context, this runs the bounded markup reader macro of `op` (while remembering the literal text that started this macro call, the corresponding closing bracket to look for, and the accumulatable text of the corresponding closing bracket), then assumes the next character is a closing bracket and consumes it, then proceeds as usual.
 
 (The whitespace versions consume all the whitespace that occurs after the identifier before they invoke the reader macro.)
 
-  (.abc ...)
-  (.abc:...)
-  [.abc ...]
-  [.abc:...]
+  (.<op>...)
+  [.<op>...]
 
 
-In a markup context, this does several things:
-
-  This determines the most recent opening bracket, which we'll call the surrounding opening bracket.
-  
-  This accumulates text corresponding to the surrounding opening bracket. If the surrounding opening bracket is what initiated the markup section, this accumulates "/" instead.
-  
-  This runs the bounded markup reader macro `abc`. It does not consume the character after what the reader macro consumes, even though it's usually a closing bracket.
-  
-  This accumulates text corresponding to the surrounding opening bracket's closing bracket. If the surrounding opening bracket is what initiated the markup section, this accumulates no text in this step instead.
-  
-  Then it proceeds as usual.
+In a markup context, this runs the bounded markup reader macro of `op` (while remembering the literal text that started this macro call, the corresponding closing bracket to look for, and the text "" as the accumulatable text of the corresponding closing bracket). It does not consume the character after that, even though it's usually a closing bracket. Then it proceeds as usual.
 
 (The whitespace version consumes all the whitespace that occurs after the identifier before it invokes the reader macro.)
 
-  /.abc ...
-  /.abc:...
+  /.<op>...
 
 
-In a markup context, an opening bracket or / not followed by \ behaves similarly to if it was followed by \, but it uses a nameless bounded markup reader macro instead.
+In a markup context, an opening bracket or / not followed by . behaves similarly to if it were followed by . but it uses a nameless bounded markup reader macro corresponding to `(`, `[`, or `/` instead of a named macro.
 
   (...)
   [...]
@@ -111,28 +105,30 @@ Typical macros:
 
 Freestanding expression reader macro `=`: Line comment.
 
+Nameless bounded expression reader macros for `(` `[` `/`: Reads something like the pattern `<op>`, then runs the bounded expression reader macro of `op`.
+
 Freestanding markup reader macro `=`: Line comment.
 
-Freestanding markup reader macros ``` (the grave accent character) `,` `<` `>` `{` `}`: The characters \ . [ ] ( ) respectively.
+Freestanding markup reader macros ``` (the grave accent character) `,` `<` `>` `{` `}`: Accumulates the character `\`, `.`, `[`, `]`, `(`, or `)` respectively.
 
 Freestanding markup reader macro `#`: A whitespace normalization command that recommends removing surrounding raw whitespace and inserting nothing.
 
 Freestanding markup reader macros `s` `t` `r` `n`: A whitespace normalization command that recommends removing surrounding raw whitespace and inserting a space, a tab, a carriage return, or a newline, respectively. The inserted character is not considered "raw" whitespace.
 
-Nameless bounded markup reader macro: Proceeds as usual until it reaches a corresponding closing bracket.
+Nameless bounded markup reader macros for `(` `[` `/`: Accumulates the literal text that started the macro call, then proceeds as usual until it reaches a corresponding closing bracket (without consuming it), then accumulates the accumulatable text of the corresponding closing bracket.
 
 Bounded markup reader macros `qq` `uq`: Respectively increments or decrements the quoting depth temporarily while it accumulates the markup in its body. Most markup reader macros operate normally at a depth of 1, cause an error at any lower depth, and accumulate their own syntax's non-whitespace text and raw whitespace at any greater depth.
 
 Bounded markup reader macro `ex` (standing for "expression"): Operates normally at quoting depth 0, where it reads a single expression in its body and accumulates a markup interpolation containing that expression.
 
-Bounded expression reader macro `str`: Reads its body as markup, reduces raw whitespace sequences to a single space each, follows whitespace normalization commands, and accumulates a single expression that evaluates any interpolated expressions in the markup and then constructs a string by concatenating them with the markup text. (TODO: Actually, we'll probably want to do like we did in the existing version of Cene, where string concatenation is only performed as a monadic side effect.)
+Bounded expression reader macro `istr`: Reads its body as markup, reduces raw whitespace sequences to a single space each, follows whitespace normalization commands, and accumulates a single expression that evaluates any interpolated expressions in the markup and then constructs a function which, when passed a function which takes a string and returns an effectful computation, returns an effectful computation that concatenates those expressions' results with the rest of the markup text and then passes the concatenated result string to the given function.
 
 
 Examples:
 
 Line comment: \= ...
-String when there's an `\n` escape: [str/.qq:Hello, \n [.uq/.ls name]!]
-String when the only escape is `[.ls ...]`: [str:Hello, [.ls name]!]
+String interpolation when there's an `\n` escape: [istr/.qq:Hello, \n [.uq/.ls name]!]
+String interpolation when the only escape is `[.ls ...]`: [istr:Hello, [.ls name]!]
 
 
 Reader macro behavior:
