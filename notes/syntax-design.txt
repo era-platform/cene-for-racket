@@ -1,29 +1,29 @@
 Overhauled Cene syntax:
 
 
-In an s-expression context, end of file accumulates zero s-expressions, then ends.
+In an expression context, end of file accumulates zero expressions, then ends.
 
 
-In an s-expression context, whitespace does nothing, then proceeds as usual.
+In an expression context, whitespace does nothing, then proceeds as usual.
 
 
-In an s-expression context, a span of identifier text accumulates one s-expression consisting of the corresponding string, then proceeds as usual.
+In an expression context, a span of identifier text accumulates one expression consisting of a variable access to the result of qualifying the name obtained from the text, then proceeds as usual.
 
   abc
 
 
-In an s-expression context, \ followed by optional whitespace and a non-identifier character invokes that character's freestanding s-expression reader macro, then proceeds as usual.
+In an expression context, \ followed by optional whitespace and a non-identifier character invokes that character's freestanding expression reader macro, then proceeds as usual.
 
   \#...
 
 
-In an s-expression context, \ followed by optional whitespace and a span of identifier text, followed by either a span of whitespace or a colon, invokes that identifier's freestanding s-expression reader macro, then proceeds as usual.
+In an expression context, \ followed by optional whitespace and a span of identifier text, followed by either a span of whitespace or a colon, invokes that identifier's freestanding expression reader macro, then proceeds as usual.
 
   \abc ...
   \abc:...
 
 
-In an s-expression context, this runs the bounded s-expression reader macro `abc`, then assumes the next character is a closing bracket and consumes it, then proceeds as usual.
+In an expression context, this runs the bounded expression reader macro `abc`, then assumes the next character is a closing bracket and consumes it, then proceeds as usual.
 
 (The whitespace versions consume all the whitespace that occurs after the identifier before they invoke the reader macro.)
 
@@ -33,7 +33,7 @@ In an s-expression context, this runs the bounded s-expression reader macro `abc
   [abc:...]
 
 
-In an s-expression context, this runs the bounded s-expression reader macro `abc`. It does not consume the character after that, even though it's usually a closing bracket. Then it proceeds as usual.
+In an expression context, this runs the bounded expression reader macro `abc`. It does not consume the character after that, even though it's usually a closing bracket. Then it proceeds as usual.
 
 (The whitespace version consumes all the whitespace that occurs after the identifier before it invokes the reader macro.)
 
@@ -41,7 +41,7 @@ In an s-expression context, this runs the bounded s-expression reader macro `abc
   /abc:...
 
 
-In an s-expression context, this causes an unmatched bracket error.
+In an expression context, this causes an unmatched bracket error.
 
   )
   ]
@@ -109,7 +109,7 @@ In a markup context, this causes an unmatched bracket error.
 
 Typical macros:
 
-Freestanding s-expression reader macro `=`: Line comment.
+Freestanding expression reader macro `=`: Line comment.
 
 Freestanding markup reader macro `=`: Line comment.
 
@@ -123,9 +123,9 @@ Nameless bounded markup reader macro: Proceeds as usual until it reaches a corre
 
 Bounded markup reader macros `qq` `uq`: Respectively increments or decrements the quoting depth temporarily while it accumulates the markup in its body. Most markup reader macros operate normally at a depth of 1, cause an error at any lower depth, and accumulate their own syntax's non-whitespace text and raw whitespace at any greater depth.
 
-Bounded markup reader macro `ls` (standing for "lists and strings"): Operates normally at quoting depth 0, where it reads a single s-expression in its body and accumulates a markup interpolation containing that s-expression.
+Bounded markup reader macro `ex` (standing for "expression"): Operates normally at quoting depth 0, where it reads a single expression in its body and accumulates a markup interpolation containing that expression.
 
-Bounded s-expression reader macro `str`: Reads its body as markup, reduces raw whitespace sequences to a single space each, follows whitespace normalization commands, and accumulates a single s-expression that's an interpolated string data structure (a nonempty sequence of strings, with an s-expression in between every pair of neighboring strings).
+Bounded expression reader macro `str`: Reads its body as markup, reduces raw whitespace sequences to a single space each, follows whitespace normalization commands, and accumulates a single expression that evaluates any interpolated expressions in the markup and then constructs a string by concatenating them with the markup text. (TODO: Actually, we'll probably want to do like we did in the existing version of Cene, where string concatenation is only performed as a monadic side effect.)
 
 
 Examples:
@@ -139,8 +139,8 @@ Reader macro behavior:
 
 When a reader macro is defined, the definition runs an expression to determine its implementation function. This expression has a local variable which is bound to a first-class scope value representing the place where it was defined.
 
-For an s-expression reader macro, the implementation function receives a scope representing the call site; a text input stream; and a sequence-of-s-expressions output stream; and a callback to call with the rest of the input stream and output stream once the macro's computation is finished. The implementation function and its function are monadic, each returning a value that represents a side effect. The side effects do things like reading and writing to the streams, orchestrating concurrent computations, and reading and writing from a global definition space.
+For an expression reader macro, the implementation function receives a scope representing the call site; a text input stream; and a sequence-of-expressions output stream; and a callback to call with the rest of the input stream and output stream once the macro's computation is finished. The implementation function and its function are monadic, each returning a value that represents a side effect. The side effects do things like reading and writing to the streams, orchestrating concurrent computations, and reading and writing from a global definition space.
 
-For a markup reader macro, the implementation function is similar, but it receives a markup output stream instead of a sequence-of-s-expressions output stream. The markup output stream can be written to with text, with interpolated s-expressions, or with spans of raw whitespace (whitespace which is eligible for being normalized).
+For a markup reader macro, the implementation function is similar, but it receives a markup output stream instead of a sequence-of-expressions output stream. The markup output stream can be written to with text, with interpolated expressions, or with spans of raw whitespace (whitespace which is eligible for being normalized).
 
 A scope consists of two values: A unique name, and a "qualify" function that converts names that have been constructed from surface syntax into names that should be referenced in the global definition space. The unique name should be replaced with a fresh one whenever passing the scope along to a subcomputation. Every effectful computation that receives a scope should first write a dummy value to a name derived in a certain way from the scope's unique name, so that it can be sure no similar computation has been given access to that unique name.
