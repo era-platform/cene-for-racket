@@ -130,6 +130,7 @@
 (struct-easy (sink-name name))
 (struct-easy (sink-effects todo))
 (struct-easy (sink-text-input-stream todo))
+(struct-easy (sink-located-string todo))
 
 ; NOTE: The term "cexpr" is short for "compiled expression." It's the
 ; kind of expression that macros generate in order to use as function
@@ -217,6 +218,33 @@
 (struct exn:fail:cene exn:fail ())
 
 (define/contract
+  (sink-effects-read-whitespace text-input-stream then)
+  (->
+    sink-text-input-stream?
+    (-> sink-text-input-stream? sink-located-string? sink-effects?)
+    sink-effects?)
+  (sink-effects 'TODO))
+
+(define/contract
+  (sink-effects-read-maybe-identifier text-input-stream then)
+  (->
+    sink-text-input-stream?
+    (-> sink-text-input-stream? (maybe/c sink-located-string?)
+      sink-effects?)
+    sink-effects?)
+  (sink-effects 'TODO))
+
+(define/contract
+  (sink-effects-read-maybe-given-racket text-input-stream str then)
+  (->
+    sink-text-input-stream?
+    string?
+    (-> sink-text-input-stream? (maybe/c sink-located-string?)
+      sink-effects?)
+    sink-effects?)
+  (sink-effects 'TODO))
+
+(define/contract
   (sink-effects-read-cexprs
     unique-name qualify text-input-stream state on-cexpr then)
   (->
@@ -233,11 +261,93 @@
       sink-effects?)
     (-> name? procedure? sink-text-input-stream? any/c sink-effects?)
     sink-effects?)
-  (sink-effects-read-whether-at-eof text-input-stream
+  
+  ; NOTE: These are the cases we should handle.
+  ;
+  ;  <eof>
+  ;  <whitespace>
+  ;  abc
+  ;  \<op>...
+  ;  
+  ;  (.<op>...)
+  ;  [.<op>...]
+  ;  
+  ;  /.<op>...
+  ;  
+  ;  (...)
+  ;  [...]
+  ;  /
+  ;  
+  ;  )
+  ;  ]
+  
+  ; TODO: Add whatever parameters we need to this `w-loop` once we
+  ; start using it. Just about every case here will invoke it in order
+  ; to read further expressions from the input.
+  (w-loop next
+  #/sink-effects-read-whitespace text-input-stream
+  #/fn text-input-stream whitespace
+  #/sink-effects-read-whether-at-eof text-input-stream
   #/fn text-input-stream is-at-eof
   #/if is-at-eof
     (then unique-name qualify text-input-stream state)
-  #/sink-effects 'TODO))
+  
+  #/sink-effects-read-maybe-given-racket text-input-stream ")"
+  #/fn text-input-stream maybe-str
+  #/mat maybe-str (just _)
+    (raise #/exn:fail:cene
+      "Encountered an unmatched )"
+    #/current-continuation-marks)
+  #/sink-effects-read-maybe-given-racket text-input-stream "]"
+  #/fn text-input-stream maybe-str
+  #/mat maybe-str (just _)
+    (raise #/exn:fail:cene
+      "Encountered an unmatched ]"
+    #/current-continuation-marks)
+  
+  #/sink-effects-read-maybe-given-racket text-input-stream "\\"
+  #/fn text-input-stream maybe-str
+  #/mat maybe-str (just _)
+    (sink-effects 'TODO)
+  
+  #/sink-effects-read-maybe-given-racket text-input-stream "("
+  #/fn text-input-stream maybe-str
+  #/mat maybe-str (just _)
+    (sink-effects-read-maybe-given-racket text-input-stream "."
+    #/fn text-input-stream maybe-str
+    #/mat maybe-str (just _)
+      (sink-effects 'TODO)
+    
+    #/sink-effects 'TODO)
+  
+  #/sink-effects-read-maybe-given-racket text-input-stream "["
+  #/fn text-input-stream maybe-str
+  #/mat maybe-str (just _)
+    (sink-effects-read-maybe-given-racket text-input-stream "."
+    #/fn text-input-stream maybe-str
+    #/mat maybe-str (just _)
+      (sink-effects 'TODO)
+    
+    #/sink-effects 'TODO)
+  
+  #/sink-effects-read-maybe-given-racket text-input-stream "/"
+  #/fn text-input-stream maybe-str
+  #/mat maybe-str (just _)
+    (sink-effects-read-maybe-given-racket text-input-stream "."
+    #/fn text-input-stream maybe-str
+    #/mat maybe-str (just _)
+      (sink-effects 'TODO)
+    
+    #/sink-effects 'TODO)
+  
+  #/sink-effects-read-maybe-identifier text-input-stream
+  #/fn text-input-stream maybe-identifier
+  #/mat maybe-identifier (just identifier)
+    (sink-effects 'TODO)
+  
+  #/raise #/exn:fail:cene
+    "Encountered an unrecognized case of the expression syntax"
+  #/current-continuation-marks))
 
 (struct-easy (trivial))
 
