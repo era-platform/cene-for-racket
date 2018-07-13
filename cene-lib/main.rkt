@@ -146,6 +146,11 @@
     (sink-effects? v)
     (sink-text-input-stream? v)))
 
+(define/contract (sink-effects-get name then)
+  (-> sink-name? (-> sink? sink-effects?) sink-effects?)
+  (dissect name (sink-name name)
+  #/sink-effects 'TODO))
+
 (define/contract (sink-effects-put name dex value)
   (-> sink-name? sink-dex? sink? sink-effects?)
   (dissect name (sink-name name)
@@ -245,6 +250,16 @@
   (sink-effects 'TODO))
 
 (define/contract
+  (sink-effects-peek-maybe-given-racket text-input-stream str then)
+  (->
+    sink-text-input-stream?
+    string?
+    (-> sink-text-input-stream? (maybe/c sink-located-string?)
+      sink-effects?)
+    sink-effects?)
+  (sink-effects 'TODO))
+
+(define/contract
   (sink-effects-read-cexprs
     unique-name qualify text-input-stream state on-cexpr then)
   (->
@@ -281,10 +296,13 @@
   ;  )
   ;  ]
   
-  ; TODO: Add whatever parameters we need to this `w-loop` once we
-  ; start using it. Just about every case here will invoke it in order
-  ; to read further expressions from the input.
+  ; TODO: Just about every case here will invoke `next` in order to
+  ; read further expressions from the input.
   (w-loop next
+    unique-name unique-name
+    qualify qualify
+    text-input-stream text-input-stream
+    state state
   #/sink-effects-read-whitespace text-input-stream
   #/fn text-input-stream whitespace
   #/sink-effects-read-whether-at-eof text-input-stream
@@ -305,10 +323,34 @@
       "Encountered an unmatched ]"
     #/current-continuation-marks)
   
+  #/w- sink-effects-read-op
+    (fn text-input-stream qualify then
+      (sink-effects 'TODO))
+  
+  #/w- sink-effects-read-and-run-op
+    (fn unique-name qualify text-input-stream state then
+      (sink-effects-read-op text-input-stream qualify
+      #/fn text-input-stream op-name
+      #/sink-effects-get op-name #/fn op-impl
+      
+      ; TODO: Convert `qualify`, `on-cexpr`, and the `fn` to sinks
+      ; somehow.
+      ;
+      ; TODO: Raise an error explicitly if the result of the call isn't
+      ; a `sink-effects?` value.
+      ;
+      #/sink-call
+        op-impl unique-name qualify text-input-stream state on-cexpr
+      #/fn unique-name qualify text-input-stream state
+      #/then unique-name qualify text-input-stream state))
+  
   #/sink-effects-read-maybe-given-racket text-input-stream "\\"
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
-    (sink-effects 'TODO)
+    (sink-effects-read-and-run-op
+      unique-name qualify text-input-stream state
+    #/fn unique-name qualify text-input-stream state
+    #/next unique-name qualify text-input-stream state)
   
   #/sink-effects-read-maybe-given-racket text-input-stream "("
   #/fn text-input-stream maybe-str
@@ -316,7 +358,16 @@
     (sink-effects-read-maybe-given-racket text-input-stream "."
     #/fn text-input-stream maybe-str
     #/mat maybe-str (just _)
-      (sink-effects 'TODO)
+      (sink-effects-read-and-run-op
+        unique-name qualify text-input-stream state
+      #/fn unique-name qualify text-input-stream state
+      #/sink-effects-read-maybe-given-racket text-input-stream ")"
+      #/fn text-input-stream maybe-str
+      #/expect maybe-str (just _)
+        (raise #/exn:fail:cene
+          "Encountered a syntax that began with (. and did not end with )"
+        #/current-continuation-marks)
+      #/next unique-name qualify text-input-stream state)
     
     #/sink-effects 'TODO)
   
@@ -326,7 +377,16 @@
     (sink-effects-read-maybe-given-racket text-input-stream "."
     #/fn text-input-stream maybe-str
     #/mat maybe-str (just _)
-      (sink-effects 'TODO)
+      (sink-effects-read-and-run-op
+        unique-name qualify text-input-stream state
+      #/fn unique-name qualify text-input-stream state
+      #/sink-effects-read-maybe-given-racket text-input-stream "]"
+      #/fn text-input-stream maybe-str
+      #/expect maybe-str (just _)
+        (raise #/exn:fail:cene
+          "Encountered a syntax that began with [. and did not end with ]"
+        #/current-continuation-marks)
+      #/next unique-name qualify text-input-stream state)
     
     #/sink-effects 'TODO)
   
@@ -336,7 +396,18 @@
     (sink-effects-read-maybe-given-racket text-input-stream "."
     #/fn text-input-stream maybe-str
     #/mat maybe-str (just _)
-      (sink-effects 'TODO)
+      (sink-effects-read-and-run-op
+        unique-name qualify text-input-stream state
+      #/fn unique-name qualify text-input-stream state
+      #/sink-effects-peek-maybe-given-racket text-input-stream ")"
+      #/fn text-input-stream maybe-str1
+      #/sink-effects-peek-maybe-given-racket text-input-stream "]"
+      #/fn text-input-stream maybe-str2
+      #/mat (list maybe-str1 maybe-str2) (list (nothing) (nothing))
+        (raise #/exn:fail:cene
+          "Encountered a syntax that began with /. and did not end with ) or ]"
+        #/current-continuation-marks)
+      #/next unique-name qualify text-input-stream state)
     
     #/sink-effects 'TODO)
   
