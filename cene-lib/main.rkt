@@ -212,6 +212,10 @@
   (-> sink-located-string? sink-string?)
   'TODO)
 
+(define/contract (sink-name-for-string string)
+  (-> sink-string? sink-name?)
+  'TODO)
+
 (define/contract (sink-name-for-freestanding-cexpr-op inner-name)
   (-> sink-name? sink-name?)
   'TODO)
@@ -257,6 +261,15 @@
 
 (define/contract
   (sink-effects-read-maybe-identifier text-input-stream then)
+  (->
+    sink-text-input-stream?
+    (-> sink-text-input-stream? (maybe/c sink-located-string?)
+      sink-effects?)
+    sink-effects?)
+  (sink-effects 'TODO))
+
+(define/contract
+  (sink-effects-read-maybe-op-character text-input-stream then)
   (->
     sink-text-input-stream?
     (-> sink-text-input-stream? (maybe/c sink-located-string?)
@@ -350,7 +363,64 @@
   
   #/w- sink-effects-read-op
     (fn text-input-stream qualify pre-qualify then
-      (sink-effects 'TODO))
+      
+      ; NOTE: These are the cases we should handle here.
+      ;
+      ; _#
+      ; _abc_:
+      ; _abc_
+      ; _(markup)_:
+      ; _(markup)_
+      ; _[markup]_:
+      ; _[markup]_
+      
+      (sink-effects-read-whitespace text-input-stream
+      #/fn text-input-stream whitespace
+      
+      #/sink-effects-read-maybe-op-character text-input-stream
+      #/fn text-input-stream maybe-identifier
+      #/mat maybe-identifier (just identifier)
+        ; TODO: If we refactor `qualify` to be a sink, make sure to
+        ; invoke it using `sink-call` here.
+        (then text-input-stream
+        #/qualify #/pre-qualify #/sink-name-for-string
+        #/sink-string-from-located-string identifier)
+      
+      #/w- then
+        (fn text-input-stream op-name
+          (sink-effects-read-whitespace text-input-stream
+          #/fn text-input-stream whitespace
+          #/sink-effects-read-maybe-given-racket text-input-stream ":"
+          #/fn text-input-stream maybe-str
+          #/then text-input-stream op-name))
+      
+      ; TODO: Support the use of ( and [ as delimiters for macro
+      ; names.
+      #/sink-effects-read-maybe-given-racket text-input-stream "("
+      #/fn text-input-stream maybe-str
+      #/mat maybe-str (just _)
+        (raise #/exn:fail:cene
+          "The use of ( to delimit a macro name is not yet supported"
+        #/current-continuation-marks)
+      #/sink-effects-read-maybe-given-racket text-input-stream "["
+      #/fn text-input-stream maybe-str
+      #/mat maybe-str (just _)
+        (raise #/exn:fail:cene
+          "The use of [ to delimit a macro name is not yet supported"
+        #/current-continuation-marks)
+      
+      #/sink-effects-read-maybe-identifier text-input-stream
+      #/fn text-input-stream maybe-identifier
+      #/mat maybe-identifier (just identifier)
+        ; TODO: If we refactor `qualify` to be a sink, make sure to
+        ; invoke it using `sink-call` here.
+        (then text-input-stream
+        #/qualify #/pre-qualify #/sink-name-for-string
+        #/sink-string-from-located-string identifier)
+      
+      #/raise #/exn:fail:cene
+        "Encountered an unrecognized case of the expression operator syntax"
+      #/current-continuation-marks))
   
   #/w- sink-effects-run-op
     (fn op-impl unique-name qualify text-input-stream state then
