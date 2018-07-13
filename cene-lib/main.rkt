@@ -131,6 +131,7 @@
 (struct-easy (sink-effects todo))
 (struct-easy (sink-text-input-stream todo))
 (struct-easy (sink-located-string todo))
+(struct-easy (sink-string todo))
 
 ; NOTE: The term "cexpr" is short for "compiled expression." It's the
 ; kind of expression that macros generate in order to use as function
@@ -191,6 +192,10 @@
   (-> (and/c sink-cexpr? #/not/c cexpr-has-free-vars?) sink?)
   'TODO)
 
+(define/contract (sink-cexpr-var name)
+  (-> sink-name? sink-cexpr?)
+  (sink-cexpr 'TODO))
+
 (define/contract (sink-call-binary func args)
   (-> sink? sink? sink?)
   'TODO)
@@ -202,6 +207,26 @@
 (define/contract (sink-call func . args)
   (->* (sink?) #:rest (listof sink?) sink?)
   (sink-call-list func args))
+
+(define/contract (sink-string-from-located-string located-string)
+  (-> sink-located-string? sink-string?)
+  'TODO)
+
+(define/contract (sink-name-for-freestanding-cexpr-op inner-name)
+  (-> sink-name? sink-name?)
+  'TODO)
+
+(define/contract (sink-name-for-bounded-cexpr-op inner-name)
+  (-> sink-name? sink-name?)
+  'TODO)
+
+(define/contract (sink-name-for-nameless-bounded-cexpr-op bracket)
+  (-> string? sink-name?)
+  'TODO)
+
+(define/contract (sink-name-for-local-variable string)
+  (-> sink-string? sink-name?)
+  'TODO)
 
 (define/contract
   (sink-effects-read-eof text-input-stream on-eof else)
@@ -296,8 +321,8 @@
   ;  )
   ;  ]
   
-  ; TODO: Just about every case here will invoke `next` in order to
-  ; read further expressions from the input.
+  ; NOTE: Just about every case here invokes `next` in order to read
+  ; further expressions from the input.
   (w-loop next
     unique-name unique-name
     qualify qualify
@@ -324,97 +349,130 @@
     #/current-continuation-marks)
   
   #/w- sink-effects-read-op
-    (fn text-input-stream qualify then
+    (fn text-input-stream qualify pre-qualify then
       (sink-effects 'TODO))
   
-  #/w- sink-effects-read-and-run-op
-    (fn unique-name qualify text-input-stream state then
-      (sink-effects-read-op text-input-stream qualify
-      #/fn text-input-stream op-name
-      #/sink-effects-get op-name #/fn op-impl
-      
+  #/w- sink-effects-run-op
+    (fn op-impl unique-name qualify text-input-stream state then
       ; TODO: Convert `qualify`, `on-cexpr`, and the `fn` to sinks
       ; somehow.
       ;
-      ; TODO: Raise an error explicitly if the result of the call isn't
-      ; a `sink-effects?` value.
+      ; TODO: Raise an error explicitly if the result of the call
+      ; isn't a `sink-effects?` value.
       ;
-      #/sink-call
+      (sink-call
         op-impl unique-name qualify text-input-stream state on-cexpr
       #/fn unique-name qualify text-input-stream state
       #/then unique-name qualify text-input-stream state))
   
+  #/w- sink-effects-read-and-run-op
+    (fn unique-name qualify text-input-stream state pre-qualify then
+      (sink-effects-read-op text-input-stream qualify pre-qualify
+      #/fn text-input-stream op-name
+      #/sink-effects-get op-name #/fn op-impl
+      #/sink-effects-run-op
+        op-impl unique-name qualify text-input-stream state then))
+  
+  #/w- sink-effects-read-and-run-freestanding-cexpr-op
+    (fn unique-name qualify text-input-stream state then
+      (sink-effects-read-and-run-op
+        unique-name qualify text-input-stream state
+        sink-name-for-freestanding-cexpr-op
+        then))
+  
+  #/w- sink-effects-read-and-run-bounded-cexpr-op
+    (fn unique-name qualify text-input-stream state then
+      (sink-effects-read-and-run-op
+        unique-name qualify text-input-stream state
+        sink-name-for-bounded-cexpr-op
+        then))
+  
+  #/w- sink-effects-run-nameless-op
+    (fn bracket unique-name qualify text-input-stream state then
+      ; TODO: If we refactor `qualify` to be a sink, make sure to invoke
+      ; it using `sink-call` here.
+      (sink-effects-get
+        (qualify #/sink-name-for-nameless-bounded-cexpr-op bracket)
+      #/fn op-impl
+      #/sink-effects-run-op
+        op-impl unique-name qualify text-input-stream state then))
+  
   #/sink-effects-read-maybe-given-racket text-input-stream "\\"
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
-    (sink-effects-read-and-run-op
-      unique-name qualify text-input-stream state
-    #/fn unique-name qualify text-input-stream state
-    #/next unique-name qualify text-input-stream state)
+    (sink-effects-read-and-run-freestanding-cexpr-op
+      unique-name qualify text-input-stream state next)
   
   #/sink-effects-read-maybe-given-racket text-input-stream "("
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
-    (sink-effects-read-maybe-given-racket text-input-stream "."
+    (w- next
+      (fn unique-name qualify text-input-stream state
+        (sink-effects-read-maybe-given-racket text-input-stream ")"
+        #/fn text-input-stream maybe-str
+        #/expect maybe-str (just _)
+          (raise #/exn:fail:cene
+            "Encountered a syntax that began with (. and did not end with )"
+          #/current-continuation-marks)
+        #/next unique-name qualify text-input-stream state))
+    #/sink-effects-read-maybe-given-racket text-input-stream "."
     #/fn text-input-stream maybe-str
     #/mat maybe-str (just _)
-      (sink-effects-read-and-run-op
-        unique-name qualify text-input-stream state
-      #/fn unique-name qualify text-input-stream state
-      #/sink-effects-read-maybe-given-racket text-input-stream ")"
-      #/fn text-input-stream maybe-str
-      #/expect maybe-str (just _)
-        (raise #/exn:fail:cene
-          "Encountered a syntax that began with (. and did not end with )"
-        #/current-continuation-marks)
-      #/next unique-name qualify text-input-stream state)
-    
-    #/sink-effects 'TODO)
+      (sink-effects-read-and-run-bounded-cexpr-op
+        unique-name qualify text-input-stream state next)
+    #/sink-effects-run-nameless-op "("
+      unique-name qualify text-input-stream state next)
   
   #/sink-effects-read-maybe-given-racket text-input-stream "["
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
-    (sink-effects-read-maybe-given-racket text-input-stream "."
+    (w- next
+      (fn unique-name qualify text-input-stream state
+        (sink-effects-read-maybe-given-racket text-input-stream "]"
+        #/fn text-input-stream maybe-str
+        #/expect maybe-str (just _)
+          (raise #/exn:fail:cene
+            "Encountered a syntax that began with [. and did not end with ]"
+          #/current-continuation-marks)
+        #/next unique-name qualify text-input-stream state))
+    #/sink-effects-read-maybe-given-racket text-input-stream "."
     #/fn text-input-stream maybe-str
     #/mat maybe-str (just _)
-      (sink-effects-read-and-run-op
-        unique-name qualify text-input-stream state
-      #/fn unique-name qualify text-input-stream state
-      #/sink-effects-read-maybe-given-racket text-input-stream "]"
-      #/fn text-input-stream maybe-str
-      #/expect maybe-str (just _)
-        (raise #/exn:fail:cene
-          "Encountered a syntax that began with [. and did not end with ]"
-        #/current-continuation-marks)
-      #/next unique-name qualify text-input-stream state)
-    
-    #/sink-effects 'TODO)
+      (sink-effects-read-and-run-bounded-cexpr-op
+        unique-name qualify text-input-stream state next)
+    #/sink-effects-run-nameless-op "["
+      unique-name qualify text-input-stream state next)
   
   #/sink-effects-read-maybe-given-racket text-input-stream "/"
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
-    (sink-effects-read-maybe-given-racket text-input-stream "."
+    (w- next
+      (fn unique-name qualify text-input-stream state
+        (sink-effects-peek-maybe-given-racket text-input-stream ")"
+        #/fn text-input-stream maybe-str1
+        #/sink-effects-peek-maybe-given-racket text-input-stream "]"
+        #/fn text-input-stream maybe-str2
+        #/mat (list maybe-str1 maybe-str2) (list (nothing) (nothing))
+          (raise #/exn:fail:cene
+            "Encountered a syntax that began with /. and did not end at ) or ]"
+          #/current-continuation-marks)
+        #/next unique-name qualify text-input-stream state))
+    #/sink-effects-read-maybe-given-racket text-input-stream "."
     #/fn text-input-stream maybe-str
     #/mat maybe-str (just _)
-      (sink-effects-read-and-run-op
-        unique-name qualify text-input-stream state
-      #/fn unique-name qualify text-input-stream state
-      #/sink-effects-peek-maybe-given-racket text-input-stream ")"
-      #/fn text-input-stream maybe-str1
-      #/sink-effects-peek-maybe-given-racket text-input-stream "]"
-      #/fn text-input-stream maybe-str2
-      #/mat (list maybe-str1 maybe-str2) (list (nothing) (nothing))
-        (raise #/exn:fail:cene
-          "Encountered a syntax that began with /. and did not end with ) or ]"
-        #/current-continuation-marks)
-      #/next unique-name qualify text-input-stream state)
-    
-    #/sink-effects 'TODO)
+      (sink-effects-read-and-run-bounded-cexpr-op
+        unique-name qualify text-input-stream state next)
+    #/sink-effects-run-nameless-op "/"
+      unique-name qualify text-input-stream state next)
   
   #/sink-effects-read-maybe-identifier text-input-stream
   #/fn text-input-stream maybe-identifier
   #/mat maybe-identifier (just identifier)
-    (sink-effects 'TODO)
+    (on-cexpr unique-name qualify state
+      (sink-cexpr-var #/sink-name-for-local-variable
+      #/sink-string-from-located-string identifier)
+    #/fn unique-name qualify state
+    #/next unique-name qualify text-input-stream state)
   
   #/raise #/exn:fail:cene
     "Encountered an unrecognized case of the expression syntax"
