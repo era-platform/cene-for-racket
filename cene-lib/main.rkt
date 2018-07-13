@@ -128,10 +128,10 @@
 
 (struct-easy (sink-dex dex))
 (struct-easy (sink-name name))
-(struct-easy (sink-effects todo))
-(struct-easy (sink-text-input-stream todo))
-(struct-easy (sink-located-string todo))
-(struct-easy (sink-string todo))
+(struct-easy (sink-effects go!))
+(struct-easy (sink-text-input-stream box-of-maybe-input))
+(struct-easy (sink-located-string parts))
+(struct-easy (sink-string racket-string))
 
 ; NOTE: The term "cexpr" is short for "compiled expression." It's the
 ; kind of expression that macros generate in order to use as function
@@ -171,8 +171,8 @@
 
 (define/contract (sink-effects-merge-binary a b)
   (-> sink-effects? sink-effects? sink-effects?)
-  (dissect a (sink-effects a)
-  #/dissect b (sink-effects b)
+  (dissect a (sink-effects a-go!)
+  #/dissect b (sink-effects b-go!)
   #/sink-effects 'TODO))
 
 (define/contract (sink-effects-merge-list effects)
@@ -210,7 +210,11 @@
 
 (define/contract (sink-string-from-located-string located-string)
   (-> sink-located-string? sink-string?)
-  'TODO)
+  (dissect located-string (sink-located-string parts)
+  ; TODO: See if this is a painter's algorithm.
+  #/sink-string #/list-foldl "" parts #/fn state part
+    (dissect part (list start-loc string stop-loc)
+      (string-append state string))))
 
 (define/contract (sink-name-for-string string)
   (-> sink-string? sink-name?)
@@ -232,6 +236,20 @@
   (-> sink-string? sink-name?)
   'TODO)
 
+(struct exn:fail:cene exn:fail ())
+
+(define/contract (sink-text-input-stream-spend! text-input-stream)
+  (-> sink-text-input-stream? input-port?)
+  (dissect text-input-stream (sink-text-input-stream b)
+  ; TODO: See if this should be more thread-safe in some way.
+  #/expect (unbox b) (just input-port)
+    (raise #/exn:fail:cene
+      "Tried to spend a text input stream that was already spent"
+    #/current-continuation-marks)
+  #/begin
+    (set-box! b (nothing))
+    input-port))
+
 (define/contract
   (sink-effects-read-eof text-input-stream on-eof else)
   (->
@@ -239,7 +257,13 @@
     sink-effects?
     (-> sink-text-input-stream? sink-effects?)
     sink-effects?)
-  (sink-effects 'TODO))
+  (sink-effects #/fn
+  #/w- in (sink-text-input-stream-spend! text-input-stream)
+  #/if (eof-object? #/peek-byte in)
+    (begin (close-input-port in)
+    #/dissect on-eof (sink-effects go!)
+    #/go!)
+  #/else #/sink-text-input-stream #/box in))
 
 (define/contract
   (sink-effects-read-whether-at-eof text-input-stream then)
@@ -247,9 +271,67 @@
     sink-text-input-stream?
     (-> sink-text-input-stream? boolean? sink-effects?)
     sink-effects?)
-  (sink-effects 'TODO))
+  (sink-effects #/fn
+  #/w- in (sink-text-input-stream-spend! text-input-stream)
+  #/then (sink-text-input-stream #/box in)
+    (eof-object? #/peek-byte in)))
 
-(struct exn:fail:cene exn:fail ())
+(define/contract
+  (sink-effects-read-or-peek-regexp
+    read-or-peek text-input-stream pattern then)
+  (->
+    (or/c 'read 'peek)
+    sink-text-input-stream?
+    (or/c regexp? string?)
+    (-> sink-text-input-stream? (maybe/c sink-located-string?)
+      sink-effects?)
+    sink-effects?)
+  (sink-effects #/fn
+  #/w- in (sink-text-input-stream-spend! text-input-stream)
+  #/let-values
+    (
+      [
+        (start-line start-column start-position)
+        (port-next-location in)])
+  #/w- regexp-match-read-or-peek
+    (if (eq? 'read read-or-peek)
+      regexp-match
+      regexp-match-peek)
+  #/expect (regexp-match-read-or-peek pattern in) (list bytes)
+    (then (sink-text-input-stream #/box in) #/nothing)
+  #/let-values
+    (
+      [
+        (stop-line stop-column stop-position)
+        (port-next-location in)])
+  #/then (sink-text-input-stream #/box in)
+    (just #/sink-located-string #/list
+      (list
+        (list start-line start-column start-position)
+        (bytes->string/utf-8 bytes)
+        (list stop-line stop-column stop-position)))))
+
+(define/contract
+  (sink-effects-read-regexp text-input-stream pattern then)
+  (->
+    sink-text-input-stream?
+    (or/c regexp? string?)
+    (-> sink-text-input-stream? (maybe/c sink-located-string?)
+      sink-effects?)
+    sink-effects?)
+  (sink-effects-read-or-peek-regexp 'read
+    text-input-stream pattern then))
+
+(define/contract
+  (sink-effects-peek-regexp text-input-stream pattern then)
+  (->
+    sink-text-input-stream?
+    (or/c regexp? string?)
+    (-> sink-text-input-stream? (maybe/c sink-located-string?)
+      sink-effects?)
+    sink-effects?)
+  (sink-effects-read-or-peek-regexp 'peek
+    text-input-stream pattern then))
 
 (define/contract
   (sink-effects-read-whitespace text-input-stream then)
@@ -257,7 +339,11 @@
     sink-text-input-stream?
     (-> sink-text-input-stream? sink-located-string? sink-effects?)
     sink-effects?)
-  (sink-effects 'TODO))
+  ; TODO: Support a more Unicode-aware notion of whitespace.
+  (sink-effects-read-regexp text-input-stream #px"^[ \t\r\n]*"
+  #/fn text-input-stream maybe-located-string
+  #/dissect maybe-located-string (just located-string)
+  #/then text-input-stream located-string))
 
 (define/contract
   (sink-effects-read-maybe-identifier text-input-stream then)
@@ -266,7 +352,12 @@
     (-> sink-text-input-stream? (maybe/c sink-located-string?)
       sink-effects?)
     sink-effects?)
-  (sink-effects 'TODO))
+  ; TODO: Support a more Unicode-aware notion of identifier. Not only
+  ; should this recognize an identifier according to one of the
+  ; Unicode algorithms, it should normalize it according to a Unicode
+  ; algorithm as well.
+  (sink-effects-read-regexp text-input-stream #px"^[-01-9a-zA-Z]+"
+    then))
 
 (define/contract
   (sink-effects-read-maybe-op-character text-input-stream then)
@@ -275,7 +366,11 @@
     (-> sink-text-input-stream? (maybe/c sink-located-string?)
       sink-effects?)
     sink-effects?)
-  (sink-effects 'TODO))
+  ; TODO: Support a more Unicode-aware notion here, maybe the
+  ; "pattern" symbols described in the Unicode identifier rules.
+  (sink-effects-read-regexp text-input-stream
+    #px"^[^-01-9a-zA-Z \t\r\n\\[\\]()\\\\.:]"
+    then))
 
 (define/contract
   (sink-effects-read-maybe-given-racket text-input-stream str then)
@@ -285,7 +380,11 @@
     (-> sink-text-input-stream? (maybe/c sink-located-string?)
       sink-effects?)
     sink-effects?)
-  (sink-effects 'TODO))
+  ; TODO: See if we should compile more of these ahead of time rather
+  ; than generating regexp code at run time like this.
+  (sink-effects-read-regexp text-input-stream
+    (string-append "^" #/regexp-quote str)
+    then))
 
 (define/contract
   (sink-effects-peek-maybe-given-racket text-input-stream str then)
@@ -295,7 +394,11 @@
     (-> sink-text-input-stream? (maybe/c sink-located-string?)
       sink-effects?)
     sink-effects?)
-  (sink-effects 'TODO))
+  ; TODO: See if we should compile more of these ahead of time rather
+  ; than generating regexp code at run time like this.
+  (sink-effects-peek-regexp text-input-stream
+    (string-append "^" #/regexp-quote str)
+    then))
 
 (define/contract
   (sink-effects-read-cexprs
