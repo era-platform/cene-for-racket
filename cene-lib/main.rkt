@@ -354,16 +354,18 @@
   
   #/w- sink-effects-run-op
     (fn op-impl unique-name qualify text-input-stream state then
-      ; TODO: Convert `qualify`, `on-cexpr`, and the `fn` to sinks
-      ; somehow.
-      ;
-      ; TODO: Raise an error explicitly if the result of the call
-      ; isn't a `sink-effects?` value.
-      ;
-      (sink-call
-        op-impl unique-name qualify text-input-stream state on-cexpr
-      #/fn unique-name qualify text-input-stream state
-      #/then unique-name qualify text-input-stream state))
+      (w- result
+        ; TODO: Convert `qualify`, `on-cexpr`, and the `fn` to sinks
+        ; somehow.
+        (sink-call
+          op-impl unique-name qualify text-input-stream state on-cexpr
+        #/fn unique-name qualify text-input-stream state
+        #/then unique-name qualify text-input-stream state)
+      #/expect (sink-effects? result) #t
+        (raise #/exn:fail:cene
+          "Expected the return value of a macro to be an effectful computation"
+        #/current-continuation-marks)
+        result))
   
   #/w- sink-effects-read-and-run-op
     (fn unique-name qualify text-input-stream state pre-qualify then
@@ -389,8 +391,8 @@
   
   #/w- sink-effects-run-nameless-op
     (fn bracket unique-name qualify text-input-stream state then
-      ; TODO: If we refactor `qualify` to be a sink, make sure to invoke
-      ; it using `sink-call` here.
+      ; TODO: If we refactor `qualify` to be a sink, make sure to
+      ; invoke it using `sink-call` here.
       (sink-effects-get
         (qualify #/sink-name-for-nameless-bounded-cexpr-op bracket)
       #/fn op-impl
