@@ -34,7 +34,7 @@ In an expression context, this runs the bounded expression reader macro of `op`,
 
 (The whitespace versions consume all the whitespace that occurs after the identifier before they invoke the reader macro.)
 
-(These are usually written without the dot, taking advantage of the usual nameless bounded expression reader macros for `(` and `[`. The dot version is supported primarily for consistency with the markup syntax.)
+(These are usually written without the dot, taking advantage of the usual nameless bounded expression reader macros. The dot version is supported primarily for consistency with the markup syntax.)
 
   (.<op>...)
   [.<op>...]
@@ -44,12 +44,12 @@ In an expression context, this runs the bounded expression reader macro of `op`.
 
 (The whitespace version consumes all the whitespace that occurs after the identifier before it invokes the reader macro.)
 
-(These are usually written without the dot, taking advantage of the usual nameless bounded expression reader macro for `/`. The dot version is supported primarily for consistency with the markup syntax.)
+(These are usually written without the dot, taking advantage of the usual nameless bounded expression reader macro. The dot version is supported primarily for consistency with the markup syntax.)
 
   /.<op>...
 
 
-In an expression context, an opening bracket or / not followed by . behaves similarly to if it were followed by . but it uses a nameless bounded expression reader macro corresponding to `(`, `[`, or `/` instead of a named macro.
+In an expression context, an opening bracket or / not followed by . behaves similarly to if it were followed by . but it uses a nameless bounded expression reader macro instead of a named macro.
 
   (...)
   [...]
@@ -88,7 +88,7 @@ In a markup context, this runs the bounded markup reader macro of `op` (while re
   /.<op>...
 
 
-In a markup context, an opening bracket or / not followed by . behaves similarly to if it were followed by . but it uses a nameless bounded markup reader macro corresponding to `(`, `[`, or `/` instead of a named macro.
+In a markup context, an opening bracket or / not followed by . behaves similarly to if it were followed by . but it uses a nameless bounded markup reader macro instead of a named macro.
 
   (...)
   [...]
@@ -105,7 +105,7 @@ Typical macros:
 
 Freestanding expression reader macro `=`: Line comment.
 
-Nameless bounded expression reader macros for `(` `[` `/`: Reads something like the pattern `<op>`, then runs the bounded expression reader macro of `op`.
+Nameless bounded expression reader macro: Reads something like the pattern `<op>`, then runs the bounded expression reader macro of `op`.
 
 Freestanding markup reader macro `=`: Line comment.
 
@@ -115,7 +115,7 @@ Freestanding markup reader macro `#`: A whitespace normalization command that re
 
 Freestanding markup reader macros `s` `t` `r` `n`: A whitespace normalization command that recommends removing surrounding raw whitespace and inserting a space, a tab, a carriage return, or a newline, respectively. The inserted character is not considered "raw" whitespace.
 
-Nameless bounded markup reader macros for `(` `[` `/`: Accumulates the literal text that started the macro call, then proceeds as usual until it reaches a corresponding closing bracket (without consuming it), then accumulates the accumulatable text of the corresponding closing bracket.
+Nameless bounded markup reader macro: Accumulates the literal text that started the macro call, then proceeds as usual until it reaches a corresponding closing bracket (without consuming it), then accumulates the accumulatable text of the corresponding closing bracket.
 
 Bounded markup reader macros `qq` `uq`: Respectively increments or decrements the quoting depth temporarily while it accumulates the markup in its body. Most markup reader macros operate normally at a depth of 1, cause an error at any lower depth, and accumulate their own syntax's non-whitespace text and raw whitespace at any greater depth.
 
