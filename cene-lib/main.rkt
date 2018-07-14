@@ -149,7 +149,6 @@
     (sink-opaque-fn? v)
     (sink-cexpr? v)))
 
-; TODO: Write a trampoline that runs these.
 (struct-easy (cene-process-get name then))
 (struct-easy (cene-process-put name dex value))
 (struct-easy (cene-process-noop))
@@ -162,6 +161,50 @@
     (cene-process-put? v)
     (cene-process-noop? v)
     (cene-process-merge? v)))
+
+; TODO: Write an entrypoint to the Cene language that uses
+; `sink-effects-read-top-level` and this together to run Cene code.
+(define/contract (run-cene-process process)
+  (-> cene-process? void?)
+  (w-loop next
+    processes (list process)
+    rev-next-processes (list)
+    did-something #f
+  #/expect processes (cons process processes)
+    (mat rev-next-processes (list)
+      (void)
+    #/if (not did-something)
+      ; TODO: Implement this. The processes are stalled. We should
+      ; display errors corresponding to all the processes.
+      'TODO
+    #/next (reverse rev-next-processes) (list) #f)
+  #/mat process (cene-process-noop)
+    (next processes rev-next-processes #t)
+  #/mat process (cene-process-merge a b)
+    (next processes (list* b a rev-next-processes) #t)
+  #/mat process (cene-process-put name dex value)
+    ; TODO: Implement this. If there has been a put operation to this
+    ; name already, this should check that the proposed `dex` matches
+    ; the stored dex and that the proposed `value` matches the stored
+    ; value according to that dex. Otherwise, it should just store the
+    ; proposed `dex` and `value`.
+    (begin 'TODO
+    
+    #/next processes rev-next-processes #t)
+  #/mat process (cene-process-get name then)
+    ; TODO: Implement this. If there has been a put operation to this
+    ; name, this should get a `(just ...)` of the stored value.
+    ; Otherwise, this should get `(nothing)`.
+    (w- cene-get-maybe 'TODO
+    
+    #/expect (cene-get-maybe name) (just gotten)
+      (next processes (cons process rev-next-processes) did-something)
+    ; TODO: Instead of just calling `then` here, call it in a way
+    ; where the continuation can be suspended as a `cene-process-get`
+    ; if it tries to look up a name that has no definition yet.
+    #/dissect (then gotten) (sink-effects process)
+    #/next processes (cons process rev-next-processes) #t)
+  #/error "Encountered an unrecognized kind of Cene process"))
 
 (struct-easy (cexpr-var name))
 
