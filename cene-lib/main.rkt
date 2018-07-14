@@ -26,13 +26,13 @@
 
 (require #/only-in lathe-comforts
   dissect dissectfn expect fn mat w- w-loop)
-(require #/only-in lathe-comforts/hash hash-ref-maybe hash-set-maybe)
 (require #/only-in lathe-comforts/list list-foldl list-map nat->maybe)
 (require #/only-in lathe-comforts/maybe just maybe/c nothing)
 (require #/only-in lathe-comforts/struct struct-easy)
 
 (require #/only-in effection/order
-  compare-by-dex dex-give-up dex-dex dex-name name? ordering-eq?)
+  compare-by-dex dex-give-up dex-dex dex-name name? ordering-eq?
+  table-get table-shadow)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe name)
 
 
@@ -131,7 +131,7 @@
 (struct-easy (sink-located-string parts))
 (struct-easy (sink-string racket-string))
 (struct-easy (sink-opaque-fn racket-fn))
-(struct-easy (sink-table racket-hash))
+(struct-easy (sink-table racket-table))
 
 ; NOTE: The term "cexpr" is short for "compiled expression." It's the
 ; kind of expression that macros generate in order to use as function
@@ -171,15 +171,15 @@
 
 (define/contract (sink-table-get-maybe table name)
   (-> sink-table? sink-name? #/maybe/c sink?)
-  (dissect table (sink-table hash)
-  #/dissect name (sink-name #/unsafe:name name)
-  #/hash-ref-maybe hash name))
+  (dissect table (sink-table table)
+  #/dissect name (sink-name name)
+  #/table-get name table))
 
 (define/contract (sink-table-put-maybe table name maybe-value)
   (-> sink-table? sink-name? (maybe/c sink?) sink-table?)
-  (dissect table (sink-table hash)
-  #/dissect name (sink-name #/unsafe:name name)
-  #/sink-table #/hash-set-maybe hash name maybe-value))
+  (dissect table (sink-table table)
+  #/dissect name (sink-name name)
+  #/sink-table #/table-shadow name maybe-value table))
 
 (define/contract cene-definition-get-param
   (parameter/c #/maybe/c #/-> sink-name? sink?)
