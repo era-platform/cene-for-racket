@@ -20,18 +20,19 @@
 
 
 (require #/only-in racket/contract/base
-  -> ->* and/c any/c listof not/c or/c)
+  -> ->* and/c any/c list/c listof not/c or/c)
 (require #/only-in racket/contract/region define/contract)
 (require #/only-in racket/math natural?)
 
 (require #/only-in lathe-comforts
   dissect dissectfn expect fn mat w- w-loop)
+(require #/only-in lathe-comforts/hash hash-ref-maybe hash-set-maybe)
 (require #/only-in lathe-comforts/list list-foldl list-map nat->maybe)
 (require #/only-in lathe-comforts/maybe just maybe/c nothing)
 (require #/only-in lathe-comforts/struct struct-easy)
 
 (require #/only-in effection/order
-  compare-by-dex dex-give-up dex-name name? ordering-eq?)
+  compare-by-dex dex-give-up dex-dex dex-name name? ordering-eq?)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe name)
 
 
@@ -130,6 +131,7 @@
 (struct-easy (sink-located-string parts))
 (struct-easy (sink-string racket-string))
 (struct-easy (sink-opaque-fn racket-fn))
+(struct-easy (sink-table racket-hash))
 
 ; NOTE: The term "cexpr" is short for "compiled expression." It's the
 ; kind of expression that macros generate in order to use as function
@@ -147,6 +149,7 @@
     (sink-located-string? v)
     (sink-string? v)
     (sink-opaque-fn? v)
+    (sink-table? v)
     (sink-cexpr? v)))
 
 (struct-easy (cene-process-get name then))
@@ -162,48 +165,114 @@
     (cene-process-noop? v)
     (cene-process-merge? v)))
 
+(struct-easy (cene-runtime defined-dexes defined-values))
+
+(define/contract (sink-table-get-maybe table name)
+  (-> sink-table? sink-name? #/maybe/c sink?)
+  (dissect table (sink-table hash)
+  #/dissect name (sink-name #/unsafe:name name)
+  #/hash-ref-maybe hash name))
+
+(define/contract (sink-table-put-maybe table name maybe-value)
+  (-> sink-table? sink-name? (maybe/c sink?) sink-table?)
+  (dissect table (sink-table hash)
+  #/dissect name (sink-name #/unsafe:name name)
+  #/sink-table #/hash-set-maybe hash name maybe-value))
+
 ; TODO: Write an entrypoint to the Cene language that uses
 ; `sink-effects-read-top-level` and this together to run Cene code.
-(define/contract (run-cene-process process)
-  (-> cene-process? void?)
-  (w-loop next
+(define/contract (run-cene-process rt process)
+  (-> cene-runtime? cene-process?
+    (list/c cene-runtime? #/listof string?))
+  (dissect rt (cene-runtime defined-dexes defined-values)
+  #/w-loop next-full
     processes (list process)
     rev-next-processes (list)
+    defined-dexes defined-dexes
+    defined-values defined-values
+    rev-errors (list)
     did-something #f
   #/expect processes (cons process processes)
     (mat rev-next-processes (list)
-      (void)
+      ; If there are no processes left, we're done. We return the
+      ; updated Cene runtime and the list of errors.
+      (list
+        (cene-runtime defined-dexes defined-values)
+        (reverse rev-errors))
     #/if (not did-something)
-      ; TODO: Implement this. The processes are stalled. We should
-      ; display errors corresponding to all the processes.
-      'TODO
-    #/next (reverse rev-next-processes) (list) #f)
+      ; The processes are stalled. We log errors corresponding to all
+      ; the processes.
+      (next-full (list) (list) defined-dexes defined-values
+        (append
+          (list-map rev-next-processes #/fn process
+            "Read from a name that was never defined")
+          rev-errors)
+        #t)
+    #/next-full (reverse rev-next-processes) (list)
+      defined-dexes defined-values rev-errors #f)
+  #/w- next-simple
+    (fn rev-next-processes
+      (next-full
+        processes rev-next-processes defined-dexes defined-values
+        rev-errors #t))
+  #/w- next-with-error
+    (fn error
+      (next-full
+        processes rev-next-processes defined-dexes defined-values
+        (cons error rev-errors)
+        #t))
   #/mat process (cene-process-noop)
-    (next processes rev-next-processes #t)
+    (next-simple rev-next-processes)
   #/mat process (cene-process-merge a b)
-    (next processes (list* b a rev-next-processes) #t)
+    (next-simple #/list* b a rev-next-processes)
   #/mat process (cene-process-put name dex value)
-    ; TODO: Implement this. If there has been a put operation to this
-    ; name already, this should check that the proposed `dex` matches
-    ; the stored dex and that the proposed `value` matches the stored
-    ; value according to that dex. Otherwise, it should just store the
-    ; proposed `dex` and `value`.
-    (begin 'TODO
-    
-    #/next processes rev-next-processes #t)
+    ; If there has already been a definition installed at this name,
+    ; this checks that the proposed `dex` matches the stored dex and
+    ; that the proposed `value` matches the stored value according to
+    ; that dex. Otherwise, it stores the proposed `dex` and `value`
+    ; without question.
+    (mat (sink-table-get-maybe defined-dexes) (just existing-dex)
+      (expect
+        (ordering-eq? #/compare-by-dex dex-dex dex existing-dex)
+        #t
+        (next-with-error "Wrote to the same name with inequal dexes")
+      #/dissect (sink-table-get-maybe defined-values)
+        (just existing-value)
+      #/expect
+        ; TODO: Instead of just comparing by `existing-dex` here,
+        ; compare by it in a way where the continuation can be
+        ; suspended as a `cene-process-get` if it tries to look up a
+        ; name that has no definition yet.
+        (ordering-eq?
+        #/compare-by-dex existing-dex value existing-value)
+        #t
+        (next-with-error "Wrote to the same name with inequal values")
+      #/next-simple rev-next-processes)
+    #/next-full
+      processes
+      rev-next-processes
+      (sink-table-put-maybe defined-dexes #/just dex)
+      (sink-table-put-maybe defined-values #/just value)
+      rev-errors
+      #t)
   #/mat process (cene-process-get name then)
-    ; TODO: Implement this. If there has been a put operation to this
-    ; name, this should get a `(just ...)` of the stored value.
-    ; Otherwise, this should get `(nothing)`.
-    (w- cene-get-maybe 'TODO
-    
-    #/expect (cene-get-maybe name) (just gotten)
-      (next processes (cons process rev-next-processes) did-something)
+    ; If there has not yet been a definition installed at this name,
+    ; we set this process aside and come back to it later. If there
+    ; has, we call `then` with that defined value and set aside its
+    ; result as a process to come back to later.
+    (expect (sink-table-get-maybe defined-values name) (just value)
+      (next-full
+        processes
+        (cons process rev-next-processes)
+        defined-dexes
+        defined-values
+        rev-errors
+        did-something)
     ; TODO: Instead of just calling `then` here, call it in a way
     ; where the continuation can be suspended as a `cene-process-get`
     ; if it tries to look up a name that has no definition yet.
-    #/dissect (then gotten) (sink-effects process)
-    #/next processes (cons process rev-next-processes) #t)
+    #/dissect (then value) (sink-effects process)
+    #/next-simple #/cons process rev-next-processes)
   #/error "Encountered an unrecognized kind of Cene process"))
 
 (struct-easy (cexpr-var name))
