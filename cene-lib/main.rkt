@@ -35,9 +35,6 @@
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe name)
 
 
-; TODO: Implement the Cene programming language.
-
-
 ; NOTE: The "sink" part of the name "sink-struct" refers to the fact
 ; that this is only one case of Cene's kitchen sink type. Cene is an
 ; untyped language, but if it ever becomes a typed language, all the
@@ -132,11 +129,12 @@
 (struct-easy (sink-text-input-stream box-of-maybe-input))
 (struct-easy (sink-located-string parts))
 (struct-easy (sink-string racket-string))
+(struct-easy (sink-opaque-fn racket-fn))
 
 ; NOTE: The term "cexpr" is short for "compiled expression." It's the
 ; kind of expression that macros generate in order to use as function
 ; definitions.
-(struct-easy (sink-cexpr todo))
+(struct-easy (sink-cexpr cexpr))
 
 (define/contract (sink? v)
   (-> any/c boolean?)
@@ -145,18 +143,41 @@
     (sink-dex? v)
     (sink-name? v)
     (sink-effects? v)
-    (sink-text-input-stream? v)))
+    (sink-text-input-stream? v)
+    (sink-located-string? v)
+    (sink-string? v)
+    (sink-opaque-fn? v)
+    (sink-cexpr? v)))
+
+; TODO: Write a trampoline that runs these.
+(struct-easy (cene-process-get name then))
+(struct-easy (cene-process-put name dex value))
+(struct-easy (cene-process-noop))
+(struct-easy (cene-process-merge a b))
+
+(define/contract (cene-process? v)
+  (-> any/c boolean?)
+  (or
+    (cene-process-get? v)
+    (cene-process-put? v)
+    (cene-process-noop? v)
+    (cene-process-merge? v)))
+
+(struct-easy (cexpr-var name))
+
+(define/contract (cexpr? v)
+  (-> any/c boolean?)
+  ; TODO: Add more cexpr constructors.
+  (or
+    (cexpr-var? v)))
 
 (define/contract (sink-effects-get name then)
   (-> sink-name? (-> sink? sink-effects?) sink-effects?)
-  (dissect name (sink-name name)
-  #/sink-effects 'TODO))
+  (sink-effects #/fn #/cene-process-get name then))
 
 (define/contract (sink-effects-put name dex value)
   (-> sink-name? sink-dex? sink? sink-effects?)
-  (dissect name (sink-name name)
-  #/dissect dex (sink-dex dex)
-  #/sink-effects 'TODO))
+  (sink-effects #/fn #/cene-process-put name dex value))
 
 (define/contract (sink-effects-claim name)
   (-> name? sink-effects?)
@@ -167,13 +188,13 @@
 
 (define/contract (sink-effects-noop)
   (-> sink-effects?)
-  (sink-effects 'TODO))
+  (sink-effects #/fn #/cene-process-noop))
 
 (define/contract (sink-effects-merge-binary a b)
   (-> sink-effects? sink-effects? sink-effects?)
   (dissect a (sink-effects a-go!)
   #/dissect b (sink-effects b-go!)
-  #/sink-effects 'TODO))
+  #/sink-effects #/fn #/cene-process-merge (a-go!) (b-go!)))
 
 (define/contract (sink-effects-merge-list effects)
   (-> (listof sink-effects?) sink-effects?)
@@ -184,21 +205,43 @@
   (->* () #:rest (listof sink-effects?) sink-effects?)
   (sink-effects-merge-list effects))
 
+(struct exn:fail:cene exn:fail ())
+
 (define/contract (cexpr-has-free-vars? cexpr)
   (-> sink-cexpr? boolean?)
-  'TODO)
+  ; TODO: Refactor this so that it becomes a call to a
+  ; `cexpr-free-vars` function followed by a check that the result is
+  ; nonempty.
+  (dissect cexpr (sink-cexpr cexpr)
+  #/mat cexpr (cexpr-var name)
+    #t
+  #/error "Encountered an unrecognized kind of cexpr"))
 
 (define/contract (cexpr-eval cexpr)
   (-> (and/c sink-cexpr? #/not/c cexpr-has-free-vars?) sink?)
+  ; TODO: Implement this. We'll want to compile the cexpr and then
+  ; invoke the compiled code.
   'TODO)
 
 (define/contract (sink-cexpr-var name)
   (-> sink-name? sink-cexpr?)
-  (sink-cexpr 'TODO))
+  (dissect name (sink-name name)
+  #/sink-cexpr #/cexpr-var name))
 
 (define/contract (sink-call-binary func args)
   (-> sink? sink? sink?)
-  'TODO)
+  (mat func (sink-opaque-fn racket-func)
+    (racket-func args)
+  #/mat func (sink-struct tags projs)
+    (sink-call-binary
+      ; TODO: Implement this. We'll want to look up a name derived
+      ; from `tags`. This lookup may suspend the current computation
+      ; if the definition of the name hasn't been installed yet.
+      'TODO
+      func)
+  #/raise #/exn:fail:cene
+    "Tried to call a value that wasn't an opaque function or a struct"
+  #/current-continuation-marks))
 
 (define/contract (sink-call-list func args)
   (-> sink? (listof sink?) sink?)
@@ -218,25 +261,23 @@
 
 (define/contract (sink-name-for-string string)
   (-> sink-string? sink-name?)
-  'TODO)
+  (dissect string (sink-string racket-string)
+  #/sink-name #/unsafe:name
+  #/list 'name:string #/string->symbol racket-string))
 
 (define/contract (sink-name-for-freestanding-cexpr-op inner-name)
   (-> sink-name? sink-name?)
-  'TODO)
+  (dissect inner-name (sink-name #/unsafe:name n)
+  #/sink-name #/unsafe:name #/list 'name:freestanding-cexpr-op n))
 
 (define/contract (sink-name-for-bounded-cexpr-op inner-name)
   (-> sink-name? sink-name?)
-  'TODO)
+  (dissect inner-name (sink-name #/unsafe:name n)
+  #/sink-name #/unsafe:name #/list 'name:bounded-cexpr-op n))
 
-(define/contract (sink-name-for-nameless-bounded-cexpr-op bracket)
-  (-> string? sink-name?)
-  'TODO)
-
-(define/contract (sink-name-for-local-variable string)
-  (-> sink-string? sink-name?)
-  'TODO)
-
-(struct exn:fail:cene exn:fail ())
+(define/contract (sink-name-for-nameless-bounded-cexpr-op)
+  (-> sink-name?)
+  (sink-name #/unsafe:name #/list 'name:nameless-bounded-cexpr-op))
 
 (define/contract (sink-text-input-stream-spend! text-input-stream)
   (-> sink-text-input-stream? input-port?)
@@ -405,17 +446,17 @@
     unique-name qualify text-input-stream state on-cexpr then)
   (->
     name?
-    procedure?
+    sink?
     sink-text-input-stream?
     any/c
     (->
       name?
-      procedure?
+      sink?
       any/c
       sink-cexpr?
-      (-> name? procedure? any/c sink-effects?)
+      (-> name? sink? any/c sink-effects?)
       sink-effects?)
-    (-> name? procedure? sink-text-input-stream? any/c sink-effects?)
+    (-> name? sink? sink-text-input-stream? any/c sink-effects?)
     sink-effects?)
   
   ; NOTE: These are the cases we should handle.
@@ -483,10 +524,8 @@
       #/sink-effects-read-maybe-op-character text-input-stream
       #/fn text-input-stream maybe-identifier
       #/mat maybe-identifier (just identifier)
-        ; TODO: If we refactor `qualify` to be a sink, make sure to
-        ; invoke it using `sink-call` here.
         (then text-input-stream
-        #/qualify #/pre-qualify #/sink-name-for-string
+        #/sink-call qualify #/pre-qualify #/sink-name-for-string
         #/sink-string-from-located-string identifier)
       
       #/w- then
@@ -515,10 +554,8 @@
       #/sink-effects-read-maybe-identifier text-input-stream
       #/fn text-input-stream maybe-identifier
       #/mat maybe-identifier (just identifier)
-        ; TODO: If we refactor `qualify` to be a sink, make sure to
-        ; invoke it using `sink-call` here.
         (then text-input-stream
-        #/qualify #/pre-qualify #/sink-name-for-string
+        #/sink-call qualify #/pre-qualify #/sink-name-for-string
         #/sink-string-from-located-string identifier)
       
       #/raise #/exn:fail:cene
@@ -528,8 +565,10 @@
   #/w- sink-effects-run-op
     (fn op-impl unique-name qualify text-input-stream state then
       (w- result
-        ; TODO: Convert `qualify`, `on-cexpr`, and the `fn` to sinks
-        ; somehow.
+        ; TODO: Convert `on-cexpr` and the `fn` to sinks somehow. Note
+        ; that we won't just use `sink-opaque-fn` here; we'll want to
+        ; encapsulate the `state` and `on-cexpr` together into an
+        ; "expression output stream" type.
         (sink-call
           op-impl unique-name qualify text-input-stream state on-cexpr
         #/fn unique-name qualify text-input-stream state
@@ -563,11 +602,9 @@
         then))
   
   #/w- sink-effects-run-nameless-op
-    (fn bracket unique-name qualify text-input-stream state then
-      ; TODO: If we refactor `qualify` to be a sink, make sure to
-      ; invoke it using `sink-call` here.
+    (fn unique-name qualify text-input-stream state then
       (sink-effects-get
-        (qualify #/sink-name-for-nameless-bounded-cexpr-op bracket)
+        (sink-call qualify #/sink-name-for-nameless-bounded-cexpr-op)
       #/fn op-impl
       #/sink-effects-run-op
         op-impl unique-name qualify text-input-stream state then))
@@ -595,7 +632,7 @@
     #/mat maybe-str (just _)
       (sink-effects-read-and-run-bounded-cexpr-op
         unique-name qualify text-input-stream state next)
-    #/sink-effects-run-nameless-op "("
+    #/sink-effects-run-nameless-op
       unique-name qualify text-input-stream state next)
   
   #/sink-effects-read-maybe-given-racket text-input-stream "["
@@ -615,7 +652,7 @@
     #/mat maybe-str (just _)
       (sink-effects-read-and-run-bounded-cexpr-op
         unique-name qualify text-input-stream state next)
-    #/sink-effects-run-nameless-op "["
+    #/sink-effects-run-nameless-op
       unique-name qualify text-input-stream state next)
   
   #/sink-effects-read-maybe-given-racket text-input-stream "/"
@@ -637,14 +674,14 @@
     #/mat maybe-str (just _)
       (sink-effects-read-and-run-bounded-cexpr-op
         unique-name qualify text-input-stream state next)
-    #/sink-effects-run-nameless-op "/"
+    #/sink-effects-run-nameless-op
       unique-name qualify text-input-stream state next)
   
   #/sink-effects-read-maybe-identifier text-input-stream
   #/fn text-input-stream maybe-identifier
   #/mat maybe-identifier (just identifier)
     (on-cexpr unique-name qualify state
-      (sink-cexpr-var #/sink-name-for-local-variable
+      (sink-cexpr-var #/sink-name-for-string
       #/sink-string-from-located-string identifier)
     #/fn unique-name qualify state
     #/next unique-name qualify text-input-stream state)
@@ -672,7 +709,7 @@
 ; reads and performs side effects.
 (define/contract
   (sink-effects-read-top-level unique-name qualify text-input-stream)
-  (-> name? procedure? sink-text-input-stream? sink-effects?)
+  (-> name? sink? sink-text-input-stream? sink-effects?)
   (sink-effects-read-eof text-input-stream
     ; If we're at the end of the file, we're done. We claim the
     ; `unique-name` to be sure no one else is using it.
@@ -690,7 +727,9 @@
           "Encountered a top-level expression with at least one free variable"
         #/current-continuation-marks)
       #/w- effects
-        (sink-call (cexpr-eval cexpr) unique-name-first qualify)
+        (sink-call (cexpr-eval cexpr)
+          (sink-name unique-name-first)
+          qualify)
       #/expect (sink-effects? effects) #t
         (raise #/exn:fail:cene
           "Expected every top-level expression to evaluate to a callable value that takes two arguments and returns side effects"
