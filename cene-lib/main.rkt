@@ -39,6 +39,12 @@
 
 
 
+; TODO: Handle the "TODO SOON" tasks soon. They're the core tasks we
+; need to handle before we can start trying out basic examples in the
+; language.
+
+
+
 ; TODO: Put this into the Lathe Comforts library or something.
 (struct-easy (trivial))
 
@@ -228,7 +234,7 @@
   #/dissect with-gets-result (with-gets-finished body-result)
   #/body-result-to-process body-result))
 
-; TODO: Write an entrypoint to the Cene language that uses
+; TODO SOON: Write an entrypoint to the Cene language that uses
 ; `sink-effects-read-top-level` and this together to run Cene code.
 (define/contract (run-cene-process rt process)
   (-> cene-runtime? cene-process?
@@ -336,7 +342,7 @@
 
 (define/contract (cexpr? v)
   (-> any/c boolean?)
-  ; TODO: Add more cexpr constructors.
+  ; TODO SOON: Add more cexpr constructors.
   (or
     (cexpr-var? v)))
 
@@ -766,10 +772,10 @@
   #/w- sink-effects-run-op
     (fn op-impl unique-name qualify text-input-stream state then
       (w- result
-        ; TODO: Convert `on-cexpr` and the `fn` to sinks somehow. Note
-        ; that we won't just use `sink-opaque-fn` here; we'll want to
-        ; encapsulate the `state` and `on-cexpr` together into an
-        ; "expression output stream" type.
+        ; TODO SOON: Convert `on-cexpr` and the `fn` to sinks somehow.
+        ; Note that we won't just use `sink-opaque-fn` here; we'll
+        ; want to encapsulate the `state` and `on-cexpr` together into
+        ; an "expression output stream" type.
         (sink-call
           op-impl unique-name qualify text-input-stream state on-cexpr
         #/fn unique-name qualify text-input-stream state
