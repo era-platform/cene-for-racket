@@ -73,7 +73,7 @@
   #/dissect tags (cons main-tag proj-tags)
   #/dissect s-tags (cons s-main-tag s-proj-tags)
   #/expect
-    (ordering-eq? #/compare-by-dex dex-name main-tag s-main-tag)
+    (ordering-eq? #/compare-by-dex (dex-name) main-tag s-main-tag)
     #t
     (nothing)
   #/expect
@@ -280,7 +280,7 @@
       (dissect cene-dex (sink-dex dex)
       #/dissect existing-cene-dex (sink-dex existing-dex)
       #/expect
-        (ordering-eq? #/compare-by-dex dex-dex dex existing-dex)
+        (ordering-eq? #/compare-by-dex (dex-dex) dex existing-dex)
         #t
         (next-with-error "Wrote to the same name with inequal dexes")
       #/dissect (sink-table-get-maybe defined-values name)
