@@ -26,14 +26,21 @@
 
 (require #/only-in lathe-comforts
   dissect dissectfn expect fn mat w- w-loop)
-(require #/only-in lathe-comforts/list list-foldl list-map nat->maybe)
+(require #/only-in lathe-comforts/list
+  list-foldl list-foldr list-map nat->maybe)
 (require #/only-in lathe-comforts/maybe just maybe/c nothing)
 (require #/only-in lathe-comforts/struct struct-easy)
 
 (require #/only-in effection/order
-  compare-by-dex dex-give-up dex-dex dex-name name? ordering-eq?
-  table-get table-shadow)
+  compare-by-dex dex-give-up dex-dex dex-name dex-struct dex-table
+  fuse-by-merge merge-by-dex merge-table name? name-of ordering-eq?
+  table-empty table-get table-map-fuse table-shadow)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe name)
+
+
+
+; TODO: Put this into the Lathe Comforts library or something.
+(struct-easy (trivial))
 
 
 ; NOTE: The "sink" part of the name "sink-struct" refers to the fact
@@ -390,17 +397,49 @@
   (dissect name (sink-name name)
   #/sink-cexpr #/cexpr-var name))
 
-(define/contract (sink-call-binary func args)
+(define/contract
+  (sink-name-for-function-implementation main-tag-name proj-tag-names)
+  (-> sink-name? sink-table? sink-name?)
+  (dissect main-tag-name (sink-name #/unsafe:name main-tag)
+  #/dissect proj-tag-names (sink-table proj-tag-names)
+  
+  ; TODO: Put these into the `effection/order` module or something
+  ; (maybe even `effection/order/base`).
+  #/w- table-kv-map
+    (fn table kv-to-v
+      (table-map-fuse table
+        (fuse-by-merge #/merge-table #/merge-by-dex #/dex-give-up)
+      #/fn k
+        (dissect (table-get k) (just v)
+        #/table-shadow k (just #/kv-to-v k v) #/table-empty)))
+  #/w- table-v-map
+    (fn table v-to-v
+      (table-kv-map #/fn k v #/v-to-v v))
+  
+  #/dissect
+    (name-of (dex-table #/dex-struct trivial)
+    #/table-v-map proj-tag-names #/fn ignored #/trivial)
+    (just #/unsafe:name proj-table-name)
+  #/sink-name #/unsafe:name #/list 'name:function-implementation
+    main-tag proj-table-name))
+
+(define/contract (sink-call-binary func arg)
   (-> sink? sink? sink?)
   (mat func (sink-opaque-fn racket-func)
-    (racket-func args)
+    (racket-func arg)
   #/mat func (sink-struct tags projs)
-    (sink-call-binary
-      ; TODO: Implement this. We'll want to look up a name derived
-      ; from `tags`. This lookup may suspend the current computation
-      ; if the definition of the name hasn't been installed yet.
-      (cene-definition-get 'TODO)
-      func)
+    (dissect tags (cons main-tag proj-tags)
+    #/sink-call-binary
+      (sink-call-binary
+        ; TODO: We should probably optimize this lookup, perhaps by
+        ; using memoization. If and when we do, we should profile it
+        ; to make sure it's a worthwhile optimization.
+        (cene-definition-get #/sink-name-for-function-implementation
+          main-tag
+          (list-foldr proj-tags (table-empty) #/fn proj-tag rest
+            (table-shadow proj-tag (just #/trivial) rest)))
+        func)
+      arg)
   #/raise #/exn:fail:cene
     "Tried to call a value that wasn't an opaque function or a struct"
   #/current-continuation-marks))
@@ -851,8 +890,6 @@
   #/raise #/exn:fail:cene
     "Encountered an unrecognized case of the expression syntax"
   #/current-continuation-marks))
-
-(struct-easy (trivial))
 
 (define/contract (sink-effects-claim-and-split unique-name n then)
   (-> name? natural? (-> (listof name?) sink-effects?) sink-effects?)
