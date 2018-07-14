@@ -20,7 +20,7 @@
 
 
 (require #/only-in racket/contract/base
-  -> ->* and/c any/c list/c listof not/c or/c)
+  -> ->* and/c any/c list/c listof not/c or/c parameter/c)
 (require #/only-in racket/contract/region define/contract)
 (require #/only-in racket/math natural?)
 
@@ -152,6 +152,7 @@
     (sink-table? v)
     (sink-cexpr? v)))
 
+(struct-easy (cene-process-error message))
 (struct-easy (cene-process-get name then))
 (struct-easy (cene-process-put name dex value))
 (struct-easy (cene-process-noop))
@@ -160,6 +161,7 @@
 (define/contract (cene-process? v)
   (-> any/c boolean?)
   (or
+    (cene-process-error? v)
     (cene-process-get? v)
     (cene-process-put? v)
     (cene-process-noop? v)
@@ -178,6 +180,46 @@
   (dissect table (sink-table hash)
   #/dissect name (sink-name #/unsafe:name name)
   #/sink-table #/hash-set-maybe hash name maybe-value))
+
+(define/contract cene-definition-get-param
+  (parameter/c #/maybe/c #/-> sink-name? sink?)
+  (make-parameter #/nothing))
+
+(define/contract (cene-definition-get name)
+  (-> sink-name? sink?)
+  (expect (cene-definition-get-param) (just get)
+    (error "Expected every call to `cene-definition-get` to occur with an implementation in the dynamic scope")
+  #/get name))
+
+(struct-easy (with-gets-suspended name then))
+(struct-easy (with-gets-finished result))
+
+(define/contract (with-gets-from table thunk)
+  (-> sink-table? (-> any/c)
+    (or/c with-gets-suspended? with-gets-finished?))
+  (call-with-current-continuation #/fn suspend-k
+  #/with-gets-finished
+  #/parameterize
+    (
+      [
+        cene-definition-get-param
+        (just #/fn name
+          (mat (sink-table-get-maybe table name) (just value) value
+          #/call-with-current-continuation #/fn resume-k
+          #/suspend-k #/with-gets-suspended name resume-k))])
+    (thunk)))
+
+(define/contract
+  (with-gets-from-as-process table body body-result-to-process)
+  (-> sink-table? (-> any/c) (-> any/c cene-process?)
+    (or/c with-gets-suspended? with-gets-finished?))
+  (w- with-gets-result (with-gets-from table body)
+  #/mat with-gets-result (with-gets-suspended name then)
+    (cene-process-get name #/fn value
+    #/with-gets-from-as-process
+      table (fn #/then value) body-result-to-process)
+  #/dissect with-gets-result (with-gets-finished body-result)
+  #/body-result-to-process body-result))
 
 ; TODO: Write an entrypoint to the Cene language that uses
 ; `sink-effects-read-top-level` and this together to run Cene code.
@@ -221,37 +263,45 @@
         processes rev-next-processes defined-dexes defined-values
         (cons error rev-errors)
         #t))
+  #/mat process (cene-process-error message)
+    (next-with-error message)
   #/mat process (cene-process-noop)
     (next-simple rev-next-processes)
   #/mat process (cene-process-merge a b)
     (next-simple #/list* b a rev-next-processes)
-  #/mat process (cene-process-put name dex value)
+  #/mat process (cene-process-put name cene-dex value)
     ; If there has already been a definition installed at this name,
     ; this checks that the proposed `dex` matches the stored dex and
     ; that the proposed `value` matches the stored value according to
     ; that dex. Otherwise, it stores the proposed `dex` and `value`
     ; without question.
-    (mat (sink-table-get-maybe defined-dexes) (just existing-dex)
-      (expect
+    (mat (sink-table-get-maybe defined-dexes name)
+      (just existing-cene-dex)
+      (dissect cene-dex (sink-dex dex)
+      #/dissect existing-cene-dex (sink-dex existing-dex)
+      #/expect
         (ordering-eq? #/compare-by-dex dex-dex dex existing-dex)
         #t
         (next-with-error "Wrote to the same name with inequal dexes")
-      #/dissect (sink-table-get-maybe defined-values)
+      #/dissect (sink-table-get-maybe defined-values name)
         (just existing-value)
-      #/expect
-        ; TODO: Instead of just comparing by `existing-dex` here,
-        ; compare by it in a way where the continuation can be
-        ; suspended as a `cene-process-get` if it tries to look up a
-        ; name that has no definition yet.
-        (ordering-eq?
-        #/compare-by-dex existing-dex value existing-value)
-        #t
-        (next-with-error "Wrote to the same name with inequal values")
-      #/next-simple rev-next-processes)
+      #/next-simple #/cons
+        ; NOTE: Since Cene dexes can potentially invoke
+        ; `cene-definition-get` on a not-yet-defined name, we use this
+        ; this `with-gets-...` operation here so that it can properly
+        ; suspend the dex comparison computation as a Cene process.
+        (with-gets-from-as-process defined-values
+          (fn #/compare-by-dex existing-dex value existing-value)
+        #/fn comparison
+          (expect (ordering-eq? comparison) #t
+            (cene-process-error
+              "Wrote to the same name with inequal values")
+          #/cene-process-noop))
+        rev-next-processes)
     #/next-full
       processes
       rev-next-processes
-      (sink-table-put-maybe defined-dexes #/just dex)
+      (sink-table-put-maybe defined-dexes #/just cene-dex)
       (sink-table-put-maybe defined-values #/just value)
       rev-errors
       #t)
@@ -268,11 +318,11 @@
         defined-values
         rev-errors
         did-something)
-    ; TODO: Instead of just calling `then` here, call it in a way
-    ; where the continuation can be suspended as a `cene-process-get`
-    ; if it tries to look up a name that has no definition yet.
-    #/dissect (then value) (sink-effects process)
-    #/next-simple #/cons process rev-next-processes)
+    #/next-simple #/cons
+      (with-gets-from-as-process defined-values (fn #/then value)
+      #/dissectfn (sink-effects process)
+        process)
+      rev-next-processes)
   #/error "Encountered an unrecognized kind of Cene process"))
 
 (struct-easy (cexpr-var name))
@@ -349,7 +399,7 @@
       ; TODO: Implement this. We'll want to look up a name derived
       ; from `tags`. This lookup may suspend the current computation
       ; if the definition of the name hasn't been installed yet.
-      'TODO
+      (cene-definition-get 'TODO)
       func)
   #/raise #/exn:fail:cene
     "Tried to call a value that wasn't an opaque function or a struct"
