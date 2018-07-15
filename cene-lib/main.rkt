@@ -140,6 +140,8 @@
 (struct-easy (sink-dex dex))
 (struct-easy (sink-name name))
 (struct-easy (sink-effects go!))
+(struct-easy
+  (sink-cexpr-sequence-output-stream box-of-maybe-state-and-handler))
 (struct-easy (sink-text-input-stream box-of-maybe-input))
 (struct-easy (sink-located-string parts))
 (struct-easy (sink-string racket-string))
@@ -158,6 +160,7 @@
     (sink-dex? v)
     (sink-name? v)
     (sink-effects? v)
+    (sink-cexpr-sequence-output-stream? v)
     (sink-text-input-stream? v)
     (sink-located-string? v)
     (sink-string? v)
@@ -444,6 +447,16 @@
   #/sink-name #/unsafe:name #/list 'name:function-implementation
     main-tag proj-table-name))
 
+(define/contract (sink-fn-curried n-args racket-func)
+  (-> exact-positive-integer? procedure? sink-opaque-fn?)
+  (dissect (nat->maybe n-args) (just n-args-after-next)
+  #/w-loop next n-args-after-next n-args-after-next rev-args (list)
+  #/sink-opaque-fn #/fn arg
+    (w- rev-args (cons arg rev-args)
+    #/expect (nat->maybe n-args-after-next) (just n-args-after-next)
+      (apply racket-func #/reverse rev-args)
+    #/next n-args-after-next rev-args)))
+
 (define/contract (sink-call-binary func arg)
   (-> sink? sink? sink?)
   (begin (assert-can-get-cene-definitions!)
@@ -503,6 +516,34 @@
 (define/contract (sink-name-for-nameless-bounded-cexpr-op)
   (-> sink-name?)
   (sink-name #/unsafe:name #/list 'name:nameless-bounded-cexpr-op))
+
+(define/contract (sink-cexpr-sequence-output-stream-spend! stream)
+  (-> sink-cexpr-sequence-output-stream?
+    (list/c
+      any/c
+      (-> any/c sink-cexpr? (-> any/c sink-effects?) sink-effects?)))
+  (dissect stream (sink-cexpr-sequence-output-stream b)
+  ; TODO: See if this should be more thread-safe in some way.
+  #/expect (unbox b) (just state-and-handler)
+    (raise #/exn:fail:cene
+      "Tried to spend an expression output stream that was already spent"
+    #/current-continuation-marks)
+  #/begin
+    (set-box! b (nothing))
+    state-and-handler))
+
+(define/contract (sink-effects-cexpr-write stream cexpr then)
+  (->
+    sink-cexpr-sequence-output-stream?
+    sink-cexpr?
+    (-> sink-cexpr-sequence-output-stream? sink-effects?)
+    sink-effects?)
+  (sink-effects #/fn
+  #/dissect (sink-cexpr-sequence-output-stream-spend! stream)
+    (list state on-cexpr)
+  #/on-cexpr state cexpr #/fn state
+  #/then
+  #/sink-cexpr-sequence-output-stream #/box #/list state on-cexpr))
 
 (define/contract (sink-text-input-stream-spend! text-input-stream)
   (-> sink-text-input-stream? input-port?)
@@ -793,14 +834,60 @@
     (fn op-impl unique-name qualify text-input-stream state then
       (begin (assert-can-get-cene-definitions!)
       #/w- result
-        ; TODO SOON: Convert `on-cexpr` and the `fn` to sinks somehow.
-        ; Note that we won't just use `sink-opaque-fn` here; we'll
-        ; want to encapsulate the `state` and `on-cexpr` together into
-        ; an "expression output stream" type.
+        ; TODO: This has the macro write all of its cexprs to an
+        ; output stream, but... the output stream just collects them
+        ; in a list and then processes them all with `on-cexpr`
+        ; afterward, since we thread `unique-name` and `qualify`
+        ; through both the macro call and the `on-cexpr` calls. If we
+        ; didn't thread those through both, or if we threaded them
+        ; through in a different way, we might attain some
+        ; concurrency, and concurrency would improve expressiveness by
+        ; allowing the side effects of one `on-cexpr` to make
+        ; information available to another `on-cexpr` later in the
+        ; same macro call. See if there's a design that achieves that.
         (sink-call
-          op-impl unique-name qualify text-input-stream state on-cexpr
-        #/fn unique-name qualify text-input-stream state
-        #/then unique-name qualify text-input-stream state)
+          op-impl unique-name qualify text-input-stream
+          (sink-cexpr-sequence-output-stream #/box #/just #/list
+            (list)
+            (fn rev-cexprs cexpr then
+              (then #/cons cexpr rev-cexprs)))
+        #/sink-fn-curried 4
+        #/fn
+          unique-name qualify text-input-stream
+          cexpr-sequence-output-stream
+        #/expect (sink-name? unique-name) #t
+          (raise #/exn:fail:cene
+            "Expected the unique name of a macro's callback results to be a name"
+          #/current-continuation-marks)
+        #/expect (sink-text-input-stream? text-input-stream) #t
+          (raise #/exn:fail:cene
+            "Expected the text input stream of a macro's callback results to be a text input stream"
+          #/current-continuation-marks)
+        #/expect
+          (sink-cexpr-sequence-output-stream?
+            cexpr-sequence-output-stream)
+          #t
+          (raise #/exn:fail:cene
+            "Expected the expression sequence output stream of a macro's callback results to be an expression sequence output stream"
+          #/current-continuation-marks)
+        #/sink-effects #/fn
+        #/dissect
+          (sink-cexpr-sequence-output-stream-spend!
+            cexpr-sequence-output-stream)
+          (list rev-cexprs on-write)
+        #/w-loop next
+          unique-name unique-name
+          qualify qualify
+          state state
+          cexprs (reverse rev-cexprs)
+          (expect cexprs (cons cexpr cexprs)
+            (dissect
+              (then unique-name qualify text-input-stream state)
+              (sink-effects go!)
+            #/go!)
+          #/on-cexpr unique-name qualify state cexpr
+          #/fn unique-name qualify state
+          #/next unique-name qualify state cexprs))
       #/expect (sink-effects? result) #t
         (raise #/exn:fail:cene
           "Expected the return value of a macro to be an effectful computation"
