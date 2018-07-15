@@ -39,9 +39,7 @@
 
 
 
-; TODO: Handle the "TODO SOON" tasks soon. They're the core tasks we
-; need to handle before we can start trying out basic examples in the
-; language.
+; TODO: Get this all to a point where we can test it.
 
 
 
@@ -114,20 +112,6 @@
       (cons (hash-ref proj-hash proj-tag) rev-projs))))
 
 
-(define/contract (name-rep-map name func)
-  (-> name? (-> any/c any/c) name?)
-  (dissect name (unsafe:name name)
-  #/unsafe:name #/func name))
-
-; TODO: See if we'll use this.
-(define/contract (name-qualify unqualified-name)
-  (-> name? name?)
-  (name-rep-map unqualified-name #/fn n #/list 'name:qualified n))
-
-(define/contract (name-claimed name)
-  (-> name? name?)
-  (name-rep-map name #/fn n #/list 'name:claimed n))
-
 (define/contract (core-sink-struct syms)
   (-> (and/c pair? #/listof symbol?) (and/c pair? #/listof name?))
   (dissect syms (cons main-sym proj-syms)
@@ -167,6 +151,29 @@
     (sink-opaque-fn? v)
     (sink-table? v)
     (sink-cexpr? v)))
+
+(define/contract (name-rep-map name func)
+  (-> name? (-> any/c any/c) name?)
+  (dissect name (unsafe:name name)
+  #/unsafe:name #/func name))
+
+(define/contract (sink-name-rep-map name func)
+  (-> sink-name? (-> any/c any/c) sink-name?)
+  (dissect name (sink-name #/unsafe:name name)
+  #/sink-name #/unsafe:name #/func name))
+
+(define/contract (name-qualify unqualified-name)
+  (-> name? name?)
+  (sink-name-rep-map unqualified-name #/fn n #/list 'name:qualified n))
+
+(define/contract (sink-name-qualify unqualified-name)
+  (-> sink-name? sink-name?)
+  (sink-name-rep-map unqualified-name #/fn n
+    (list 'name:qualified n)))
+
+(define/contract (name-claimed name)
+  (-> name? name?)
+  (name-rep-map name #/fn n #/list 'name:claimed n))
 
 (struct-easy (cene-process-error message))
 (struct-easy (cene-process-get name then))
@@ -251,8 +258,6 @@
   #/dissect with-gets-result (with-gets-finished body-result)
   #/body-result-to-process body-result))
 
-; TODO SOON: Write an entrypoint to the Cene language that uses
-; `sink-effects-read-top-level` and this together to run Cene code.
 (define/contract (run-cene-process rt process)
   (-> cene-runtime? cene-process?
     (list/c cene-runtime? #/listof string?))
@@ -357,12 +362,14 @@
   #/error "Encountered an unrecognized kind of Cene process"))
 
 (struct-easy (cexpr-var name))
+(struct-easy (cexpr-native result))
 
 (define/contract (cexpr? v)
   (-> any/c boolean?)
-  ; TODO SOON: Add more cexpr constructors.
+  ; TODO: Add more cexpr constructors.
   (or
-    (cexpr-var? v)))
+    (cexpr-var? v)
+    (cexpr-native? v)))
 
 (define/contract (sink-effects-get name then)
   (-> sink-name? (-> sink? sink-effects?) sink-effects?)
@@ -408,13 +415,18 @@
   (dissect cexpr (sink-cexpr cexpr)
   #/mat cexpr (cexpr-var name)
     #t
+  #/mat cexpr (cexpr-native result)
+    #f
   #/error "Encountered an unrecognized kind of cexpr"))
 
 (define/contract (cexpr-eval cexpr)
   (-> (and/c sink-cexpr? #/not/c cexpr-has-free-vars?) sink?)
-  ; TODO: Implement this. We'll want to compile the cexpr and then
-  ; invoke the compiled code.
-  'TODO)
+  (dissect cexpr (sink-cexpr cexpr)
+  #/mat cexpr (cexpr-var name)
+    (error "Encountered a cexpr with free vars after already checking for free vars")
+  #/mat cexpr (cexpr-native result)
+    result
+  #/error "Encountered an unrecognized kind of cexpr"))
 
 (define/contract (sink-cexpr-var name)
   (-> sink-name? sink-cexpr?)
@@ -505,13 +517,13 @@
 
 (define/contract (sink-name-for-freestanding-cexpr-op inner-name)
   (-> sink-name? sink-name?)
-  (dissect inner-name (sink-name #/unsafe:name n)
-  #/sink-name #/unsafe:name #/list 'name:freestanding-cexpr-op n))
+  (sink-name-rep-map inner-name #/fn n
+    (list 'name:freestanding-cexpr-op n)))
 
 (define/contract (sink-name-for-bounded-cexpr-op inner-name)
   (-> sink-name? sink-name?)
-  (dissect inner-name (sink-name #/unsafe:name n)
-  #/sink-name #/unsafe:name #/list 'name:bounded-cexpr-op n))
+  (sink-name-rep-map inner-name #/fn n
+    (list 'name:bounded-cexpr-op n)))
 
 (define/contract (sink-name-for-nameless-bounded-cexpr-op)
   (-> sink-name?)
@@ -1058,3 +1070,106 @@
   #/sink-effects-read-top-level
     unique-name qualify text-input-stream))
 
+(define/contract (cene-run-string rt string)
+  (-> cene-runtime? string? #/list/c cene-runtime? #/listof string?)
+  
+  (begin (assert-cannot-get-cene-definitions!)
+  #/dissect rt (cene-runtime defined-dexes defined-values)
+  #/run-cene-process rt #/with-gets-from-as-process defined-values
+    (fn
+      (dissect
+        (sink-effects-read-top-level
+          (unsafe:name #/list 'name:unique-name-root)
+          (sink-fn-curried 1 #/fn name
+            (expect (sink-name? name) #t
+              (raise #/exn:fail:cene
+                "Expected the input to the root qualify function to be a name"
+              #/current-continuation-marks)
+            #/sink-name-qualify name))
+          (sink-text-input-stream #/box #/open-input-string string))
+        (sink-effects go!)
+      #/go!))
+    (fn process process)))
+
+; TODO: See if we'll use this.
+(define/contract (cene-runtime-empty)
+  (-> cene-runtime?)
+  (cene-runtime
+    (sink-table #/table-empty)
+    (sink-table #/table-empty)))
+
+; TODO: Use this in some kind of CLI entrypoint or something.
+(define/contract (cene-runtime-essentials)
+  (-> cene-runtime?)
+  
+  (define defined-dexes (table-empty))
+  (define defined-values (table-empty))
+  
+  (define/contract (def-dexable-value! name dex value)
+    (-> sink-name? sink-dex? sink? void?)
+    (dissect name (sink-name name)
+    #/begin
+      (set! defined-dexes
+        (table-shadow name (just dex) defined-dexes))
+      (set! defined-values
+        (table-shadow name (just value) defined-values))
+    #/void))
+  
+  (define/contract (def-value! name dex value)
+    (-> sink-name? sink? void?)
+    (def-dexable-value! name (sink-dex #/dex-give-up) value))
+  
+  (define/contract (def-func! string-name n-args racket-func)
+    (-> string? exact-positive-integer? procedure? void?)
+    (w- name (sink-name-for-string string-name)
+      
+      ; We define a reader macro so that the user can write code that
+      ; compiles into a call to this function.
+      (def-value!
+        (sink-name-qualify #/sink-name-for-bounded-cexpr-op name)
+        (sink-fn-curried 4 #/fn
+          unique-name qualify text-input-stream
+          cexpr-sequence-output-stream then
+          
+          ; TODO: Implement this. It should read cexprs until it reads
+          ; precisely `n-args` of them (raising an error if it gets
+          ; more, and raising a special error if it notices a closing
+          ; bracket in between cexpr sequences before it's finished),
+          ; read whitespace, verify the next character is a closing
+          ; bracket, and then write a single cexpr that first
+          ; constructs a nullary struct with tag `name` and then calls
+          ; it with the obtained cexprs one by one.
+          ;
+          ; The JavaScript implementation of Cene doesn't verify the
+          ; number of arguments to a function; instead it just passes
+          ; in all the arguments it gets. But I find it's common for
+          ; me to accidentally omit arguments or include extra
+          ; arguments, so we're going to do some error-checking as an
+          ; ad hoc line of defense against that kind of mistake.
+          ;
+          'TODO))
+      
+      ; We define a Cene struct function implementation containing
+      ; the function's run time behavior.
+      (def-value!
+        (sink-name-for-function-implementation name
+          (sink-table #/table-empty))
+        (sink-cexpr
+        #/cexpr-native #/sink-fn-curried n-args racket-func))))
+  
+  ; TODO: Add more builtins. We just have `table-empty` here as an
+  ; example for now.
+  
+  ; TODO: Add a `def-struct!` utility for defining builtins that are
+  ; Cene struct constructors.
+  
+  (def-func! "table-empty" 1 #/fn trivial
+    (expect (unmake-sink-struct-maybe s-nil trivial) (just #/list)
+      (raise #/exn:fail:cene
+        "Expected the argument to table-empty to be a nil"
+      #/current-continuation-marks)
+    #/sink-table #/table-empty))
+  
+  (cene-runtime
+    (sink-table defined-dexes)
+    (sink-table defined-values)))
