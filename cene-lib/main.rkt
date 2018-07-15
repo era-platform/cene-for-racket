@@ -198,6 +198,18 @@
   (parameter/c #/maybe/c #/-> sink-name? sink?)
   (make-parameter #/nothing))
 
+(define/contract (assert-can-get-cene-definitions!)
+  (-> void?)
+  (expect (cene-definition-get-param) (just get)
+    (error "Expected an implementation of `cene-definition-get` to be available in the dynamic scope")
+  #/void))
+
+(define/contract (assert-cannot-get-cene-definitions!)
+  (-> void?)
+  (mat (cene-definition-get-param) (just get)
+    (error "Expected no implementation of `cene-definition-get` to be available in the dynamic scope")
+  #/void))
+
 (define/contract (cene-definition-get name)
   (-> sink-name? sink?)
   (expect (cene-definition-get-param) (just get)
@@ -210,7 +222,8 @@
 (define/contract (with-gets-from table thunk)
   (-> sink-table? (-> any/c)
     (or/c with-gets-suspended? with-gets-finished?))
-  (call-with-current-continuation #/fn suspend-k
+  (begin (assert-cannot-get-cene-definitions!)
+  #/call-with-current-continuation #/fn suspend-k
   #/with-gets-finished
   #/parameterize
     (
@@ -226,7 +239,8 @@
   (with-gets-from-as-process table body body-result-to-process)
   (-> sink-table? (-> any/c) (-> any/c cene-process?)
     (or/c with-gets-suspended? with-gets-finished?))
-  (w- with-gets-result (with-gets-from table body)
+  (begin (assert-cannot-get-cene-definitions!)
+  #/w- with-gets-result (with-gets-from table body)
   #/mat with-gets-result (with-gets-suspended name then)
     (cene-process-get name #/fn value
     #/with-gets-from-as-process
@@ -239,7 +253,8 @@
 (define/contract (run-cene-process rt process)
   (-> cene-runtime? cene-process?
     (list/c cene-runtime? #/listof string?))
-  (dissect rt (cene-runtime defined-dexes defined-values)
+  (begin (assert-cannot-get-cene-definitions!)
+  #/dissect rt (cene-runtime defined-dexes defined-values)
   #/w-loop next-full
     processes (list process)
     rev-next-processes (list)
@@ -431,7 +446,8 @@
 
 (define/contract (sink-call-binary func arg)
   (-> sink? sink? sink?)
-  (mat func (sink-opaque-fn racket-func)
+  (begin (assert-can-get-cene-definitions!)
+  #/mat func (sink-opaque-fn racket-func)
     (racket-func arg)
   #/mat func (sink-struct tags projs)
     (dissect tags (cons main-tag proj-tags)
@@ -452,11 +468,13 @@
 
 (define/contract (sink-call-list func args)
   (-> sink? (listof sink?) sink?)
-  (list-foldl func args #/fn func arg #/sink-call-binary func arg))
+  (begin (assert-can-get-cene-definitions!)
+  #/list-foldl func args #/fn func arg #/sink-call-binary func arg))
 
 (define/contract (sink-call func . args)
   (->* (sink?) #:rest (listof sink?) sink?)
-  (sink-call-list func args))
+  (begin (assert-can-get-cene-definitions!)
+  #/sink-call-list func args))
 
 (define/contract (sink-string-from-located-string located-string)
   (-> sink-located-string? sink-string?)
@@ -685,9 +703,10 @@
   ;  )
   ;  ]
   
+  (begin (assert-can-get-cene-definitions!)
   ; NOTE: Just about every case here invokes `next` in order to read
   ; further expressions from the input.
-  (w-loop next
+  #/w-loop next
     unique-name unique-name
     qualify qualify
     text-input-stream text-input-stream
@@ -725,7 +744,8 @@
       ; _[markup]_:
       ; _[markup]_
       
-      (sink-effects-read-whitespace text-input-stream
+      (begin (assert-can-get-cene-definitions!)
+      #/sink-effects-read-whitespace text-input-stream
       #/fn text-input-stream whitespace
       
       #/sink-effects-read-maybe-op-character text-input-stream
@@ -771,7 +791,8 @@
   
   #/w- sink-effects-run-op
     (fn op-impl unique-name qualify text-input-stream state then
-      (w- result
+      (begin (assert-can-get-cene-definitions!)
+      #/w- result
         ; TODO SOON: Convert `on-cexpr` and the `fn` to sinks somehow.
         ; Note that we won't just use `sink-opaque-fn` here; we'll
         ; want to encapsulate the `state` and `on-cexpr` together into
@@ -788,7 +809,8 @@
   
   #/w- sink-effects-read-and-run-op
     (fn unique-name qualify text-input-stream state pre-qualify then
-      (sink-effects-read-op text-input-stream qualify pre-qualify
+      (begin (assert-can-get-cene-definitions!)
+      #/sink-effects-read-op text-input-stream qualify pre-qualify
       #/fn text-input-stream op-name
       #/sink-effects-get op-name #/fn op-impl
       #/sink-effects-run-op
@@ -796,21 +818,24 @@
   
   #/w- sink-effects-read-and-run-freestanding-cexpr-op
     (fn unique-name qualify text-input-stream state then
-      (sink-effects-read-and-run-op
+      (begin (assert-can-get-cene-definitions!)
+      #/sink-effects-read-and-run-op
         unique-name qualify text-input-stream state
         sink-name-for-freestanding-cexpr-op
         then))
   
   #/w- sink-effects-read-and-run-bounded-cexpr-op
     (fn unique-name qualify text-input-stream state then
-      (sink-effects-read-and-run-op
+      (begin (assert-can-get-cene-definitions!)
+      #/sink-effects-read-and-run-op
         unique-name qualify text-input-stream state
         sink-name-for-bounded-cexpr-op
         then))
   
   #/w- sink-effects-run-nameless-op
     (fn unique-name qualify text-input-stream state then
-      (sink-effects-get
+      (begin (assert-can-get-cene-definitions!)
+      #/sink-effects-get
         (sink-call qualify #/sink-name-for-nameless-bounded-cexpr-op)
       #/fn op-impl
       #/sink-effects-run-op
@@ -915,7 +940,8 @@
 (define/contract
   (sink-effects-read-top-level unique-name qualify text-input-stream)
   (-> name? sink? sink-text-input-stream? sink-effects?)
-  (sink-effects-read-eof text-input-stream
+  (begin (assert-can-get-cene-definitions!)
+  #/sink-effects-read-eof text-input-stream
     ; If we're at the end of the file, we're done. We claim the
     ; `unique-name` to be sure no one else is using it.
     (sink-effects-claim unique-name)
