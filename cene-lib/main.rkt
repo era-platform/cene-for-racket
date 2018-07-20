@@ -27,7 +27,7 @@
 (require #/only-in lathe-comforts
   dissect dissectfn expect fn mat w- w-loop)
 (require #/only-in lathe-comforts/list
-  list-foldl list-foldr list-map nat->maybe)
+  list-any list-foldl list-foldr list-map nat->maybe)
 (require #/only-in lathe-comforts/maybe just maybe/c nothing)
 (require #/only-in lathe-comforts/struct struct-easy)
 
@@ -363,13 +363,17 @@
 
 (struct-easy (cexpr-var name))
 (struct-easy (cexpr-native result))
+(struct-easy (cexpr-struct main-tag-name projs))
+(struct-easy (cexpr-call func arg))
 
 (define/contract (cexpr? v)
   (-> any/c boolean?)
   ; TODO: Add more cexpr constructors.
   (or
     (cexpr-var? v)
-    (cexpr-native? v)))
+    (cexpr-native? v)
+    (cexpr-struct? v)
+    (cexpr-call? v)))
 
 (define/contract (sink-effects-get name then)
   (-> sink-name? (-> sink? sink-effects?) sink-effects?)
@@ -413,25 +417,65 @@
   ; `cexpr-free-vars` function followed by a check that the result is
   ; nonempty.
   (dissect cexpr (sink-cexpr cexpr)
+  #/w-loop recur cexpr cexpr
   #/mat cexpr (cexpr-var name)
     #t
   #/mat cexpr (cexpr-native result)
     #f
+  #/mat cexpr (cexpr-struct main-tag-name projs)
+    (list-any projs #/dissectfn (list proj-name proj-cexpr)
+      (recur proj-cexpr))
+  #/mat cexpr (cexpr-call func arg)
+    (or (recur func) (recur arg))
   #/error "Encountered an unrecognized kind of cexpr"))
 
 (define/contract (cexpr-eval cexpr)
   (-> (and/c sink-cexpr? #/not/c cexpr-has-free-vars?) sink?)
-  (dissect cexpr (sink-cexpr cexpr)
+  (begin (assert-can-get-cene-definitions!)
+  #/dissect cexpr (sink-cexpr cexpr)
+  #/w-loop recur cexpr cexpr
   #/mat cexpr (cexpr-var name)
     (error "Encountered a cexpr with free vars after already checking for free vars")
   #/mat cexpr (cexpr-native result)
     result
+  #/mat cexpr (cexpr-struct main-tag-name projs)
+    (make-sink-struct
+      (cons main-tag-name
+      #/list-map projs #/dissectfn (list proj-name proj-cexpr)
+        proj-name)
+    #/list-map projs #/dissectfn (list proj-name proj-cexpr)
+      (recur proj-cexpr))
+  #/mat cexpr (cexpr-call func arg)
+    (sink-call (recur func) (recur arg))
   #/error "Encountered an unrecognized kind of cexpr"))
 
 (define/contract (sink-cexpr-var name)
   (-> sink-name? sink-cexpr?)
   (dissect name (sink-name name)
   #/sink-cexpr #/cexpr-var name))
+
+(define/contract (sink-cexpr-native result)
+  (-> sink? sink-cexpr?)
+  (sink-cexpr #/cexpr-native result))
+
+(define/contract (sink-cexpr-struct main-tag-name projs)
+  (-> sink-name? (listof #/list/c sink-name? sink-cexpr?) sink-cexpr?)
+  (dissect main-tag-name (sink-name main-tag-name)
+  #/begin
+    (list-foldl (table-empty) projs #/fn so-far proj
+      (dissect proj (list (sink-name proj-name) proj-cexpr)
+      #/expect (table-get proj-name so-far) (nothing)
+        (error "Encountered a duplicate projection name")
+      #/table-shadow proj-name (just #/trivial) so-far))
+  #/sink-cexpr #/cexpr-struct main-tag-name #/list-map projs
+  #/dissectfn (list (sink-name proj-name) (sink-cexpr proj-cexpr))
+    (list proj-name proj-cexpr)))
+
+(define/contract (sink-cexpr-call func arg)
+  (-> sink-cexpr? sink-cexpr? sink-cexpr?)
+  (dissect func (sink-cexpr func)
+  #/dissect arg (sink-cexpr arg)
+  #/sink-cexpr #/cexpr-call func arg))
 
 (define/contract
   (sink-name-for-function-implementation main-tag-name proj-tag-names)
@@ -446,7 +490,7 @@
       (table-map-fuse table
         (fuse-by-merge #/merge-table #/merge-by-dex #/dex-give-up)
       #/fn k
-        (dissect (table-get k) (just v)
+        (dissect (table-get k table) (just v)
         #/table-shadow k (just #/kv-to-v k v) #/table-empty)))
   #/w- table-v-map
     (fn table v-to-v
@@ -720,6 +764,20 @@
     then))
 
 (define/contract
+  (sink-effects-peek-is-closing-bracket text-input-stream then)
+  (->
+    sink-text-input-stream?
+    (-> sink-text-input-stream? boolean? sink-effects?)
+    sink-effects?)
+  (sink-effects-peek-maybe-given-racket text-input-stream ")"
+  #/fn text-input-stream maybe-str1
+  #/sink-effects-peek-maybe-given-racket text-input-stream "]"
+  #/fn text-input-stream maybe-str2
+  #/mat (list maybe-str1 maybe-str2) (list (nothing) (nothing))
+    (then text-input-stream #f)
+    (then text-input-stream #t)))
+
+(define/contract
   (sink-effects-read-cexprs
     unique-name qualify text-input-stream state on-cexpr then)
   (->
@@ -991,11 +1049,9 @@
   #/mat maybe-str (just _)
     (w- next
       (fn unique-name qualify text-input-stream state
-        (sink-effects-peek-maybe-given-racket text-input-stream ")"
-        #/fn text-input-stream maybe-str1
-        #/sink-effects-peek-maybe-given-racket text-input-stream "]"
-        #/fn text-input-stream maybe-str2
-        #/mat (list maybe-str1 maybe-str2) (list (nothing) (nothing))
+        (sink-effects-peek-is-closing-bracket text-input-stream
+        #/fn text-input-stream is-closing-bracket
+        #/if (not is-closing-bracket)
           (raise #/exn:fail:cene
             "Encountered a syntax that began with /. and did not end at ) or ]"
           #/current-continuation-marks)
@@ -1020,6 +1076,54 @@
   #/raise #/exn:fail:cene
     "Encountered an unrecognized case of the expression syntax"
   #/current-continuation-marks))
+
+; This reads cexprs until it reads precisely `n` of them (raising an
+; error if it gets more, and raising a different error if it notices a
+; closing bracket in between cexpr sequences before it's finished),
+; reads whitespace, verifies the next character is a closing bracket,
+; and then proceeds by calling `then` with updated values and the list
+; of cexprs read this way.
+(define/contract
+  (sink-effects-read-specific-number-of-cexprs
+    unique-name qualify text-input-stream n then)
+  (->
+    name?
+    sink?
+    sink-text-input-stream?
+    natural?
+    (-> name? sink? sink-text-input-stream? (listof sink-cexpr?)
+      sink-effects?)
+    sink-effects?)
+  (struct-easy (local-state n-left rev-results))
+  (w-loop next
+    unique-name unique-name
+    qualify qualify
+    text-input-stream text-input-stream
+    state (local-state n #/list)
+    
+    (dissect state (local-state n-left rev-results)
+    #/sink-effects-read-whitespace text-input-stream
+    #/fn text-input-stream whitespace
+    #/sink-effects-peek-is-closing-bracket text-input-stream
+    #/fn text-input-stream is-closing-bracket
+    #/if is-closing-bracket
+      (expect n-left 0
+        (raise #/exn:fail:cene
+          "Expected another expression"
+        #/current-continuation-marks)
+      #/then unique-name qualify text-input-stream
+        (reverse rev-results))
+    #/sink-effects-read-cexprs unique-name qualify text-input-stream
+      state
+      (fn unique-name qualify state cexpr then
+        (dissect state (local-state n-left rev-results)
+        #/expect (nat->maybe n-left) (just n-left)
+          (raise #/exn:fail:cene
+            "Encountered too many expressions"
+          #/current-continuation-marks)
+        #/then unique-name qualify #/local-state n-left #/cons cexpr rev-results))
+    #/fn unique-name qualify text-input-stream state
+    #/next unique-name qualify text-input-stream state)))
 
 (define/contract (sink-effects-claim-and-split unique-name n then)
   (-> name? natural? (-> (listof name?) sink-effects?) sink-effects?)
@@ -1066,7 +1170,7 @@
         #/current-continuation-marks)
       #/sink-effects-merge effects
       #/then unique-name-rest qualify state))
-  #/fn unique-name qualify text-input-stream
+  #/fn unique-name qualify text-input-stream state
   #/sink-effects-read-top-level
     unique-name qualify text-input-stream))
 
@@ -1131,31 +1235,37 @@
           unique-name qualify text-input-stream
           cexpr-sequence-output-stream then
           
-          ; TODO: Implement this. It should read cexprs until it reads
-          ; precisely `n-args` of them (raising an error if it gets
-          ; more, and raising a special error if it notices a closing
-          ; bracket in between cexpr sequences before it's finished),
-          ; read whitespace, verify the next character is a closing
-          ; bracket, and then write a single cexpr that first
-          ; constructs a nullary struct with tag `name` and then calls
-          ; it with the obtained cexprs one by one.
+          ; We read a form body of precisely `n-args` cexprs, then
+          ; write a single cexpr that first constructs a nullary
+          ; struct with tag `name` and then calls it with the obtained
+          ; cexprs one by one.
           ;
           ; The JavaScript implementation of Cene doesn't verify the
           ; number of arguments to a function; instead it just passes
           ; in all the arguments it gets. But I find it's common for
           ; me to accidentally omit arguments or include extra
-          ; arguments, so we're going to do some error-checking as an
-          ; ad hoc line of defense against that kind of mistake.
+          ; arguments, so in
+          ; `sink-effects-read-specific-number-of-cexprs`, we do some
+          ; error-checking as an ad hoc line of defense against that
+          ; kind of mistake.
           ;
-          'TODO))
+          (sink-effects-read-specific-number-of-cexprs
+            unique-name qualify text-input-stream n-args
+          #/fn unique-name qualify text-input-stream args
+          #/cexpr-sequence-output-stream cexpr-sequence-output-stream
+            (list-foldl (sink-cexpr-struct name #/list) args
+            #/fn func arg #/sink-cexpr-call func arg)
+          #/fn cexpr-sequence-output-stream
+          #/sink-call then
+            unique-name qualify text-input-stream
+            cexpr-sequence-output-stream)))
       
       ; We define a Cene struct function implementation containing
       ; the function's run time behavior.
       (def-value!
         (sink-name-for-function-implementation name
           (sink-table #/table-empty))
-        (sink-cexpr
-        #/cexpr-native #/sink-fn-curried n-args racket-func))))
+        (sink-cexpr-native #/sink-fn-curried n-args racket-func))))
   
   ; TODO: Add more builtins. We just have `table-empty` here as an
   ; example for now.
