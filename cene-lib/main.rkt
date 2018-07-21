@@ -470,15 +470,25 @@
   (-> sink? sink-cexpr?)
   (sink-cexpr #/cexpr-native result))
 
+(define/contract (names-have-duplicate? names)
+  (-> (listof name?) boolean?)
+  (w-loop next so-far (table-empty) names names
+    (expect names (cons name names) #f
+    #/expect (table-get name so-far) (nothing) #t
+    #/next (table-shadow name (just #/trivial) so-far) names)))
+
+(define/contract (sink-names-have-duplicate? names)
+  (-> (listof sink-name?) boolean?)
+  (names-have-duplicate?
+  #/list-map names #/dissectfn (sink-name name) name))
+
 (define/contract (sink-cexpr-struct main-tag-name projs)
   (-> sink-name? (listof #/list/c sink-name? sink-cexpr?) sink-cexpr?)
   (dissect main-tag-name (sink-name main-tag-name)
-  #/begin
-    (list-foldl (table-empty) projs #/fn so-far proj
-      (dissect proj (list (sink-name proj-name) proj-cexpr)
-      #/expect (table-get proj-name so-far) (nothing)
-        (error "Encountered a duplicate projection name")
-      #/table-shadow proj-name (just #/trivial) so-far))
+  #/if
+    (sink-names-have-duplicate? #/list-map projs
+    #/dissectfn (list proj-name proj-cexpr) proj-name)
+    (error "Encountered a duplicate projection name")
   #/sink-cexpr #/cexpr-struct main-tag-name #/list-map projs
   #/dissectfn (list (sink-name proj-name) (sink-cexpr proj-cexpr))
     (list proj-name proj-cexpr)))
@@ -510,6 +520,10 @@
   (-> (listof #/list/c sink-name? sink-cexpr?) sink-cexpr?
     sink-cexpr?)
   (dissect body (sink-cexpr body)
+  #/if
+    (sink-names-have-duplicate? #/list-map bindings
+    #/dissectfn (list var val) var)
+    (error "Encountered a duplicate let binding variable name")
   #/sink-cexpr #/cexpr-let
     (list-map bindings
     #/dissectfn (list (sink-name var) (sink-cexpr val))
