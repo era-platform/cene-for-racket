@@ -1225,14 +1225,14 @@
   #/dissectfn (sink-name name)
     name))
 
-(define s-nil (core-sink-struct "nil" #/list))
+(define s-trivial (core-sink-struct "trivial" #/list))
 
 (define/contract (sink-effects-claim name)
   (-> name? sink-effects?)
   (sink-effects-put
     (sink-name #/name-claimed name)
     (sink-dex #/dex-give-up)
-    (make-sink-struct s-nil #/list)))
+    (make-sink-struct s-trivial #/list)))
 
 (define/contract (sink-effects-claim-and-split unique-name n then)
   (-> name? natural? (-> (listof name?) sink-effects?) sink-effects?)
@@ -1415,16 +1415,16 @@
         
         ; Given precisely zero cexprs, we construct a cexpr that first
         ; constructs a nullary struct with tag `name` and then calls
-        ; it with a nil.
+        ; it with a trivial value.
         ;
         ; The JavaScript implementation of Cene doesn't have this
         ; special kind of compilation for nullary function calls; it
-        ; just has the user pass `(nil)` explicitly.
+        ; just has the user pass `(trivial)` explicitly.
         ;
         (macro-impl-specific-number-of-args 0 #/fn args
           (sink-cexpr-call
             (sink-cexpr-struct qualified-main-tag-name #/list)
-            (make-sink-cexpr-struct s-nil #/list))))
+            (make-sink-cexpr-struct s-trivial #/list))))
       
       ; We define a Cene struct function implementation containing
       ; the function's run time behavior.
@@ -1432,9 +1432,10 @@
         (sink-name-for-function-implementation qualified-main-tag-name
           (sink-table #/table-empty))
         (sink-cexpr-native #/sink-fn-curried 2 #/fn struct-value arg
-          (expect (unmake-sink-struct-maybe s-nil arg) (just #/list)
+          (expect (unmake-sink-struct-maybe s-trivial arg)
+            (just #/list)
             (raise #/exn:fail:cene
-              "Expected the argument to a nullary function to be a nil"
+              "Expected the argument to a nullary function to be a trivial"
             #/current-continuation-marks)
             result)))
       
@@ -1487,7 +1488,7 @@
           (list-foldl (sink-table #/table-empty) qualified-proj-names
           #/fn table proj-name
             (sink-table-put-maybe table proj-name
-            #/just #/make-sink-struct s-nil #/list)))
+            #/just #/make-sink-struct s-trivial #/list)))
         (sink-cexpr-native #/sink-opaque-fn #/fn struct-value
           (raise #/exn:fail:cene
             "Called a struct that wasn't intended for calling"
@@ -1527,10 +1528,10 @@
       #/sink-call then (sink-name unique-name) qualify
         text-input-stream cexpr-sequence-output-stream)))
   
-  ; TODO: Add more builtins. We just have `nil` and `table-empty` here
-  ; as examples for now.
+  ; TODO: Add more builtins. We just have `trivial` and `table-empty`
+  ; here as examples for now.
   
-  (def-data-struct! "nil" #/list)
+  (def-data-struct! "trivial" #/list)
   
   (def-nullary-func! "table-empty" (sink-table #/table-empty))
   
