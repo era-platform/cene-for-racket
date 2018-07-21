@@ -361,7 +361,12 @@
 
 (define/contract (cexpr? v)
   (-> any/c boolean?)
-  ; TODO: Add more cexpr constructors.
+  
+  ; TODO: Add more cexpr constructors. The JavaScript version of Cene
+  ; hsa five more than we do:
+  ;
+  ;   located mat cline-struct merge-struct fuse-struct err
+  ;
   (or
     (cexpr-var? v)
     (cexpr-native? v)
