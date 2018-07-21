@@ -356,6 +356,8 @@
 (struct-easy (cexpr-native result))
 (struct-easy (cexpr-struct main-tag-name projs))
 (struct-easy (cexpr-call func arg))
+(struct-easy (cexpr-opaque-fn param body))
+(struct-easy (cexpr-let bindings body))
 
 (define/contract (cexpr? v)
   (-> any/c boolean?)
@@ -364,7 +366,9 @@
     (cexpr-var? v)
     (cexpr-native? v)
     (cexpr-struct? v)
-    (cexpr-call? v)))
+    (cexpr-call? v)
+    (cexpr-opaque-fn? v)
+    (cexpr-let? v)))
 
 (define/contract (sink-effects-get name then)
   (-> sink-name? (-> sink? sink-effects?) sink-effects?)
@@ -397,29 +401,41 @@
 
 (define/contract (cexpr-has-free-vars? cexpr)
   (-> sink-cexpr? boolean?)
-  ; TODO: Refactor this so that it becomes a call to a
-  ; `cexpr-free-vars` function followed by a check that the result is
-  ; nonempty.
   (dissect cexpr (sink-cexpr cexpr)
-  #/w-loop recur cexpr cexpr
+  #/w-loop recur bound-vars (table-empty) cexpr cexpr
   #/mat cexpr (cexpr-var name)
-    #t
+    (expect (table-get name bound-vars) (just _)
+      #t
+      #f)
   #/mat cexpr (cexpr-native result)
     #f
   #/mat cexpr (cexpr-struct main-tag-name projs)
     (list-any projs #/dissectfn (list proj-name proj-cexpr)
-      (recur proj-cexpr))
+      (recur bound-vars proj-cexpr))
   #/mat cexpr (cexpr-call func arg)
-    (or (recur func) (recur arg))
+    (or (recur bound-vars func) (recur bound-vars arg))
+  #/mat cexpr (cexpr-opaque-fn param body)
+    (recur (table-shadow param (just #/trivial) bound-vars) body)
+  #/mat cexpr (cexpr-let bindings body)
+    (or
+      (list-any bindings #/dissectfn (list var val)
+        (recur bound-vars val))
+    #/recur
+      (list-foldl bound-vars bindings #/fn bound-vars binding
+        (dissect binding (list var val)
+        #/table-shadow var (just #/trivial) bound-vars))
+      body)
   #/error "Encountered an unrecognized kind of cexpr"))
 
 (define/contract (cexpr-eval cexpr)
   (-> (and/c sink-cexpr? #/not/c cexpr-has-free-vars?) sink?)
   (begin (assert-can-get-cene-definitions!)
   #/dissect cexpr (sink-cexpr cexpr)
-  #/w-loop recur cexpr cexpr
+  #/w-loop recur bound-vars (table-empty) cexpr cexpr
   #/mat cexpr (cexpr-var name)
-    (error "Encountered a cexpr with free vars after already checking for free vars")
+    (expect (table-get name bound-vars) (just value)
+      (error "Encountered a cexpr with free vars after already checking for free vars")
+      value)
   #/mat cexpr (cexpr-native result)
     result
   #/mat cexpr (cexpr-struct main-tag-name projs)
@@ -428,9 +444,21 @@
       #/list-map projs #/dissectfn (list proj-name proj-cexpr)
         proj-name)
     #/list-map projs #/dissectfn (list proj-name proj-cexpr)
-      (recur proj-cexpr))
+      (recur bound-vars proj-cexpr))
   #/mat cexpr (cexpr-call func arg)
-    (sink-call (recur func) (recur arg))
+    (sink-call (recur bound-vars func) (recur bound-vars arg))
+  #/mat cexpr (cexpr-opaque-fn param body)
+    (sink-opaque-fn #/fn arg
+      (recur (table-shadow param (just arg) bound-vars) body))
+  #/mat cexpr (cexpr-let bindings body)
+    (recur
+      (list-foldl bound-vars
+        (list-map bindings #/dissectfn (list var val)
+          (list var #/recur bound-vars val))
+      #/fn bound-vars binding
+        (dissect binding (list var val)
+        #/table-shadow var (just val) bound-vars))
+      body)
   #/error "Encountered an unrecognized kind of cexpr"))
 
 (define/contract (sink-cexpr-var name)
@@ -469,6 +497,24 @@
   (dissect func (sink-cexpr func)
   #/dissect arg (sink-cexpr arg)
   #/sink-cexpr #/cexpr-call func arg))
+
+; TODO: Use this.
+(define/contract (sink-cexpr-opaque-fn param body)
+  (-> sink-name? sink-cexpr? sink-cexpr?)
+  (dissect param (sink-name param)
+  #/dissect body (sink-cexpr body)
+  #/sink-cexpr #/cexpr-opaque-fn param body))
+
+; TODO: Use this.
+(define/contract (sink-cexpr-let bindings body)
+  (-> (listof #/list/c sink-name? sink-cexpr?) sink-cexpr?
+    sink-cexpr?)
+  (dissect body (sink-cexpr body)
+  #/sink-cexpr #/cexpr-let
+    (list-map bindings
+    #/dissectfn (list (sink-name var) (sink-cexpr val))
+      (list var val))
+    body))
 
 (define/contract
   (sink-name-for-function-implementation main-tag-name proj-tag-names)
