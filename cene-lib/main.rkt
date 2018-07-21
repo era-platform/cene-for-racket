@@ -660,21 +660,16 @@
     state-and-handler))
 
 (define/contract
-  (sink-effects-cexpr-write
-    unique-name qualify output-stream cexpr then)
+  (sink-effects-cexpr-write unique-name output-stream cexpr then)
   (->
-    name?
-    sink?
-    sink-cexpr-sequence-output-stream?
-    sink-cexpr?
-    (-> name? sink? sink-cexpr-sequence-output-stream? sink-effects?)
+    name? sink-cexpr-sequence-output-stream? sink-cexpr?
+    (-> name? sink-cexpr-sequence-output-stream? sink-effects?)
     sink-effects?)
   (sink-effects #/fn
   #/dissect (sink-cexpr-sequence-output-stream-spend! output-stream)
     (list state on-cexpr)
-  #/on-cexpr unique-name qualify state cexpr
-  #/fn unique-name qualify state
-  #/then unique-name qualify
+  #/on-cexpr unique-name state cexpr #/fn unique-name state
+  #/then unique-name
   #/sink-cexpr-sequence-output-stream #/box #/list state on-cexpr))
 
 (define/contract (sink-text-input-stream-spend! text-input-stream)
@@ -1157,11 +1152,11 @@
   #/sink-effects-read-maybe-identifier text-input-stream
   #/fn text-input-stream maybe-identifier
   #/mat maybe-identifier (just identifier)
-    (sink-effects-cexpr-write unique-name qualify output-stream
+    (sink-effects-cexpr-write unique-name output-stream
       (sink-cexpr-var #/sink-name-for-string
       #/sink-string-from-located-string identifier)
-    #/fn unique-name qualify output-stream
-    #/next unique-name qualify text-input-stream output-stream)
+    #/fn unique-name output-stream
+    #/next unique-name text-input-stream output-stream)
   
   #/raise #/exn:fail:cene
     "Encountered an unrecognized case of the expression syntax"
@@ -1205,13 +1200,13 @@
         (reverse rev-results))
     #/w- output-stream
       (sink-cexpr-sequence-output-stream #/box #/list state
-        (fn unique-name qualify state cexpr then
+        (fn unique-name state cexpr then
           (dissect state (local-state n-left rev-results)
           #/expect (nat->maybe n-left) (just n-left)
             (raise #/exn:fail:cene
               "Encountered too many expressions"
             #/current-continuation-marks)
-          #/then unique-name qualify
+          #/then unique-name
           #/local-state n-left #/cons cexpr rev-results)))
     #/sink-effects-read-cexprs
       unique-name qualify text-input-stream output-stream
@@ -1267,7 +1262,7 @@
   #/fn text-input-stream
   #/w- output-stream
     (sink-cexpr-sequence-output-stream #/box #/list (trivial)
-      (fn unique-name qualify state cexpr then
+      (fn unique-name state cexpr then
         ; If we encounter an expression, we evaluate it and call the
         ; result, passing in the current scope information.
         (sink-effects-claim-and-split unique-name 2
@@ -1285,7 +1280,7 @@
             "Expected every top-level expression to evaluate to a callable value that takes two arguments and returns side effects"
           #/current-continuation-marks)
         #/sink-effects-merge effects
-        #/then unique-name-rest qualify state)))
+        #/then unique-name-rest state)))
   #/sink-effects-read-cexprs
     unique-name qualify text-input-stream output-stream
   #/fn unique-name qualify text-input-stream output-stream
@@ -1357,9 +1352,9 @@
       (sink-effects-read-specific-number-of-cexprs
         unique-name qualify text-input-stream n-args
       #/fn unique-name qualify text-input-stream args
-      #/sink-effects-cexpr-write unique-name qualify output-stream
+      #/sink-effects-cexpr-write unique-name output-stream
         (body args)
-      #/fn unique-name qualify output-stream
+      #/fn unique-name output-stream
       #/sink-call then
         unique-name qualify text-input-stream output-stream)))
   
