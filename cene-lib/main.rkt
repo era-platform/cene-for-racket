@@ -1291,7 +1291,7 @@
         (sink-name-for-function-implementation qualified-main-tag-name
           (sink-table #/table-empty))
         (sink-cexpr-native #/sink-opaque-fn #/fn struct-value
-        #/sink-fn-curried n-args racket-func))
+          (sink-fn-curried n-args racket-func)))
       
       ))
   
