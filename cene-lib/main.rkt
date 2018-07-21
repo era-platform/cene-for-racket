@@ -1345,8 +1345,10 @@
             unique-name qualify text-input-stream
             cexpr-sequence-output-stream)))
       
-      ; We define a Cene struct function implementation containing
-      ; the function's run time behavior.
+      ; We define a Cene struct function implementation which throws
+      ; an error. We do this so that we do in fact have a function
+      ; implementation for every struct we use, which might be an
+      ; invariant that comes in handy. (TODO: See if it does.)
       (def-value!
         (sink-name-for-function-implementation qualified-main-tag-name
           (list-foldl (sink-table #/table-empty) qualified-proj-names
