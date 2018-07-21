@@ -112,15 +112,6 @@
       (cons (hash-ref proj-hash proj-tag) rev-projs))))
 
 
-(define/contract (core-sink-struct syms)
-  (-> (and/c pair? #/listof symbol?) (and/c pair? #/listof name?))
-  (dissect syms (cons main-sym proj-syms)
-  #/w- main-name (unsafe:name #/list 'name:main-core main-sym)
-  #/cons main-name #/list-map proj-syms #/fn proj-sym
-    (unsafe:name #/list 'name:proj-core proj-sym main-sym)))
-
-(define s-nil (core-sink-struct '#/nil))
-
 (struct-easy (sink-dex dex))
 (struct-easy (sink-name name))
 (struct-easy (sink-effects go!))
@@ -383,13 +374,6 @@
   (-> sink-name? sink-dex? sink? sink-effects?)
   (sink-effects #/fn #/cene-process-put name dex value))
 
-(define/contract (sink-effects-claim name)
-  (-> name? sink-effects?)
-  (sink-effects-put
-    (sink-name #/name-claimed name)
-    (sink-dex #/dex-give-up)
-    (make-sink-struct s-nil #/list)))
-
 (define/contract (sink-effects-noop)
   (-> sink-effects?)
   (sink-effects #/fn #/cene-process-noop))
@@ -572,6 +556,19 @@
 (define/contract (sink-name-for-nameless-bounded-cexpr-op)
   (-> sink-name?)
   (sink-name #/unsafe:name #/list 'name:nameless-bounded-cexpr-op))
+
+(define/contract (sink-name-for-struct-main-tag inner-name)
+  (-> sink-name? sink-name?)
+  (sink-name-rep-map inner-name #/fn n
+    (list 'name:struct-main-tag n)))
+
+(define/contract
+  (sink-name-for-struct-proj qualified-main-tag-name inner-name)
+  (-> sink-name? sink-name? sink-name?)
+  (dissect qualified-main-tag-name
+    (sink-name #/unsafe:name qualified-main-tag-name)
+  #/sink-name-rep-map inner-name #/fn n
+    (list 'name:struct-proj qualified-main-tag-name n)))
 
 (define/contract (sink-cexpr-sequence-output-stream-spend! stream)
   (-> sink-cexpr-sequence-output-stream?
@@ -1125,6 +1122,27 @@
     #/fn unique-name qualify text-input-stream state
     #/next unique-name qualify text-input-stream state)))
 
+(define/contract (core-sink-struct main-tag-string proj-strings)
+  (-> string? (listof string?) (and/c pair? #/listof name?))
+  (w- main-tag-name
+    (sink-name-qualify #/sink-name-for-struct-main-tag
+    #/sink-name-for-string #/sink-string main-tag-string)
+  #/list-map
+    (cons main-tag-name #/list-map proj-strings #/fn proj-string
+      (sink-name-qualify #/sink-name-for-struct-proj main-tag-name
+      #/sink-name-for-string #/sink-string proj-string))
+  #/dissectfn (sink-name name)
+    name))
+
+(define s-nil (core-sink-struct "nil" #/list))
+
+(define/contract (sink-effects-claim name)
+  (-> name? sink-effects?)
+  (sink-effects-put
+    (sink-name #/name-claimed name)
+    (sink-dex #/dex-give-up)
+    (make-sink-struct s-nil #/list)))
+
 (define/contract (sink-effects-claim-and-split unique-name n then)
   (-> name? natural? (-> (listof name?) sink-effects?) sink-effects?)
   (mat n 1 (then #/list unique-name)
@@ -1223,14 +1241,19 @@
     (-> sink-name? sink? void?)
     (def-dexable-value! name (sink-dex #/dex-give-up) value))
   
-  (define/contract (def-func! string-name n-args racket-func)
+  (define/contract (def-func! main-tag-string n-args racket-func)
     (-> string? exact-positive-integer? procedure? void?)
-    (w- name (sink-name-for-string string-name)
+    (w- main-tag-name
+      (sink-name-for-string #/sink-string main-tag-string)
+    #/w- qualified-main-tag-name
+      (sink-name-qualify
+      #/sink-name-for-struct-main-tag main-tag-name)
       
       ; We define a reader macro so that the user can write code that
       ; compiles into a call to this function.
       (def-value!
-        (sink-name-qualify #/sink-name-for-bounded-cexpr-op name)
+        (sink-name-qualify
+        #/sink-name-for-bounded-cexpr-op main-tag-name)
         (sink-fn-curried 4 #/fn
           unique-name qualify text-input-stream
           cexpr-sequence-output-stream then
@@ -1252,8 +1275,10 @@
           (sink-effects-read-specific-number-of-cexprs
             unique-name qualify text-input-stream n-args
           #/fn unique-name qualify text-input-stream args
-          #/cexpr-sequence-output-stream cexpr-sequence-output-stream
-            (list-foldl (sink-cexpr-struct name #/list) args
+          #/sink-effects-cexpr-write cexpr-sequence-output-stream
+            (list-foldl
+              (sink-cexpr-struct qualified-main-tag-name #/list)
+              args
             #/fn func arg #/sink-cexpr-call func arg)
           #/fn cexpr-sequence-output-stream
           #/sink-call then
@@ -1263,15 +1288,88 @@
       ; We define a Cene struct function implementation containing
       ; the function's run time behavior.
       (def-value!
-        (sink-name-for-function-implementation name
+        (sink-name-for-function-implementation qualified-main-tag-name
           (sink-table #/table-empty))
-        (sink-cexpr-native #/sink-fn-curried n-args racket-func))))
+        (sink-cexpr-native #/sink-opaque-fn #/fn struct-value
+        #/sink-fn-curried n-args racket-func))
+      
+      ))
   
-  ; TODO: Add more builtins. We just have `table-empty` here as an
-  ; example for now.
+  (define/contract (def-data-struct! main-tag-string proj-strings)
+    (-> string? (listof string?) void?)
+    (w- main-tag-name
+      (sink-name-for-string #/sink-string main-tag-string)
+    #/w- qualified-main-tag-name
+      (sink-name-qualify
+      #/sink-name-for-struct-main-tag main-tag-name)
+    #/w- qualified-proj-names
+      (list-map proj-strings #/fn proj-string
+        (sink-name-qualify #/sink-name-for-struct-proj
+          qualified-main-tag-name
+        #/sink-name-for-string #/sink-string proj-string))
+      
+      ; We define a reader macro so that the user can write code that
+      ; compiles into an expression that constructs a struct with this
+      ; tag.
+      (def-value!
+        (sink-name-qualify
+        #/sink-name-for-bounded-cexpr-op main-tag-name)
+        (sink-fn-curried 4 #/fn
+          unique-name qualify text-input-stream
+          cexpr-sequence-output-stream then
+          
+          (w- n-projs (length qualified-proj-names)
+          
+          ; We read a form body of precisely `n-projs` cexprs, then
+          ; write a single cexpr that first constructs a nullary
+          ; struct with tag `name` and then calls it with the obtained
+          ; cexprs one by one.
+          ;
+          ; The JavaScript implementation of Cene doesn't verify that
+          ; the number of arguments to a struct constructor is under a
+          ; certain amount; instead it just passes all the excess
+          ; arguments as function arguments. I find it's common for me
+          ; to accidentally omit arguments or include extra arguments,
+          ; so in `sink-effects-read-specific-number-of-cexprs`, we do
+          ; some error-checking as an ad hoc line of defense against
+          ; that kind of mistake.
+          ;
+          #/sink-effects-read-specific-number-of-cexprs
+            unique-name qualify text-input-stream n-projs
+          #/fn unique-name qualify text-input-stream proj-cexprs
+          #/sink-effects-cexpr-write cexpr-sequence-output-stream
+            (sink-cexpr-struct qualified-main-tag-name
+            #/map list qualified-proj-names proj-cexprs)
+          #/fn cexpr-sequence-output-stream
+          #/sink-call then
+            unique-name qualify text-input-stream
+            cexpr-sequence-output-stream)))
+      
+      ; We define a Cene struct function implementation containing
+      ; the function's run time behavior.
+      (def-value!
+        (sink-name-for-function-implementation qualified-main-tag-name
+          (list-foldl (sink-table #/table-empty) qualified-proj-names
+          #/fn table proj-name
+            (sink-table-put-maybe table proj-name
+            #/just #/make-sink-struct s-nil #/list)))
+        (sink-cexpr-native #/sink-opaque-fn #/fn struct-value
+          (raise #/exn:fail:cene
+            "Called a struct that wasn't intended for calling"
+          #/current-continuation-marks)))
+      
+      ; TODO: Also define something we can use to look up an ordered
+      ; list of `sink-name-for-string` projection names, given the
+      ; `sink-name-for-string` name the main tag name is made from.
+      ; Once we have that in place, we'll be able to implement Cene's
+      ; destructuring operations.
+      
+      ))
   
-  ; TODO: Add a `def-struct!` utility for defining builtins that are
-  ; Cene struct constructors.
+  ; TODO: Add more builtins. We just have `nil` and `table-empty` here
+  ; as examples for now.
+  
+  (def-data-struct! "nil" #/list)
   
   (def-func! "table-empty" 1 #/fn trivial
     (expect (unmake-sink-struct-maybe s-nil trivial) (just #/list)
