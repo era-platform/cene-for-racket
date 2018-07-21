@@ -27,7 +27,7 @@
 (require #/only-in lathe-comforts
   dissect dissectfn expect fn mat w- w-loop)
 (require #/only-in lathe-comforts/list
-  list-any list-foldl list-foldr list-map nat->maybe)
+  list-any list-foldl list-foldr list-map list-zip-map nat->maybe)
 (require #/only-in lathe-comforts/maybe just maybe/c nothing)
 (require #/only-in lathe-comforts/struct struct-easy)
 
@@ -454,6 +454,15 @@
   #/sink-cexpr #/cexpr-struct main-tag-name #/list-map projs
   #/dissectfn (list (sink-name proj-name) (sink-cexpr proj-cexpr))
     (list proj-name proj-cexpr)))
+
+(define/contract (make-sink-cexpr-struct tags proj-cexprs)
+  (-> (and/c pair? #/listof name?) (listof sink-cexpr?) sink-struct?)
+  (dissect tags (cons main-tag-name proj-names)
+  #/expect (= (length proj-names) (length proj-cexprs)) #t
+    (error "Expected tags to have one more entry than proj-cexprs")
+  #/sink-cexpr-struct (sink-name main-tag-name)
+  #/list-zip-map proj-names proj-cexprs #/fn proj-name proj-cexpr
+    (list (sink-name proj-name) proj-cexpr)))
 
 (define/contract (sink-cexpr-call func arg)
   (-> sink-cexpr? sink-cexpr? sink-cexpr?)
@@ -1241,6 +1250,25 @@
     (-> sink-name? sink? void?)
     (def-dexable-value! name (sink-dex #/dex-give-up) value))
   
+  ; This creates a macro implementation function that reads a form
+  ; body of precisely `n-args` cexprs, then writes a single cexpr
+  ; computed from those using `body`.
+  (define/contract (macro-impl-specific-number-of-args n-args body)
+    (-> natural? (-> (listof sink-cexpr?) sink-cexpr?) sink?)
+    (sink-fn-curried 5 #/fn
+      unique-name qualify text-input-stream
+      cexpr-sequence-output-stream then
+      
+      (sink-effects-read-specific-number-of-cexprs
+        unique-name qualify text-input-stream n-args
+      #/fn unique-name qualify text-input-stream args
+      #/sink-effects-cexpr-write cexpr-sequence-output-stream
+        (body args)
+      #/fn cexpr-sequence-output-stream
+      #/sink-call then
+        unique-name qualify text-input-stream
+        cexpr-sequence-output-stream)))
+  
   (define/contract (def-func! main-tag-string n-args racket-func)
     (-> string? exact-positive-integer? procedure? void?)
     (w- main-tag-name
@@ -1254,36 +1282,25 @@
       (def-value!
         (sink-name-qualify
         #/sink-name-for-bounded-cexpr-op main-tag-name)
-        (sink-fn-curried 4 #/fn
-          unique-name qualify text-input-stream
-          cexpr-sequence-output-stream then
-          
-          ; We read a form body of precisely `n-args` cexprs, then
-          ; write a single cexpr that first constructs a nullary
-          ; struct with tag `name` and then calls it with the obtained
-          ; cexprs one by one.
-          ;
-          ; The JavaScript implementation of Cene doesn't verify the
-          ; number of arguments to a function; instead it just passes
-          ; in all the arguments it gets. But I find it's common for
-          ; me to accidentally omit arguments or include extra
-          ; arguments, so in
-          ; `sink-effects-read-specific-number-of-cexprs`, we do some
-          ; error-checking as an ad hoc line of defense against that
-          ; kind of mistake.
-          ;
-          (sink-effects-read-specific-number-of-cexprs
-            unique-name qualify text-input-stream n-args
-          #/fn unique-name qualify text-input-stream args
-          #/sink-effects-cexpr-write cexpr-sequence-output-stream
-            (list-foldl
-              (sink-cexpr-struct qualified-main-tag-name #/list)
-              args
-            #/fn func arg #/sink-cexpr-call func arg)
-          #/fn cexpr-sequence-output-stream
-          #/sink-call then
-            unique-name qualify text-input-stream
-            cexpr-sequence-output-stream)))
+        
+        ; Given precisely `n-args` cexprs, we construct a cexpr that
+        ; first constructs a nullary struct with tag
+        ; `qualified-main-tag-name` and then calls it with the given
+        ; cexprs one by one.
+        ;
+        ; The JavaScript implementation of Cene doesn't verify the
+        ; number of arguments to a function; instead it just passes in
+        ; all the arguments it gets. But I find it's common for me to
+        ; accidentally omit arguments or include extra arguments, so
+        ; in `sink-effects-read-specific-number-of-cexprs`, we do some
+        ; error-checking as an ad hoc line of defense against that
+        ; kind of mistake.
+        ;
+        (macro-impl-specific-number-of-args n-args #/fn args
+          (list-foldl
+            (sink-cexpr-struct qualified-main-tag-name #/list)
+            args
+          #/fn func arg #/sink-cexpr-call func arg)))
       
       ; We define a Cene struct function implementation containing
       ; the function's run time behavior.
@@ -1292,6 +1309,47 @@
           (sink-table #/table-empty))
         (sink-cexpr-native #/sink-opaque-fn #/fn struct-value
           (sink-fn-curried n-args racket-func)))
+      
+      ))
+  
+  (define/contract (def-nullary-func! main-tag-string result)
+    (-> string? sink? void?)
+    (w- main-tag-name
+      (sink-name-for-string #/sink-string main-tag-string)
+    #/w- qualified-main-tag-name
+      (sink-name-qualify
+      #/sink-name-for-struct-main-tag main-tag-name)
+      
+      ; We define a reader macro so that the user can write code that
+      ; compiles into a call to this function.
+      (def-value!
+        (sink-name-qualify
+        #/sink-name-for-bounded-cexpr-op main-tag-name)
+        
+        ; Given precisely zero cexprs, we construct a cexpr that first
+        ; constructs a nullary struct with tag `name` and then calls
+        ; it with a nil.
+        ;
+        ; The JavaScript implementation of Cene doesn't have this
+        ; special kind of compilation for nullary function calls; it
+        ; just has the user pass `(nil)` explicitly.
+        ;
+        (macro-impl-specific-number-of-args 0 #/fn args
+          (sink-cexpr-call
+            (sink-cexpr-struct qualified-main-tag-name #/list)
+            (make-sink-cexpr-struct s-nil #/list))))
+      
+      ; We define a Cene struct function implementation containing
+      ; the function's run time behavior.
+      (def-value!
+        (sink-name-for-function-implementation qualified-main-tag-name
+          (sink-table #/table-empty))
+        (sink-cexpr-native #/sink-fn-curried 2 #/fn struct-value arg
+          (expect (unmake-sink-struct-maybe s-nil arg) (just #/list)
+            (raise #/exn:fail:cene
+              "Expected the argument to a nullary function to be a nil"
+            #/current-continuation-marks)
+            result)))
       
       ))
   
@@ -1314,36 +1372,24 @@
       (def-value!
         (sink-name-qualify
         #/sink-name-for-bounded-cexpr-op main-tag-name)
-        (sink-fn-curried 4 #/fn
-          unique-name qualify text-input-stream
-          cexpr-sequence-output-stream then
-          
-          (w- n-projs (length qualified-proj-names)
-          
-          ; We read a form body of precisely `n-projs` cexprs, then
-          ; write a single cexpr that first constructs a nullary
-          ; struct with tag `name` and then calls it with the obtained
-          ; cexprs one by one.
-          ;
-          ; The JavaScript implementation of Cene doesn't verify that
-          ; the number of arguments to a struct constructor is under a
-          ; certain amount; instead it just passes all the excess
-          ; arguments as function arguments. I find it's common for me
-          ; to accidentally omit arguments or include extra arguments,
-          ; so in `sink-effects-read-specific-number-of-cexprs`, we do
-          ; some error-checking as an ad hoc line of defense against
-          ; that kind of mistake.
-          ;
-          #/sink-effects-read-specific-number-of-cexprs
-            unique-name qualify text-input-stream n-projs
-          #/fn unique-name qualify text-input-stream proj-cexprs
-          #/sink-effects-cexpr-write cexpr-sequence-output-stream
-            (sink-cexpr-struct qualified-main-tag-name
-            #/map list qualified-proj-names proj-cexprs)
-          #/fn cexpr-sequence-output-stream
-          #/sink-call then
-            unique-name qualify text-input-stream
-            cexpr-sequence-output-stream)))
+        
+        (w- n-projs (length qualified-proj-names)
+        
+        ; Given precisely `n-projs` cexprs, we construct a cexpr that
+        ; constructs a struct.
+        ;
+        ; The JavaScript implementation of Cene doesn't verify that
+        ; the number of arguments to a struct constructor is under a
+        ; certain amount; instead it just passes all the excess
+        ; arguments as function arguments. I find it's common for me
+        ; to accidentally omit arguments or include extra arguments,
+        ; so in `sink-effects-read-specific-number-of-cexprs`, we do
+        ; some error-checking as an ad hoc line of defense against
+        ; that kind of mistake.
+        ;
+        #/macro-impl-specific-number-of-args n-projs #/fn proj-cexprs
+          (sink-cexpr-struct qualified-main-tag-name
+          #/map list qualified-proj-names proj-cexprs)))
       
       ; We define a Cene struct function implementation which throws
       ; an error. We do this so that we do in fact have a function
@@ -1373,12 +1419,7 @@
   
   (def-data-struct! "nil" #/list)
   
-  (def-func! "table-empty" 1 #/fn trivial
-    (expect (unmake-sink-struct-maybe s-nil trivial) (just #/list)
-      (raise #/exn:fail:cene
-        "Expected the argument to table-empty to be a nil"
-      #/current-continuation-marks)
-    #/sink-table #/table-empty))
+  (def-nullary-func! "table-empty" (sink-table #/table-empty))
   
   (cene-runtime
     (sink-table defined-dexes)
