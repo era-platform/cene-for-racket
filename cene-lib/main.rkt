@@ -659,17 +659,16 @@
     (set-box! b (nothing))
     state-and-handler))
 
-(define/contract
-  (sink-effects-cexpr-write unique-name output-stream cexpr then)
+(define/contract (sink-effects-cexpr-write output-stream cexpr then)
   (->
-    name? sink-cexpr-sequence-output-stream? sink-cexpr?
-    (-> name? sink-cexpr-sequence-output-stream? sink-effects?)
+    sink-cexpr-sequence-output-stream? sink-cexpr?
+    (-> sink-cexpr-sequence-output-stream? sink-effects?)
     sink-effects?)
   (sink-effects #/fn
   #/dissect (sink-cexpr-sequence-output-stream-spend! output-stream)
     (list state on-cexpr)
-  #/on-cexpr unique-name state cexpr #/fn unique-name state
-  #/then unique-name
+  #/on-cexpr state cexpr #/fn state
+  #/then
   #/sink-cexpr-sequence-output-stream #/box #/list state on-cexpr))
 
 (define/contract (sink-text-input-stream-spend! text-input-stream)
@@ -1152,10 +1151,10 @@
   #/sink-effects-read-maybe-identifier text-input-stream
   #/fn text-input-stream maybe-identifier
   #/mat maybe-identifier (just identifier)
-    (sink-effects-cexpr-write unique-name output-stream
+    (sink-effects-cexpr-write output-stream
       (sink-cexpr-var #/sink-name-for-string
       #/sink-string-from-located-string identifier)
-    #/fn unique-name output-stream
+    #/fn output-stream
     #/next unique-name text-input-stream output-stream)
   
   #/raise #/exn:fail:cene
@@ -1200,14 +1199,13 @@
         (reverse rev-results))
     #/w- output-stream
       (sink-cexpr-sequence-output-stream #/box #/list state
-        (fn unique-name state cexpr then
+        (fn state cexpr then
           (dissect state (local-state n-left rev-results)
           #/expect (nat->maybe n-left) (just n-left)
             (raise #/exn:fail:cene
               "Encountered too many expressions"
             #/current-continuation-marks)
-          #/then unique-name
-          #/local-state n-left #/cons cexpr rev-results)))
+          #/then #/local-state n-left #/cons cexpr rev-results)))
     #/sink-effects-read-cexprs
       unique-name qualify text-input-stream output-stream
     #/fn unique-name qualify text-input-stream output-stream
@@ -1260,12 +1258,14 @@
     ; `unique-name` to be sure no one else is using it.
     (sink-effects-claim unique-name)
   #/fn text-input-stream
+  #/sink-effects-claim-and-split unique-name 2
+  #/dissectfn (list unique-name-writer unique-name-main)
   #/w- output-stream
-    (sink-cexpr-sequence-output-stream #/box #/list (trivial)
-      (fn unique-name state cexpr then
+    (sink-cexpr-sequence-output-stream #/box #/list unique-name-writer
+      (fn unique-name-writer cexpr then
         ; If we encounter an expression, we evaluate it and call the
         ; result, passing in the current scope information.
-        (sink-effects-claim-and-split unique-name 2
+        (sink-effects-claim-and-split unique-name-writer 2
         #/dissectfn (list unique-name-first unique-name-rest)
         #/expect (cexpr-has-free-vars? cexpr) #f
           (raise #/exn:fail:cene
@@ -1280,17 +1280,16 @@
             "Expected every top-level expression to evaluate to a callable value that takes two arguments and returns side effects"
           #/current-continuation-marks)
         #/sink-effects-merge effects
-        #/then unique-name-rest state)))
+        #/then unique-name-rest)))
   #/sink-effects-read-cexprs
-    unique-name qualify text-input-stream output-stream
-  #/fn unique-name qualify text-input-stream output-stream
+    unique-name-main qualify text-input-stream output-stream
+  #/fn unique-name-main qualify text-input-stream output-stream
   #/dissect (sink-cexpr-sequence-output-stream-spend! output-stream)
-    (list state on-cexpr)
-  ; NOTE: We ignore `state` and `on-cexpr`. The only reason we spend
-  ; the output stream is so that the user's code can't pass it to
-  ; another place that expects an unspent output stream.
+    (list unique-name-writer on-cexpr)
+  #/sink-effects-claim-and-split unique-name-writer 0
+  #/dissectfn (list)
   #/sink-effects-read-top-level
-    unique-name qualify text-input-stream))
+    unique-name-main qualify text-input-stream))
 
 (define/contract (cene-run-string rt string)
   (-> cene-runtime? string? #/list/c cene-runtime? #/listof string?)
@@ -1352,9 +1351,8 @@
       (sink-effects-read-specific-number-of-cexprs
         unique-name qualify text-input-stream n-args
       #/fn unique-name qualify text-input-stream args
-      #/sink-effects-cexpr-write unique-name output-stream
-        (body args)
-      #/fn unique-name output-stream
+      #/sink-effects-cexpr-write output-stream (body args)
+      #/fn output-stream
       #/sink-call then
         unique-name qualify text-input-stream output-stream)))
   
