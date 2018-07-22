@@ -122,6 +122,7 @@
 (struct-easy (sink-string racket-string))
 (struct-easy (sink-opaque-fn racket-fn))
 (struct-easy (sink-table racket-table))
+(struct-easy (sink-int racket-int))
 
 ; NOTE: The term "cexpr" is short for "compiled expression." It's the
 ; kind of expression that macros generate in order to use as function
@@ -141,6 +142,7 @@
     (sink-string? v)
     (sink-opaque-fn? v)
     (sink-table? v)
+    (sink-int? v)
     (sink-cexpr? v)))
 
 (define/contract (name-rep-map name func)
@@ -779,6 +781,18 @@
   #/then text-input-stream located-string))
 
 (define/contract
+  (sink-effects-read-non-line-breaks text-input-stream then)
+  (->
+    sink-text-input-stream?
+    (-> sink-text-input-stream? sink-located-string? sink-effects?)
+    sink-effects?)
+  ; TODO: Support a more Unicode-aware notion of line break.
+  (sink-effects-read-regexp text-input-stream #px"^[^\r\n]*"
+  #/fn text-input-stream maybe-located-string
+  #/dissect maybe-located-string (just located-string)
+  #/then text-input-stream located-string))
+
+(define/contract
   (sink-effects-read-maybe-identifier text-input-stream then)
   (->
     sink-text-input-stream?
@@ -1227,6 +1241,11 @@
 
 (define s-trivial (core-sink-struct "trivial" #/list))
 
+(define s-nothing (core-sink-struct "nothing" #/list))
+(define s-just (core-sink-struct "just" #/list "val"))
+
+(define s-carried (core-sink-struct "carried" #/list "main" "carry"))
+
 (define/contract (sink-effects-claim name)
   (-> name? sink-effects?)
   (sink-effects-put
@@ -1502,6 +1521,8 @@
       
       ))
   
+  
+  
   ; This binds the nameless bounded expression reader macro. This
   ; implementation proceeds by reading and running a (named) bounded
   ; expression reader macro.
@@ -1528,12 +1549,448 @@
       #/sink-call then (sink-name unique-name) qualify
         text-input-stream cexpr-sequence-output-stream)))
   
-  ; TODO: Add more builtins. We just have `trivial` and `table-empty`
-  ; here as examples for now.
+  ; This binds the freestanding expression reader macro for `=`. This
+  ; implementation is a line comment syntax: It consumes all the
+  ; proceeding non-line-break characters, writes no cexprs at all, and
+  ; leaves it at that.
+  ;
+  ;   \= This is an example comment.
+  ;
+  (def-value!
+    (sink-name-qualify #/sink-name-for-freestanding-cexpr-op
+    #/sink-name-for-string #/sink-string "=")
+    (sink-fn-curried 5 #/fn
+      unique-name qualify text-input-stream
+      cexpr-sequence-output-stream then
+      
+      (sink-effects-read-non-line-breaks text-input-stream
+      #/fn text-input-stream non-line-breaks
+      #/sink-call then unique-name qualify text-input-stream
+        cexpr-sequence-output-stream)))
+  
+  
+  ; Miscellaneous
   
   (def-data-struct! "trivial" #/list)
   
+  (def-data-struct! "nothing" #/list)
+  (def-data-struct! "just" #/list "val")
+  
+  (def-data-struct! "yep" #/list "val")
+  (def-data-struct! "nope" #/list "val")
+  
+  (def-data-struct! "nil" #/list)
+  (def-data-struct! "cons" #/list "first" "rest")
+  
+  (def-data-struct! "assoc" #/list "key" "val")
+  
+  
+  ; Errors and conscience
+  
+  (def-func! "follow-heart" 1 #/fn clamor
+    ; TODO: Implement this.
+    'TODO)
+  
+  (def-data-struct! "clamor-err" #/list "message")
+  
+  ; TODO: Implement the macro `err`.
+  
+  
+  ; Order
+  
+  ; TODO: Implement this.
+  (def-nullary-func! "dex-cline" (sink-dex 'TODO))
+  
+  (def-func! "cline-by-dex" 1 #/fn dex
+    ; TODO: Implement this.
+    'TODO)
+  
+  ; TODO: Implement this.
+  (def-nullary-func! "cline-give-up" 'TODO)
+  
+  ; TODO: Consider implementing the following. This list was taken
+  ; from the docs of the JavaScript version of Cene, but Effection has
+  ; incorporated some lessons learned since then, so we might want to
+  ; work against the list of Effection building blocks instead.
+  ;
+  ;   cline-default
+  ;   cline-by-own-method
+  ;   cline-fix
+  ;   call-cline
+  ;   in-cline
+  ;   dexable
+  ;   dex-dex
+  ;   dex-by-cline
+  ;   name-of
+  ;   dex-name
+  ;   dex-merge
+  ;   merge-by-dex
+  ;   merge-default
+  ;   merge-by-own-method
+  ;   merge-fix
+  ;   call-merge
+  ;   dex-fuse
+  ;   fuse-by-merge
+  ;   fuse-default
+  ;   fuse-by-own-method
+  ;   fuse-fix
+  ;   call-fuse
+  
+  
+  ; Structs and function calls
+  
+  ; TODO: Consider implementing the following.
+  ;
+  ;   cexpr-cline-struct
+  ;   cline-struct
+  ;   cexpr-merge-struct
+  ;   merge-struct
+  ;   cexpr-fuse-struct
+  ;   fuse-struct
+  ;   cexpr-construct
+  ;   cexpr-case
+  ;   case
+  ;   cexpr-call
+  ;   c
+  ;   constructor-tag
+  ;   function-implementation-from-cexpr
+  ;   constructor-glossary
+  ;   procure-constructor-glossary-getdef
+  ;   copy-function-implementations
+  ;   committing-to-define-function-implementations
+  ;   procure-function-definer
+  ;   def-struct
+  ;   defn
+  ;   caselet
+  ;   cast
+  ;   fn
+  
+  
+  ; Tables
+  
+  (def-func! "dex-table" 1 #/fn dex-val
+    ; TODO: Implement this.
+    (sink-dex 'TODO))
+  
+  (def-func! "merge-table" 1 #/fn merge-val
+    ; TODO: Implement this.
+    'TODO)
+  
+  (def-func! "fuse-table" 1 #/fn fuse-val
+    ; TODO: Implement this.
+    'TODO)
+  
   (def-nullary-func! "table-empty" (sink-table #/table-empty))
+  
+  (def-func! "table-shadow" 3 #/fn key maybe-val table
+    (expect (sink-name? key) #t
+      (raise #/exn:fail:cene
+        "Expected key to be a name"
+      #/current-continuation-marks)
+    #/expect (sink-table? table) #t
+      (raise #/exn:fail:cene
+        "Expected table to be a table"
+      #/current-continuation-marks)
+    #/mat (unmake-sink-struct-maybe s-nothing maybe-val) (just #/list)
+      (sink-table-put-maybe table key #/nothing)
+    #/mat (unmake-sink-struct-maybe s-just maybe-val)
+      (just #/list val)
+      (sink-table-put-maybe table key #/just val)
+    #/raise #/exn:fail:cene
+      "Expected maybe-val to be a nothing or a just"
+    #/current-continuation-marks))
+  
+  (def-func! "table-get" 2 #/fn key table
+    (expect (sink-name? key) #t
+      (raise #/exn:fail:cene
+        "Expected key to be a name"
+      #/current-continuation-marks)
+    #/expect (sink-table? table) #t
+      (raise #/exn:fail:cene
+        "Expected table to be a table"
+      #/current-continuation-marks)
+    #/w- result (sink-table-get-maybe table key)
+    #/expect result (just result)
+      (make-sink-struct s-nothing #/list)
+    #/make-sink-struct s-just #/list result))
+  
+  (def-func! "table-map-fuse" 3 #/fn table fuse key-to-operand
+    ; TODO: Implement this.
+    'TODO)
+  
+  (def-func! "table-sort" 2 #/fn cline table
+    ; TODO: Implement this.
+    'TODO)
+  
+  
+  ; Effects
+  
+  ; TODO: Consider implementing the following.
+  ;
+  ;   no-effects
+  ;   fuse-effects
+  ;   get-mode
+  ;   assert-current-mode
+  ;   later
+  ;   make-promise-later
+  ;   getdef
+  ;   definer-define
+  ;   committing-to-define
+  
+  
+  ; Unit tests
+  
+  ; TODO: Consider implementing the following.
+  ;
+  ;   test-async
+  
+  
+  ; Namespaces
+  
+  ; TODO: Consider implementing the following.
+  ;
+  ;   procure-sub-ns-table
+  ;   procure-name
+  ;   procure-contributed-element-getdef
+  ;   procure-contribute-listener
+  ;   procure-contributed-elements
+  ;   nsset-empty
+  ;   fuse-nsset-by-union
+  ;   nsset-not
+  ;   nsset-ns-descendants
+  ;   contributing-only-to
+  
+  
+  ; Macros
+  
+  ; TODO: Consider implementing the following. This is the list of
+  ; macro-relevant operations from the JavaScript implementation of
+  ; Cene, which has an s-expression-based macro system. Now that we're
+  ; using a text-stream-based macro system here, several of these will
+  ; be unnecessary.
+  ;
+  ;   istring-nil
+  ;   istring-cons
+  ;   foreign
+  ;   scope
+  ;   macro-occurrence
+  ;   local-occurrence
+  ;   constructor-occurrence
+  ;   projection-occurrence
+  ;   obtain-by-unqualified-name
+  ;   obtain-by-qualified-name
+  ;   obtain-directly
+  ;   stx
+  ;   stx-details-empty
+  ;   stx-details-join
+  ;   stx-details-macro-call
+  ;   procure-claim
+  ;   procure-macro-implementation-getdef
+  ;   cexpr-var
+  ;   cexpr-reified
+  ;   cexpr-located
+  ;   cexpr-let
+  ;   let
+  ;   eval-cexpr
+  ;   compile-expression-later
+  ;   read-all-force
+  ;   def-macro
+  
+  
+  ; Integers
+  
+  ; TODO: Implement this.
+  (def-nullary-func! "cline-int" 'TODO)
+  
+  (def-nullary-func! "int-zero" (sink-int 0))
+  
+  (def-nullary-func! "int-one" (sink-int 1))
+  
+  ; TODO: Implement this.
+  (def-nullary-func! "fuse-int-by-plus" 'TODO)
+  
+  ; TODO: Implement this.
+  (def-nullary-func! "fuse-int-by-times" 'TODO)
+  
+  (def-func! "int-minus" 2 #/fn minuend subtrahend
+    (expect minuend (sink-int minuend)
+      (raise #/exn:fail:cene
+        "Expected minuend to be an int"
+      #/current-continuation-marks)
+    #/expect subtrahend (sink-int subtrahend)
+      (raise #/exn:fail:cene
+        "Expected subtrahend to be an int"
+      #/current-continuation-marks)
+    #/sink-int #/- minuend subtrahend))
+  
+  (def-func! "int-div-rounded-down" 2 #/fn dividend divisor
+    (expect dividend (sink-int dividend)
+      (raise #/exn:fail:cene
+        "Expected dividend to be an int"
+      #/current-continuation-marks)
+    #/expect divisor (sink-int divisor)
+      (raise #/exn:fail:cene
+        "Expected divisor to be an int"
+      #/current-continuation-marks)
+    #/mat divisor 0 (make-sink-struct s-nothing #/list)
+    #/make-sink-struct s-just #/list
+    #/let-values ([(q r) (quotient/remainder dividend divisor)])
+    #/if (<= 0 r)
+      (make-sink-struct s-carried #/list (sink-int q) (sink-int r))
+    #/if (<= 0 divisor)
+      (make-sink-struct s-carried
+      #/list (sink-int #/- q 1) (sink-int #/+ r divisor))
+      (make-sink-struct s-carried
+      #/list (sink-int #/+ q 1) (sink-int #/- r divisor))))
+  
+  (def-data-struct! "carried" #/list "main" "carry")
+  
+  
+  ; Strings
+  
+  ; TODO: Implement this.
+  (def-nullary-func! "dex-string" (sink-dex 'TODO))
+  
+  (def-nullary-func! "string-empty" (sink-string ""))
+  
+  (def-func! "string-singleton" 1 #/fn unicode-scalar
+    (expect unicode-scalar (sink-int unicode-scalar)
+      (raise #/exn:fail:cene
+        "Expected unicode-scalar to be an int"
+      #/current-continuation-marks)
+    #/expect
+      (and
+        (<= 0 unicode-scalar #x10FFFF)
+        (not #/<= #xD800 unicode-scalar #xDFFF))
+      #t
+      (raise #/exn:fail:cene
+        "Expected unicode-scalar to be in the range of valid Unicode scalars"
+      #/current-continuation-marks)
+    #/sink-string #/list->string #/list #/integer->char
+      unicode-scalar))
+  
+  (def-func! "string-append-later" 3 #/fn a b then
+    (expect a (sink-string a)
+      (raise #/exn:fail:cene
+        "Expected a to be a string"
+      #/current-continuation-marks)
+    #/expect b (sink-string b)
+      (raise #/exn:fail:cene
+        "Expected b to be a string"
+      #/current-continuation-marks)
+    #/sink-effects #/fn
+    #/dissect (sink-call then #/sink-string #/string-append a b)
+      (sink-effects go!)
+    #/go!))
+  
+  ; TODO: Implement the macro `str`.
+  
+  (def-func! "string-length" 1 #/fn string
+    (expect string (sink-string string)
+      (raise #/exn:fail:cene
+        "Expected string to be a string"
+      #/current-continuation-marks)
+    #/sink-int #/string-length string))
+  
+  (def-func! "string-get-unicode-scalar" 2 #/fn string start
+    (expect string (sink-string string)
+      (raise #/exn:fail:cene
+        "Expected string to be a string"
+      #/current-continuation-marks)
+    #/expect start (sink-int start)
+      (raise #/exn:fail:cene
+        "Expected start to be an int"
+      #/current-continuation-marks)
+    #/expect (<= 0 start) #t
+      (raise #/exn:fail:cene
+        "Expected start to be a nonnegative int"
+      #/current-continuation-marks)
+    #/expect (< start #/string-length string) #t
+      (raise #/exn:fail:cene
+        "Expected start to be an int less than the length of string"
+      #/current-continuation-marks)
+    #/sink-int #/char->integer #/string-ref string start))
+  
+  (def-func! "string-cut-later" 4 #/fn string start stop then
+    (expect string (sink-string string)
+      (raise #/exn:fail:cene
+        "Expected string to be a string"
+      #/current-continuation-marks)
+    #/expect start (sink-int start)
+      (raise #/exn:fail:cene
+        "Expected start to be an int"
+      #/current-continuation-marks)
+    #/expect stop (sink-int stop)
+      (raise #/exn:fail:cene
+        "Expected stop to be an int"
+      #/current-continuation-marks)
+    #/expect (<= 0 start) #t
+      (raise #/exn:fail:cene
+        "Expected start to be a nonnegative int"
+      #/current-continuation-marks)
+    #/expect (<= start stop) #t
+      (raise #/exn:fail:cene
+        "Expected start to be an int no greater than stop"
+      #/current-continuation-marks)
+    #/expect (<= stop #/string-length string) #t
+      (raise #/exn:fail:cene
+        "Expected stop to be an int no greater than the length of string"
+      #/current-continuation-marks)
+    #/sink-effects #/fn
+    #/dissect
+      (sink-call then #/sink-string #/substring string start stop)
+      (sink-effects go!)
+    #/go!))
+  
+  
+  ; Regexes
+  
+  ; TODO: Consider implementing the following.
+  ;
+  ;   regex-give-up
+  ;   regex-empty
+  ;   regex-if
+  ;   regex-while
+  ;   regex-until
+  ;   regex-one-in-range
+  ;   regex-one
+  ;   regex-from-string
+  ;   regex-one-in-string
+  ;   optimize-regex-later
+  ;   optimized-regex-match-later
+  ;   regex-result-matched
+  ;   regex-result-failed
+  ;   regex-result-passed-end
+  
+  
+  ; File I/O for simple builds
+  
+  ; TODO: Consider implementing the following.
+  ;
+  ;   encapsulated-string
+  ;   cli-arguments
+  ;   cli-input-directory
+  ;   cli-output-directory
+  ;   input-path-get
+  ;   input-path-type
+  ;   file-type-directory
+  ;   file-type-blob
+  ;   file-type-missing
+  ;   input-path-directory-list
+  ;   input-path-blob-utf-8
+  ;   output-path-get
+  ;   output-path-directory
+  ;   output-path-blob-utf-8
+  ;   cli-output-environment-variable-shadow
+  
+  
+  ; FFI
+  
+  ; TODO: The JavaScript version of Cene has FFI operations for
+  ; interacting with JavaScript, naturally. See if we should do
+  ; something similar for interacting with Racket.
+  
+  
   
   (cene-runtime
     (sink-table defined-dexes)
