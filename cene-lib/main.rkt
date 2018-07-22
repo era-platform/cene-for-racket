@@ -41,6 +41,11 @@
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe name)
 
 
+; TODO: Document these exports.
+(provide #/rename-out [-cene-runtime? cene-runtime?])
+(provide cene-runtime-essentials)
+
+
 
 ; TODO: Get this all to a point where we can test it.
 
@@ -116,6 +121,9 @@
 
 
 (struct-easy (sink-dex dex))
+(struct-easy (sink-cline cline))
+(struct-easy (sink-merge merge))
+(struct-easy (sink-fuse fuse))
 (struct-easy (sink-name name))
 (struct-easy (sink-effects go!))
 (struct-easy
@@ -137,6 +145,9 @@
   (or
     (sink-struct? v)
     (sink-dex? v)
+    (sink-cline? v)
+    (sink-merge? v)
+    (sink-fuse? v)
     (sink-name? v)
     (sink-effects? v)
     (sink-cexpr-sequence-output-stream? v)
@@ -187,6 +198,12 @@
     (cene-process-merge? v)))
 
 (struct-easy (cene-runtime defined-dexes defined-values))
+
+; A version of `cene-runtime?` that does not satisfy
+; `struct-predicate-procedure?`.
+(define/contract (-cene-runtime? v)
+  (-> any/c boolean?)
+  (cene-runtime? v))
 
 (define/contract (sink-table-get-maybe table name)
   (-> sink-table? sink-name? #/maybe/c sink?)
@@ -549,14 +566,18 @@
   ; (maybe even `effection/order/base`).
   #/w- table-kv-map
     (fn table kv-to-v
-      (table-map-fuse table
-        (fuse-by-merge #/merge-table #/merge-by-dex #/dex-give-up)
-      #/fn k
-        (dissect (table-get k table) (just v)
-        #/table-shadow k (just #/kv-to-v k v) #/table-empty)))
+      (mat
+        (table-map-fuse table
+          (fuse-by-merge #/merge-table #/merge-by-dex #/dex-give-up)
+        #/fn k
+          (dissect (table-get k table) (just v)
+          #/table-shadow k (just #/kv-to-v k v) #/table-empty))
+        (just result)
+        result
+      #/table-empty))
   #/w- table-v-map
     (fn table v-to-v
-      (table-kv-map #/fn k v #/v-to-v v))
+      (table-kv-map table #/fn k v #/v-to-v v))
   
   #/dissect
     (name-of (dex-table #/dex-struct trivial)
@@ -1331,7 +1352,7 @@
         (table-shadow name (just value) defined-values))
     #/void))
   
-  (define/contract (def-value! name dex value)
+  (define/contract (def-value! name value)
     (-> sink-name? sink? void?)
     (def-dexable-value! name (sink-dex #/dex-give-up) value))
   
@@ -1608,7 +1629,7 @@
     'TODO)
   
   ; TODO: Implement this.
-  (def-nullary-func! "cline-give-up" 'TODO)
+  (def-nullary-func! "cline-give-up" (sink-cline 'TODO))
   
   ; TODO: Consider implementing the following. This list was taken
   ; from the docs of the JavaScript version of Cene, but Effection has
@@ -1835,17 +1856,17 @@
   ; Integers
   
   ; TODO: Implement this.
-  (def-nullary-func! "cline-int" 'TODO)
+  (def-nullary-func! "cline-int" (sink-cline 'TODO))
   
   (def-nullary-func! "int-zero" (sink-int 0))
   
   (def-nullary-func! "int-one" (sink-int 1))
   
   ; TODO: Implement this.
-  (def-nullary-func! "fuse-int-by-plus" 'TODO)
+  (def-nullary-func! "fuse-int-by-plus" (sink-fuse 'TODO))
   
   ; TODO: Implement this.
-  (def-nullary-func! "fuse-int-by-times" 'TODO)
+  (def-nullary-func! "fuse-int-by-times" (sink-fuse 'TODO))
   
   (def-func! "int-minus" 2 #/fn minuend subtrahend
     (expect minuend (sink-int minuend)

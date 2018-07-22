@@ -21,7 +21,12 @@
 
 (require rackunit)
 
+(require cene)
+
 ; (We provide nothing from this module.)
 
 
-; TODO: Write unit tests.
+(check-equal? (cene-runtime? #/cene-runtime-essentials) #t
+  "A call to `cene-runtime-essentials` returns successfully")
+
+; TODO: Write more unit tests.
