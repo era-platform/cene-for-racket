@@ -19,10 +19,13 @@
 ;   language governing permissions and limitations under the License.
 
 
+(require #/for-syntax racket/base)
+
 (require #/only-in racket/contract/base
   -> ->* and/c any/c contract? list/c listof not/c or/c parameter/c)
 (require #/only-in racket/contract/region define/contract)
 (require #/only-in racket/math natural?)
+(require #/only-in syntax/parse/define define-simple-macro)
 
 (require #/only-in lathe-comforts
   dissect dissectfn expect fn mat w- w-loop)
@@ -404,7 +407,7 @@
   (->* () #:rest (listof sink-effects?) sink-effects?)
   (sink-effects-merge-list effects))
 
-(struct exn:fail:cene exn:fail ())
+(struct exn:fail:cene exn:fail (clamor))
 
 (define/contract (cexpr-has-free-vars? cexpr)
   (-> sink-cexpr? boolean?)
@@ -573,6 +576,20 @@
       (apply racket-func #/reverse rev-args)
     #/next n-args-after-next rev-args)))
 
+(define/contract (raise-cene-err continuation-marks message)
+  (-> continuation-mark-set? string? #/or/c)
+  (w- string-message
+    (mat (unmake-sink-struct-maybe s-clamor-err message)
+      (just #/list #/sink-string string-message)
+      string-message
+    #/format "~s" message)
+  #/raise #/exn:fail:cene
+    string-message (current-continuation-marks) message))
+
+(define-simple-macro (cene-err message:string)
+  (raise-cene-err (current-continuation-marks)
+  #/make-sink-struct s-clamor-err #/list #/sink-string message))
+
 (define/contract (sink-call-binary func arg)
   (-> sink? sink? sink?)
   (begin (assert-can-get-cene-definitions!)
@@ -591,9 +608,7 @@
             (table-shadow proj-tag (just #/trivial) rest)))
         func)
       arg)
-  #/raise #/exn:fail:cene
-    "Tried to call a value that wasn't an opaque function or a struct"
-  #/current-continuation-marks))
+  #/cene-err "Tried to call a value that wasn't an opaque function or a struct"))
 
 (define/contract (sink-call-list func args)
   (-> sink? (listof sink?) sink?)
@@ -654,9 +669,7 @@
   (dissect stream (sink-cexpr-sequence-output-stream b)
   ; TODO: See if this should be more thread-safe in some way.
   #/expect (unbox b) (just state-and-handler)
-    (raise #/exn:fail:cene
-      "Tried to spend an expression output stream that was already spent"
-    #/current-continuation-marks)
+    (cene-err "Tried to spend an expression output stream that was already spent")
   #/begin
     (set-box! b (nothing))
     state-and-handler))
@@ -678,9 +691,7 @@
   (dissect text-input-stream (sink-text-input-stream b)
   ; TODO: See if this should be more thread-safe in some way.
   #/expect (unbox b) (just input-port)
-    (raise #/exn:fail:cene
-      "Tried to spend a text input stream that was already spent"
-    #/current-continuation-marks)
+    (cene-err "Tried to spend a text input stream that was already spent")
   #/begin
     (set-box! b (nothing))
     input-port))
@@ -904,15 +915,11 @@
   #/sink-effects-read-maybe-given-racket text-input-stream "("
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
-    (raise #/exn:fail:cene
-      "The use of ( to delimit a macro name is not yet supported"
-    #/current-continuation-marks)
+    (cene-err "The use of ( to delimit a macro name is not yet supported")
   #/sink-effects-read-maybe-given-racket text-input-stream "["
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
-    (raise #/exn:fail:cene
-      "The use of [ to delimit a macro name is not yet supported"
-    #/current-continuation-marks)
+    (cene-err "The use of [ to delimit a macro name is not yet supported")
   
   #/sink-effects-read-maybe-identifier text-input-stream
   #/fn text-input-stream maybe-identifier
@@ -921,9 +928,7 @@
     #/sink-call qualify #/pre-qualify #/sink-name-for-string
     #/sink-string-from-located-string identifier)
   
-  #/raise #/exn:fail:cene
-    "Encountered an unrecognized case of the expression operator syntax"
-  #/current-continuation-marks))
+  #/cene-err "Encountered an unrecognized case of the expression operator syntax"))
 
 (define/contract
   (sink-effects-run-op
@@ -943,22 +948,14 @@
     #/sink-fn-curried 4
     #/fn unique-name qualify text-input-stream output-stream
     #/expect unique-name (sink-name unique-name)
-      (raise #/exn:fail:cene
-        "Expected the unique name of a macro's callback results to be a name"
-      #/current-continuation-marks)
+      (cene-err "Expected the unique name of a macro's callback results to be a name")
     #/expect (sink-text-input-stream? text-input-stream) #t
-      (raise #/exn:fail:cene
-        "Expected the text input stream of a macro's callback results to be a text input stream"
-      #/current-continuation-marks)
+      (cene-err "Expected the text input stream of a macro's callback results to be a text input stream")
     #/expect (sink-cexpr-sequence-output-stream? output-stream) #t
-      (raise #/exn:fail:cene
-        "Expected the expression sequence output stream of a macro's callback results to be an expression sequence output stream"
-      #/current-continuation-marks)
+      (cene-err "Expected the expression sequence output stream of a macro's callback results to be an expression sequence output stream")
     #/then unique-name qualify text-input-stream output-stream)
   #/expect (sink-effects? result) #t
-    (raise #/exn:fail:cene
-      "Expected the return value of a macro to be an effectful computation"
-    #/current-continuation-marks)
+    (cene-err "Expected the return value of a macro to be an effectful computation")
     result))
 
 (define/contract
@@ -1086,15 +1083,11 @@
   #/sink-effects-read-maybe-given-racket text-input-stream ")"
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
-    (raise #/exn:fail:cene
-      "Encountered an unmatched )"
-    #/current-continuation-marks)
+    (cene-err "Encountered an unmatched )")
   #/sink-effects-read-maybe-given-racket text-input-stream "]"
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
-    (raise #/exn:fail:cene
-      "Encountered an unmatched ]"
-    #/current-continuation-marks)
+    (cene-err "Encountered an unmatched ]")
   
   #/sink-effects-read-maybe-given-racket text-input-stream "\\"
   #/fn text-input-stream maybe-str
@@ -1110,9 +1103,7 @@
         (sink-effects-read-maybe-given-racket text-input-stream ")"
         #/fn text-input-stream maybe-str
         #/expect maybe-str (just _)
-          (raise #/exn:fail:cene
-            "Encountered a syntax that began with (. and did not end with )"
-          #/current-continuation-marks)
+          (cene-err "Encountered a syntax that began with (. and did not end with )")
         #/next unique-name qualify text-input-stream output-stream))
     #/sink-effects-read-maybe-given-racket text-input-stream "."
     #/fn text-input-stream maybe-str
@@ -1130,9 +1121,7 @@
         (sink-effects-read-maybe-given-racket text-input-stream "]"
         #/fn text-input-stream maybe-str
         #/expect maybe-str (just _)
-          (raise #/exn:fail:cene
-            "Encountered a syntax that began with [. and did not end with ]"
-          #/current-continuation-marks)
+          (cene-err "Encountered a syntax that began with [. and did not end with ]")
         #/next unique-name qualify text-input-stream output-stream))
     #/sink-effects-read-maybe-given-racket text-input-stream "."
     #/fn text-input-stream maybe-str
@@ -1150,9 +1139,7 @@
         (sink-effects-peek-is-closing-bracket text-input-stream
         #/fn text-input-stream is-closing-bracket
         #/if (not is-closing-bracket)
-          (raise #/exn:fail:cene
-            "Encountered a syntax that began with /. and did not end at ) or ]"
-          #/current-continuation-marks)
+          (cene-err "Encountered a syntax that began with /. and did not end at ) or ]")
         #/next unique-name qualify text-input-stream output-stream))
     #/sink-effects-read-maybe-given-racket text-input-stream "."
     #/fn text-input-stream maybe-str
@@ -1171,9 +1158,7 @@
     #/fn output-stream
     #/next unique-name text-input-stream output-stream)
   
-  #/raise #/exn:fail:cene
-    "Encountered an unrecognized case of the expression syntax"
-  #/current-continuation-marks))
+  #/cene-err "Encountered an unrecognized case of the expression syntax"))
 
 ; This reads cexprs until it reads precisely `n` of them (raising an
 ; error if it gets more, and raising a different error if it notices a
@@ -1206,9 +1191,7 @@
     #/fn text-input-stream is-closing-bracket
     #/if is-closing-bracket
       (expect n-left 0
-        (raise #/exn:fail:cene
-          "Expected another expression"
-        #/current-continuation-marks)
+        (cene-err "Expected another expression")
       #/then unique-name qualify text-input-stream
         (reverse rev-results))
     #/w- output-stream
@@ -1216,9 +1199,7 @@
         (fn state cexpr then
           (dissect state (local-state n-left rev-results)
           #/expect (nat->maybe n-left) (just n-left)
-            (raise #/exn:fail:cene
-              "Encountered too many expressions"
-            #/current-continuation-marks)
+            (cene-err "Encountered too many expressions")
           #/then #/local-state n-left #/cons cexpr rev-results)))
     #/sink-effects-read-cexprs
       unique-name qualify text-input-stream output-stream
@@ -1245,6 +1226,8 @@
 (define s-just (core-sink-struct "just" #/list "val"))
 
 (define s-carried (core-sink-struct "carried" #/list "main" "carry"))
+
+(define s-clamor-err (core-sink-struct "clamor-err" #/list "message"))
 
 (define/contract (sink-effects-claim name)
   (-> name? sink-effects?)
@@ -1287,17 +1270,13 @@
         (sink-effects-claim-and-split unique-name-writer 2
         #/dissectfn (list unique-name-first unique-name-rest)
         #/expect (cexpr-has-free-vars? cexpr) #f
-          (raise #/exn:fail:cene
-            "Encountered a top-level expression with at least one free variable"
-          #/current-continuation-marks)
+          (cene-err "Encountered a top-level expression with at least one free variable")
         #/w- effects
           (sink-call (cexpr-eval cexpr)
             (sink-name unique-name-first)
             qualify)
         #/expect (sink-effects? effects) #t
-          (raise #/exn:fail:cene
-            "Expected every top-level expression to evaluate to a callable value that takes two arguments and returns side effects"
-          #/current-continuation-marks)
+          (cene-err "Expected every top-level expression to evaluate to a callable value that takes two arguments and returns side effects")
         #/sink-effects-merge effects
         #/then unique-name-rest)))
   #/sink-effects-read-cexprs
@@ -1322,9 +1301,7 @@
           (unsafe:name #/list 'name:unique-name-root)
           (sink-fn-curried 1 #/fn name
             (expect (sink-name? name) #t
-              (raise #/exn:fail:cene
-                "Expected the input to the root qualify function to be a name"
-              #/current-continuation-marks)
+              (cene-err "Expected the input to the root qualify function to be a name")
             #/sink-name-qualify name))
           (sink-text-input-stream #/box #/open-input-string string))
         (sink-effects go!)
@@ -1453,9 +1430,7 @@
         (sink-cexpr-native #/sink-fn-curried 2 #/fn struct-value arg
           (expect (unmake-sink-struct-maybe s-trivial arg)
             (just #/list)
-            (raise #/exn:fail:cene
-              "Expected the argument to a nullary function to be a trivial"
-            #/current-continuation-marks)
+            (cene-err "Expected the argument to a nullary function to be a trivial")
             result)))
       
       ))
@@ -1509,9 +1484,7 @@
             (sink-table-put-maybe table proj-name
             #/just #/make-sink-struct s-trivial #/list)))
         (sink-cexpr-native #/sink-opaque-fn #/fn struct-value
-          (raise #/exn:fail:cene
-            "Called a struct that wasn't intended for calling"
-          #/current-continuation-marks)))
+          (cene-err "Called a struct that wasn't intended for calling")))
       
       ; TODO: Also define something we can use to look up an ordered
       ; list of `sink-name-for-string` projection names, given the
@@ -1587,9 +1560,9 @@
   
   ; Errors and conscience
   
+  ; TODO: Test this.
   (def-func! "follow-heart" 1 #/fn clamor
-    ; TODO: Implement this.
-    'TODO)
+    (raise-cene-err (current-continuation-marks) clamor))
   
   (def-data-struct! "clamor-err" #/list "message")
   
@@ -1684,31 +1657,21 @@
   
   (def-func! "table-shadow" 3 #/fn key maybe-val table
     (expect (sink-name? key) #t
-      (raise #/exn:fail:cene
-        "Expected key to be a name"
-      #/current-continuation-marks)
+      (cene-err "Expected key to be a name")
     #/expect (sink-table? table) #t
-      (raise #/exn:fail:cene
-        "Expected table to be a table"
-      #/current-continuation-marks)
+      (cene-err "Expected table to be a table")
     #/mat (unmake-sink-struct-maybe s-nothing maybe-val) (just #/list)
       (sink-table-put-maybe table key #/nothing)
     #/mat (unmake-sink-struct-maybe s-just maybe-val)
       (just #/list val)
       (sink-table-put-maybe table key #/just val)
-    #/raise #/exn:fail:cene
-      "Expected maybe-val to be a nothing or a just"
-    #/current-continuation-marks))
+    #/cene-err "Expected maybe-val to be a nothing or a just"))
   
   (def-func! "table-get" 2 #/fn key table
     (expect (sink-name? key) #t
-      (raise #/exn:fail:cene
-        "Expected key to be a name"
-      #/current-continuation-marks)
+      (cene-err "Expected key to be a name")
     #/expect (sink-table? table) #t
-      (raise #/exn:fail:cene
-        "Expected table to be a table"
-      #/current-continuation-marks)
+      (cene-err "Expected table to be a table")
     #/w- result (sink-table-get-maybe table key)
     #/expect result (just result)
       (make-sink-struct s-nothing #/list)
@@ -1814,24 +1777,16 @@
   
   (def-func! "int-minus" 2 #/fn minuend subtrahend
     (expect minuend (sink-int minuend)
-      (raise #/exn:fail:cene
-        "Expected minuend to be an int"
-      #/current-continuation-marks)
+      (cene-err "Expected minuend to be an int")
     #/expect subtrahend (sink-int subtrahend)
-      (raise #/exn:fail:cene
-        "Expected subtrahend to be an int"
-      #/current-continuation-marks)
+      (cene-err "Expected subtrahend to be an int")
     #/sink-int #/- minuend subtrahend))
   
   (def-func! "int-div-rounded-down" 2 #/fn dividend divisor
     (expect dividend (sink-int dividend)
-      (raise #/exn:fail:cene
-        "Expected dividend to be an int"
-      #/current-continuation-marks)
+      (cene-err "Expected dividend to be an int")
     #/expect divisor (sink-int divisor)
-      (raise #/exn:fail:cene
-        "Expected divisor to be an int"
-      #/current-continuation-marks)
+      (cene-err "Expected divisor to be an int")
     #/mat divisor 0 (make-sink-struct s-nothing #/list)
     #/make-sink-struct s-just #/list
     #/let-values ([(q r) (quotient/remainder dividend divisor)])
@@ -1855,29 +1810,21 @@
   
   (def-func! "string-singleton" 1 #/fn unicode-scalar
     (expect unicode-scalar (sink-int unicode-scalar)
-      (raise #/exn:fail:cene
-        "Expected unicode-scalar to be an int"
-      #/current-continuation-marks)
+      (cene-err "Expected unicode-scalar to be an int")
     #/expect
       (and
         (<= 0 unicode-scalar #x10FFFF)
         (not #/<= #xD800 unicode-scalar #xDFFF))
       #t
-      (raise #/exn:fail:cene
-        "Expected unicode-scalar to be in the range of valid Unicode scalars"
-      #/current-continuation-marks)
+      (cene-err "Expected unicode-scalar to be in the range of valid Unicode scalars")
     #/sink-string #/list->string #/list #/integer->char
       unicode-scalar))
   
   (def-func! "string-append-later" 3 #/fn a b then
     (expect a (sink-string a)
-      (raise #/exn:fail:cene
-        "Expected a to be a string"
-      #/current-continuation-marks)
+      (cene-err "Expected a to be a string")
     #/expect b (sink-string b)
-      (raise #/exn:fail:cene
-        "Expected b to be a string"
-      #/current-continuation-marks)
+      (cene-err "Expected b to be a string")
     #/sink-effects #/fn
     #/dissect (sink-call then #/sink-string #/string-append a b)
       (sink-effects go!)
@@ -1887,55 +1834,33 @@
   
   (def-func! "string-length" 1 #/fn string
     (expect string (sink-string string)
-      (raise #/exn:fail:cene
-        "Expected string to be a string"
-      #/current-continuation-marks)
+      (cene-err "Expected string to be a string")
     #/sink-int #/string-length string))
   
   (def-func! "string-get-unicode-scalar" 2 #/fn string start
     (expect string (sink-string string)
-      (raise #/exn:fail:cene
-        "Expected string to be a string"
-      #/current-continuation-marks)
+      (cene-err "Expected string to be a string")
     #/expect start (sink-int start)
-      (raise #/exn:fail:cene
-        "Expected start to be an int"
-      #/current-continuation-marks)
+      (cene-err "Expected start to be an int")
     #/expect (<= 0 start) #t
-      (raise #/exn:fail:cene
-        "Expected start to be a nonnegative int"
-      #/current-continuation-marks)
+      (cene-err "Expected start to be a nonnegative int")
     #/expect (< start #/string-length string) #t
-      (raise #/exn:fail:cene
-        "Expected start to be an int less than the length of string"
-      #/current-continuation-marks)
+      (cene-err "Expected start to be an int less than the length of string")
     #/sink-int #/char->integer #/string-ref string start))
   
   (def-func! "string-cut-later" 4 #/fn string start stop then
     (expect string (sink-string string)
-      (raise #/exn:fail:cene
-        "Expected string to be a string"
-      #/current-continuation-marks)
+      (cene-err "Expected string to be a string")
     #/expect start (sink-int start)
-      (raise #/exn:fail:cene
-        "Expected start to be an int"
-      #/current-continuation-marks)
+      (cene-err "Expected start to be an int")
     #/expect stop (sink-int stop)
-      (raise #/exn:fail:cene
-        "Expected stop to be an int"
-      #/current-continuation-marks)
+      (cene-err "Expected stop to be an int")
     #/expect (<= 0 start) #t
-      (raise #/exn:fail:cene
-        "Expected start to be a nonnegative int"
-      #/current-continuation-marks)
+      (cene-err "Expected start to be a nonnegative int")
     #/expect (<= start stop) #t
-      (raise #/exn:fail:cene
-        "Expected start to be an int no greater than stop"
-      #/current-continuation-marks)
+      (cene-err "Expected start to be an int no greater than stop")
     #/expect (<= stop #/string-length string) #t
-      (raise #/exn:fail:cene
-        "Expected stop to be an int no greater than the length of string"
-      #/current-continuation-marks)
+      (cene-err "Expected stop to be an int no greater than the length of string")
     #/sink-effects #/fn
     #/dissect
       (sink-call then #/sink-string #/substring string start stop)
