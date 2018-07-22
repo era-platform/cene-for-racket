@@ -518,7 +518,6 @@
   #/dissect arg (sink-cexpr arg)
   #/sink-cexpr #/cexpr-call func arg))
 
-; TODO: Use this.
 (define/contract (sink-cexpr-opaque-fn param body)
   (-> sink-name? sink-cexpr? sink-cexpr?)
   (dissect param (sink-name param)
@@ -943,8 +942,8 @@
     sink-effects?)
   (begin (assert-can-get-cene-definitions!)
   #/w- result
-    (sink-call op-impl unique-name qualify text-input-stream
-      output-stream
+    (sink-call op-impl (sink-name unique-name) qualify
+      text-input-stream output-stream
     #/sink-fn-curried 4
     #/fn unique-name qualify text-input-stream output-stream
     #/expect unique-name (sink-name unique-name)
@@ -1494,6 +1493,36 @@
       
       ))
   
+  (define/contract (def-macro! name-string body)
+    (->
+      string?
+      (->
+        name? sink? sink-text-input-stream?
+        (-> name? sink? sink-text-input-stream? sink-cexpr?
+          sink-effects?)
+        sink-effects?)
+      void?)
+    (def-value!
+      (sink-name-qualify #/sink-name-for-bounded-cexpr-op
+      #/sink-name-for-string #/sink-string name-string)
+      (sink-fn-curried 5 #/fn
+        unique-name qualify text-input-stream
+        output-stream then
+        
+        (expect unique-name (sink-name unique-name)
+          (cene-err "Expected unique-name to be a name")
+        #/expect (sink-text-input-stream? text-input-stream) #t
+          (cene-err "Expected text-input-stream to be a text input stream")
+        #/expect (sink-cexpr-sequence-output-stream? output-stream)
+          #t
+          (cene-err "Expected output-stream to be an expression sequence output stream")
+        #/body unique-name qualify text-input-stream
+        #/fn unique-name qualify text-input-stream cexpr
+        #/sink-effects-cexpr-write output-stream cexpr
+        #/fn output-stream
+        #/sink-call then (sink-name unique-name) qualify
+          text-input-stream output-stream))))
+  
   
   
   ; This binds the nameless bounded expression reader macro. This
@@ -1636,7 +1665,50 @@
   ;   defn
   ;   caselet
   ;   cast
-  ;   fn
+  
+  (def-macro! "fn" #/fn unique-name qualify text-input-stream then
+    (w-loop next
+      unique-name unique-name
+      qualify qualify
+      text-input-stream text-input-stream
+      rev-params (list)
+      
+      (sink-effects-read-whitespace text-input-stream
+      #/fn text-input-stream whitespace
+      #/sink-effects-read-maybe-identifier text-input-stream
+      #/fn text-input-stream maybe-param
+      #/expect maybe-param (just param)
+        (sink-effects-read-whitespace text-input-stream
+        #/fn text-input-stream whitespace
+        #/sink-effects-peek-is-closing-bracket text-input-stream
+        #/fn text-input-stream is-closing-bracket
+        #/w- finish
+          (fn unique-name qualify text-input-stream rev-params body
+            (then unique-name qualify text-input-stream
+              (list-foldl body rev-params #/fn body param-entry
+                (dissect param-entry
+                  (list param-located-string param-qualified-name)
+                #/sink-cexpr-opaque-fn param-qualified-name body))))
+        #/if is-closing-bracket
+          (expect rev-params (cons body-entry rev-params)
+            (cene-err "Expected a fn form to have a body expression")
+          #/dissect body-entry
+            (list body-located-string body-qualified-name)
+          #/finish unique-name qualify text-input-stream rev-params
+          ; TODO: Wrap this in a located cexpr.
+          #/sink-cexpr-var body-qualified-name)
+          (sink-effects-read-specific-number-of-cexprs
+            unique-name qualify text-input-stream 1
+          #/fn unique-name qualify text-input-stream bodies
+          #/dissect bodies (list body)
+          #/finish
+            unique-name qualify text-input-stream rev-params body))
+      #/next unique-name qualify text-input-stream
+        (cons
+          (list param
+            (sink-call qualify #/sink-name-for-string
+            #/sink-string-from-located-string param))
+          rev-params))))
   
   
   ; Tables
