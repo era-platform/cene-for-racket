@@ -35,9 +35,9 @@
 (require #/only-in lathe-comforts/struct struct-easy)
 
 (require #/only-in effection/order
-  compare-by-dex dex-give-up dex-dex dex-name dex-struct dex-table
-  fuse-by-merge merge-by-dex merge-table name? name-of ordering-eq?
-  table-empty table-get table-map-fuse table-shadow)
+  compare-by-dex dex? dex-give-up dex-dex dex-name dex-struct
+  dex-table fuse-by-merge merge-by-dex merge-table name? name-of
+  ordering-eq? table-empty table-get table-map-fuse table-shadow)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe name)
 
 
@@ -54,6 +54,13 @@
 
 ; TODO: Put this into the Lathe Comforts library or something.
 (struct-easy (trivial))
+
+; TODO: Put this in the Effection library or something.
+(define/contract (eq-by-dex? dex a b)
+  (-> dex? any/c any/c boolean?)
+  (expect (compare-by-dex dex a b) (just comparison)
+    (error "Expected a and b to be members of the domain of dex")
+  #/ordering-eq? comparison))
 
 
 ; NOTE: The "sink" part of the name "sink-struct" refers to the fact
@@ -92,10 +99,7 @@
   
   #/dissect tags (cons main-tag proj-tags)
   #/dissect s-tags (cons s-main-tag s-proj-tags)
-  #/expect
-    (ordering-eq? #/compare-by-dex (dex-name) main-tag s-main-tag)
-    #t
-    (nothing)
+  #/expect (eq-by-dex? (dex-name) main-tag s-main-tag) #t (nothing)
   #/expect
     (w-loop next proj-tags proj-tags s-projs s-projs proj-hash (hash)
       (expect proj-tags (cons proj-tag proj-tags)
@@ -336,9 +340,7 @@
       (just existing-cene-dex)
       (dissect cene-dex (sink-dex dex)
       #/dissect existing-cene-dex (sink-dex existing-dex)
-      #/expect
-        (ordering-eq? #/compare-by-dex (dex-dex) dex existing-dex)
-        #t
+      #/expect (eq-by-dex? (dex-dex) dex existing-dex) #t
         (next-with-error "Wrote to the same name with inequal dexes")
       #/dissect (sink-table-get-maybe defined-values name)
         (just existing-value)
@@ -348,9 +350,9 @@
         ; this `with-gets-...` operation here so that it can properly
         ; suspend the dex comparison computation as a Cene process.
         (with-gets-from-as-process defined-values
-          (fn #/compare-by-dex existing-dex value existing-value)
-        #/fn comparison
-          (expect (ordering-eq? comparison) #t
+          (fn #/eq-by-dex? existing-dex value existing-value)
+        #/fn is-eq
+          (expect is-eq #t
             (cene-process-error
               "Wrote to the same name with inequal values")
           #/cene-process-noop))
@@ -536,7 +538,7 @@
     (list proj-name proj-cexpr)))
 
 (define/contract (make-sink-cexpr-struct tags proj-cexprs)
-  (-> (and/c pair? #/listof name?) (listof sink-cexpr?) sink-struct?)
+  (-> (and/c pair? #/listof name?) (listof sink-cexpr?) sink-cexpr?)
   (dissect tags (cons main-tag-name proj-names)
   #/expect (= (length proj-names) (length proj-cexprs)) #t
     (error "Expected tags to have one more entry than proj-cexprs")
@@ -1797,9 +1799,15 @@
   
   ; Effects
   
+  ; NOTE: In the JavaScript version of Cene, this was known as
+  ; `no-effects`.
+  ;
+  ; TODO: See which name we prefer.
+  ;
+  (def-nullary-func! "effects-noop" (sink-effects-noop))
+  
   ; TODO: Consider implementing the following.
   ;
-  ;   no-effects
   ;   fuse-effects
   ;   get-mode
   ;   assert-current-mode

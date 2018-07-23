@@ -73,4 +73,9 @@
     (cene-code-works "(follow-heart/trivial)"))
   "Calling Cene's `follow-heart` raises an `exn:fail:cene` exception in Racket")
 
+(check-equal?
+  (cene-code-works "(fn unique-name qualify /effects-noop)")
+  #t
+  "Running a single top-level command that does nothing works")
+
 ; TODO: Write more unit tests.
