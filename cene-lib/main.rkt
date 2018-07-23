@@ -904,13 +904,13 @@
   
   ; NOTE: These are the cases we should handle here.
   ;
-  ; _#
-  ; _abc_:
-  ; _abc_
-  ; _(markup)_:
-  ; _(markup)_
-  ; _[markup]_:
-  ; _[markup]_
+  ;   #
+  ;   abc:
+  ;   abc
+  ;   (markup):
+  ;   (markup)
+  ;   [markup]:
+  ;   [markup]
   
   (begin (assert-can-get-cene-definitions!)
   #/sink-effects-read-maybe-op-character text-input-stream
@@ -1202,8 +1202,6 @@
     state (local-state n #/list)
     
     (dissect state (local-state n-left rev-results)
-    #/sink-effects-read-whitespace text-input-stream
-    #/fn text-input-stream whitespace
     #/sink-effects-peek-whether-eof text-input-stream
     #/fn text-input-stream is-eof
     #/if is-eof
@@ -1703,6 +1701,15 @@
       text-input-stream text-input-stream
       rev-params (list)
       
+      ; TODO: When this calls `sink-effects-read-whitespace`, it
+      ; doesn't allow for the possibility that that whitespace has
+      ; comments in it. Fix that. Our current syntax design makes it
+      ; hard to try to consume a comment without risking consuming a
+      ; few expressions instead, so we'll probably want to make a
+      ; reader that reads a sequence of cexprs *and* qualified names,
+      ; possibly interspersed, until it reaches a closing bracket.
+      ; This will likely replace the use of
+      ; `sink-effects-read-specific-number-of-cexprs` altogether.
       (sink-effects-read-whitespace text-input-stream
       #/fn text-input-stream whitespace
       #/sink-effects-read-maybe-identifier text-input-stream
