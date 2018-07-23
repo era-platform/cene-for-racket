@@ -913,9 +913,6 @@
   ; _[markup]_
   
   (begin (assert-can-get-cene-definitions!)
-  #/sink-effects-read-whitespace text-input-stream
-  #/fn text-input-stream whitespace
-  
   #/sink-effects-read-maybe-op-character text-input-stream
   #/fn text-input-stream maybe-identifier
   #/mat maybe-identifier (just identifier)
@@ -925,9 +922,7 @@
   
   #/w- then
     (fn text-input-stream op-name
-      (sink-effects-read-whitespace text-input-stream
-      #/fn text-input-stream whitespace
-      #/sink-effects-read-maybe-given-racket text-input-stream ":"
+      (sink-effects-read-maybe-given-racket text-input-stream ":"
       #/fn text-input-stream maybe-str
       #/then text-input-stream op-name))
   

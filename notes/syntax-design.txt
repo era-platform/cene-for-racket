@@ -1,15 +1,15 @@
 Overhauled Cene syntax:
 
 
-In these examples, let "abc" represent identifier text, let "_" represent optional whitespace, and let "#" represent any character other than an identifier character, a whitespace character, `[`, `]`, `(`, `)`, `\`, `.`, or `:`. Let "<op>" represent any of the following patterns, where `markup` means that part of the text is read and processed as markup where interpolations are not allowed.
+In these examples, let "abc" represent identifier text, and let "#" represent any character other than an identifier character, a whitespace character, `[`, `]`, `(`, `)`, `\`, `.`, or `:`. Let "<op>" represent any of the following patterns, where `markup` means that part of the text is read and processed as markup where interpolations are not allowed.
 
-  _#
-  _abc_:
-  _abc_
-  _(markup)_:
-  _(markup)_
-  _[markup]_:
-  _[markup]_
+  #
+  abc:
+  abc
+  (markup):
+  (markup)
+  [markup]:
+  [markup]
 
 When "<op>" is used in one of these examples, let `op` refer to the text of `#` or of `abc` or of the result of processing the markup.
 
@@ -32,8 +32,6 @@ In an expression context, this invokes the freestanding expression reader macro 
 
 In an expression context, this runs the bounded expression reader macro of `op`, then assumes the next character is a closing bracket and consumes it, then proceeds as usual.
 
-(The whitespace versions consume all the whitespace that occurs after the identifier before they invoke the reader macro.)
-
 (These are usually written without the dot, taking advantage of the usual nameless bounded expression reader macros. The dot version is supported primarily for consistency with the markup syntax.)
 
   (.<op>...)
@@ -41,8 +39,6 @@ In an expression context, this runs the bounded expression reader macro of `op`,
 
 
 In an expression context, this runs the bounded expression reader macro of `op`. It does not consume the character after that, even though it's usually a closing bracket. Then it proceeds as usual.
-
-(The whitespace version consumes all the whitespace that occurs after the identifier before it invokes the reader macro.)
 
 (These are usually written without the dot, taking advantage of the usual nameless bounded expression reader macro. The dot version is supported primarily for consistency with the markup syntax.)
 
@@ -75,15 +71,11 @@ In an expression context, this invokes the freestanding expression reader macro 
 
 In a markup context, this runs the bounded markup reader macro of `op` (while remembering the literal text that started this macro call, the corresponding closing bracket to look for, and the accumulatable text of the corresponding closing bracket), then assumes the next character is a closing bracket and consumes it, then proceeds as usual.
 
-(The whitespace versions consume all the whitespace that occurs after the identifier before they invoke the reader macro.)
-
   (.<op>...)
   [.<op>...]
 
 
 In a markup context, this runs the bounded markup reader macro of `op` (while remembering the literal text that started this macro call, the corresponding closing bracket to look for, and the text "" as the accumulatable text of the corresponding closing bracket). It does not consume the character after that, even though it's usually a closing bracket. Then it proceeds as usual.
-
-(The whitespace version consumes all the whitespace that occurs after the identifier before it invokes the reader macro.)
 
   /.<op>...
 
