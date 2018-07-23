@@ -2,5 +2,11 @@
 
 (define collection "cene")
 
-(define deps (list "base" "cene-lib" "parendown-lib" "rackunit-lib"))
+(define deps
+  (list
+    "base"
+    "cene-lib"
+    "lathe-comforts-lib"
+    "parendown-lib"
+    "rackunit-lib"))
 (define build-deps (list))

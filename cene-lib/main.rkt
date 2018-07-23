@@ -43,11 +43,12 @@
 
 ; TODO: Document these exports.
 (provide #/rename-out [-cene-runtime? cene-runtime?])
+(provide cene-run-string)
 (provide cene-runtime-essentials)
 
-
-
-; TODO: Get this all to a point where we can test it.
+; TODO: See if we really want to provide these exports at all. If we
+; do, document them.
+(provide exn:fail:cene)
 
 
 
@@ -230,6 +231,8 @@
 (define/contract (assert-cannot-get-cene-definitions!)
   (-> void?)
   (mat (cene-definition-get-param) (just get)
+    ; TODO: Make this error message more visually distinct from the
+    ; `assert-can-get-cene-definitions!` error message.
     (error "Expected no implementation of `cene-definition-get` to be available in the dynamic scope")
   #/void))
 
@@ -260,8 +263,7 @@
 
 (define/contract
   (with-gets-from-as-process table body body-result-to-process)
-  (-> sink-table? (-> any/c) (-> any/c cene-process?)
-    (or/c with-gets-suspended? with-gets-finished?))
+  (-> sink-table? (-> any/c) (-> any/c cene-process?) cene-process?)
   (begin (assert-cannot-get-cene-definitions!)
   #/w- with-gets-result (with-gets-from table body)
   #/mat with-gets-result (with-gets-suspended name then)
@@ -271,7 +273,13 @@
   #/dissect with-gets-result (with-gets-finished body-result)
   #/body-result-to-process body-result))
 
-(define/contract (run-cene-process rt process)
+(define/contract (sink-effects-run! effects)
+  (-> sink-effects? cene-process?)
+  (begin (assert-can-get-cene-definitions!)
+  #/dissect effects (sink-effects go!)
+  #/go!))
+
+(define/contract (cene-process-run rt process)
   (-> cene-runtime? cene-process?
     (list/c cene-runtime? #/listof string?))
   (begin (assert-cannot-get-cene-definitions!)
@@ -350,8 +358,8 @@
     #/next-full
       processes
       rev-next-processes
-      (sink-table-put-maybe defined-dexes #/just cene-dex)
-      (sink-table-put-maybe defined-values #/just value)
+      (sink-table-put-maybe defined-dexes name #/just cene-dex)
+      (sink-table-put-maybe defined-values name #/just value)
       rev-errors
       #t)
   #/mat process (cene-process-get name then)
@@ -368,9 +376,9 @@
         rev-errors
         did-something)
     #/next-simple #/cons
-      (with-gets-from-as-process defined-values (fn #/then value)
-      #/dissectfn (sink-effects process)
-        process)
+      (with-gets-from-as-process defined-values
+        (fn #/sink-effects-run! #/then value)
+      #/fn process process)
       rev-next-processes)
   #/error "Encountered an unrecognized kind of Cene process"))
 
@@ -397,23 +405,30 @@
     (cexpr-opaque-fn? v)
     (cexpr-let? v)))
 
+; NOTE: The only purpose of this is to help track down a common kind
+; of error where the result of `go!` is mistakenly a `sink-effects?`
+; instead of a `cene-process?`.
+(define/contract (make-sink-effects go!)
+  (-> (-> cene-process?) sink-effects?)
+  (sink-effects go!))
+
 (define/contract (sink-effects-get name then)
   (-> sink-name? (-> sink? sink-effects?) sink-effects?)
-  (sink-effects #/fn #/cene-process-get name then))
+  (make-sink-effects #/fn #/cene-process-get name then))
 
 (define/contract (sink-effects-put name dex value)
   (-> sink-name? sink-dex? sink? sink-effects?)
-  (sink-effects #/fn #/cene-process-put name dex value))
+  (make-sink-effects #/fn #/cene-process-put name dex value))
 
 (define/contract (sink-effects-noop)
   (-> sink-effects?)
-  (sink-effects #/fn #/cene-process-noop))
+  (make-sink-effects #/fn #/cene-process-noop))
 
 (define/contract (sink-effects-merge-binary a b)
   (-> sink-effects? sink-effects? sink-effects?)
   (dissect a (sink-effects a-go!)
   #/dissect b (sink-effects b-go!)
-  #/sink-effects #/fn #/cene-process-merge (a-go!) (b-go!)))
+  #/make-sink-effects #/fn #/cene-process-merge (a-go!) (b-go!)))
 
 (define/contract (sink-effects-merge-list effects)
   (-> (listof sink-effects?) sink-effects?)
@@ -596,18 +611,21 @@
       (apply racket-func #/reverse rev-args)
     #/next n-args-after-next rev-args)))
 
-(define/contract (raise-cene-err continuation-marks message)
-  (-> continuation-mark-set? string? #/or/c)
-  (w- string-message
-    (mat (unmake-sink-struct-maybe s-clamor-err message)
-      (just #/list #/sink-string string-message)
-      string-message
-    #/format "~s" message)
-  #/raise #/exn:fail:cene
-    string-message (current-continuation-marks) message))
+(define/contract (raise-cene-err continuation-marks clamor)
+  (-> continuation-mark-set? sink? #/or/c)
+  (w- message
+    (mat (unmake-sink-struct-maybe s-clamor-err clamor)
+      (just #/list #/sink-string message)
+      message
+    #/format "~s" clamor)
+  #/raise
+  #/exn:fail:cene message (current-continuation-marks) clamor))
 
 (define-simple-macro (cene-err message:string)
   (raise-cene-err (current-continuation-marks)
+  ; TODO: See if there's a way we can either stop depending on
+  ; `s-clamor-err` here or move this code after the place where
+  ; `s-clamor-err` is defined.
   #/make-sink-struct s-clamor-err #/list #/sink-string message))
 
 (define/contract (sink-call-binary func arg)
@@ -616,16 +634,23 @@
   #/mat func (sink-opaque-fn racket-func)
     (racket-func arg)
   #/mat func (sink-struct tags projs)
-    (dissect tags (cons main-tag proj-tags)
+    (dissect (list-map tags #/fn tag #/sink-name tag)
+      (cons main-tag proj-tags)
     #/sink-call-binary
       (sink-call-binary
         ; TODO: We should probably optimize this lookup, perhaps by
         ; using memoization. If and when we do, we should profile it
         ; to make sure it's a worthwhile optimization.
-        (cene-definition-get #/sink-name-for-function-implementation
+        (cexpr-eval
+        #/cene-definition-get #/sink-name-for-function-implementation
           main-tag
-          (list-foldr proj-tags (table-empty) #/fn proj-tag rest
-            (table-shadow proj-tag (just #/trivial) rest)))
+          (list-foldr proj-tags (sink-table #/table-empty)
+          #/fn proj-tag rest
+            (sink-table-put-maybe rest proj-tag
+            ; TODO: See if there's a way we can either stop depending
+            ; on `s-trivial` here or move this code after the place
+            ; where `s-trivial` is defined.
+            #/just #/make-sink-struct s-trivial #/list)))
         func)
       arg)
   #/cene-err "Tried to call a value that wasn't an opaque function or a struct"))
@@ -699,12 +724,12 @@
     sink-cexpr-sequence-output-stream? sink-cexpr?
     (-> sink-cexpr-sequence-output-stream? sink-effects?)
     sink-effects?)
-  (sink-effects #/fn
+  (make-sink-effects #/fn
   #/dissect (sink-cexpr-sequence-output-stream-spend! output-stream)
     (list state on-cexpr)
-  #/on-cexpr state cexpr #/fn state
-  #/then
-  #/sink-cexpr-sequence-output-stream #/box #/list state on-cexpr))
+  #/sink-effects-run! #/on-cexpr state cexpr #/fn state
+  #/then #/sink-cexpr-sequence-output-stream #/box #/just #/list
+    state on-cexpr))
 
 (define/contract (sink-text-input-stream-spend! text-input-stream)
   (-> sink-text-input-stream? input-port?)
@@ -723,81 +748,54 @@
     sink-effects?
     (-> sink-text-input-stream? sink-effects?)
     sink-effects?)
-  (sink-effects #/fn
+  (make-sink-effects #/fn
   #/w- in (sink-text-input-stream-spend! text-input-stream)
   #/if (eof-object? #/peek-byte in)
     (begin (close-input-port in)
-    #/dissect on-eof (sink-effects go!)
-    #/go!)
-  #/else #/sink-text-input-stream #/box in))
+    #/sink-effects-run! on-eof)
+  #/sink-effects-run!
+  #/else #/sink-text-input-stream #/box #/just in))
 
 (define/contract
-  (sink-effects-read-whether-at-eof text-input-stream then)
+  (sink-effects-peek-whether-eof text-input-stream then)
   (->
     sink-text-input-stream?
     (-> sink-text-input-stream? boolean? sink-effects?)
     sink-effects?)
-  (sink-effects #/fn
+  (make-sink-effects #/fn
   #/w- in (sink-text-input-stream-spend! text-input-stream)
-  #/then (sink-text-input-stream #/box in)
+  #/sink-effects-run! #/then (sink-text-input-stream #/box #/just in)
     (eof-object? #/peek-byte in)))
 
 (define/contract
-  (sink-effects-read-or-peek-regexp
-    read-or-peek text-input-stream pattern then)
+  (sink-effects-read-regexp text-input-stream pattern then)
   (->
-    (or/c 'read 'peek)
     sink-text-input-stream?
-    (or/c regexp? string?)
+    regexp?
     (-> sink-text-input-stream? (maybe/c sink-located-string?)
       sink-effects?)
     sink-effects?)
-  (sink-effects #/fn
+  (make-sink-effects #/fn
   #/w- in (sink-text-input-stream-spend! text-input-stream)
   #/let-values
     (
       [
         (start-line start-column start-position)
         (port-next-location in)])
-  #/w- regexp-match-read-or-peek
-    (if (eq? 'read read-or-peek)
-      regexp-match
-      regexp-match-peek)
-  #/expect (regexp-match-read-or-peek pattern in) (list bytes)
-    (then (sink-text-input-stream #/box in) #/nothing)
+  #/expect (regexp-try-match pattern in) (list bytes)
+    (sink-effects-run! #/then (sink-text-input-stream #/box #/just in)
+      (nothing))
   #/let-values
     (
       [
         (stop-line stop-column stop-position)
         (port-next-location in)])
-  #/then (sink-text-input-stream #/box in)
+  #/sink-effects-run! #/then (sink-text-input-stream #/box #/just in)
     (just #/sink-located-string #/list
       (list
         (list start-line start-column start-position)
         (bytes->string/utf-8 bytes)
         (list stop-line stop-column stop-position)))))
-
-(define/contract
-  (sink-effects-read-regexp text-input-stream pattern then)
-  (->
-    sink-text-input-stream?
-    (or/c regexp? string?)
-    (-> sink-text-input-stream? (maybe/c sink-located-string?)
-      sink-effects?)
-    sink-effects?)
-  (sink-effects-read-or-peek-regexp 'read
-    text-input-stream pattern then))
-
-(define/contract
-  (sink-effects-peek-regexp text-input-stream pattern then)
-  (->
-    sink-text-input-stream?
-    (or/c regexp? string?)
-    (-> sink-text-input-stream? (maybe/c sink-located-string?)
-      sink-effects?)
-    sink-effects?)
-  (sink-effects-read-or-peek-regexp 'peek
-    text-input-stream pattern then))
 
 (define/contract
   (sink-effects-read-whitespace text-input-stream then)
@@ -861,36 +859,37 @@
   ; TODO: See if we should compile more of these ahead of time rather
   ; than generating regexp code at run time like this.
   (sink-effects-read-regexp text-input-stream
-    (string-append "^" #/regexp-quote str)
+    (pregexp #/string-append "^" #/regexp-quote str)
     then))
 
 (define/contract
-  (sink-effects-peek-maybe-given-racket text-input-stream str then)
+  (sink-effects-peek-whether-given-racket text-input-stream str then)
   (->
     sink-text-input-stream?
     string?
-    (-> sink-text-input-stream? (maybe/c sink-located-string?)
-      sink-effects?)
+    (-> sink-text-input-stream? boolean? sink-effects?)
     sink-effects?)
   ; TODO: See if we should compile more of these ahead of time rather
   ; than generating regexp code at run time like this.
-  (sink-effects-peek-regexp text-input-stream
-    (string-append "^" #/regexp-quote str)
-    then))
+  (sink-effects-read-regexp text-input-stream
+    (pregexp #/string-append "^(?=" (regexp-quote str) ")")
+  #/fn text-input-stream maybe-located-empty-string
+  #/mat maybe-located-empty-string (just located-empty-string)
+    (then text-input-stream #t)
+    (then text-input-stream #f)))
 
 (define/contract
-  (sink-effects-peek-is-closing-bracket text-input-stream then)
+  (sink-effects-peek-whether-closing-bracket text-input-stream then)
   (->
     sink-text-input-stream?
     (-> sink-text-input-stream? boolean? sink-effects?)
     sink-effects?)
-  (sink-effects-peek-maybe-given-racket text-input-stream ")"
-  #/fn text-input-stream maybe-str1
-  #/sink-effects-peek-maybe-given-racket text-input-stream "]"
-  #/fn text-input-stream maybe-str2
-  #/mat (list maybe-str1 maybe-str2) (list (nothing) (nothing))
-    (then text-input-stream #f)
-    (then text-input-stream #t)))
+  (sink-effects-peek-whether-given-racket text-input-stream ")"
+  #/fn text-input-stream it-is
+  #/if it-is
+    (then text-input-stream #t)
+  #/sink-effects-peek-whether-given-racket text-input-stream "]"
+    then))
 
 (define/contract
   (sink-effects-read-op text-input-stream qualify pre-qualify then)
@@ -1054,6 +1053,14 @@
     op-impl unique-name qualify text-input-stream output-stream
     then))
 
+; TODO: See if we should keep this around. We just use it for
+; debugging.
+(define/contract (sink-text-input-stream-summary text-input-stream)
+  (-> sink-text-input-stream? #/or/c eof-object? any/c)
+  (dissect text-input-stream (sink-text-input-stream b)
+  #/dissect (unbox b) (just in)
+  #/peek-string 1000 0 in))
+
 (define/contract
   (sink-effects-read-cexprs
     unique-name qualify text-input-stream output-stream then)
@@ -1086,18 +1093,11 @@
   ;  ]
   
   (begin (assert-can-get-cene-definitions!)
-  ; NOTE: Just about every case here invokes `next` in order to read
-  ; further expressions from the input.
-  #/w-loop next
-    unique-name unique-name
-    qualify qualify
-    text-input-stream text-input-stream
-    output-stream output-stream
   #/sink-effects-read-whitespace text-input-stream
   #/fn text-input-stream whitespace
-  #/sink-effects-read-whether-at-eof text-input-stream
-  #/fn text-input-stream is-at-eof
-  #/if is-at-eof
+  #/sink-effects-peek-whether-eof text-input-stream
+  #/fn text-input-stream is-eof
+  #/if is-eof
     (then unique-name qualify text-input-stream output-stream)
   
   #/sink-effects-read-maybe-given-racket text-input-stream ")"
@@ -1113,61 +1113,61 @@
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     (sink-effects-read-and-run-freestanding-cexpr-op
-      unique-name qualify text-input-stream output-stream next)
+      unique-name qualify text-input-stream output-stream then)
   
   #/sink-effects-read-maybe-given-racket text-input-stream "("
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
-    (w- next
+    (w- then
       (fn unique-name qualify text-input-stream output-stream
         (sink-effects-read-maybe-given-racket text-input-stream ")"
         #/fn text-input-stream maybe-str
         #/expect maybe-str (just _)
-          (cene-err "Encountered a syntax that began with (. and did not end with )")
-        #/next unique-name qualify text-input-stream output-stream))
+          (cene-err "Encountered a syntax that began with ( or (. and did not end with )")
+        #/then unique-name qualify text-input-stream output-stream))
     #/sink-effects-read-maybe-given-racket text-input-stream "."
     #/fn text-input-stream maybe-str
     #/mat maybe-str (just _)
       (sink-effects-read-and-run-bounded-cexpr-op
-        unique-name qualify text-input-stream output-stream next)
+        unique-name qualify text-input-stream output-stream then)
     #/sink-effects-run-nameless-op
-      unique-name qualify text-input-stream output-stream next)
+      unique-name qualify text-input-stream output-stream then)
   
   #/sink-effects-read-maybe-given-racket text-input-stream "["
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
-    (w- next
+    (w- then
       (fn unique-name qualify text-input-stream output-stream
         (sink-effects-read-maybe-given-racket text-input-stream "]"
         #/fn text-input-stream maybe-str
         #/expect maybe-str (just _)
-          (cene-err "Encountered a syntax that began with [. and did not end with ]")
-        #/next unique-name qualify text-input-stream output-stream))
+          (cene-err "Encountered a syntax that began with [ or [. and did not end with ]")
+        #/then unique-name qualify text-input-stream output-stream))
     #/sink-effects-read-maybe-given-racket text-input-stream "."
     #/fn text-input-stream maybe-str
     #/mat maybe-str (just _)
       (sink-effects-read-and-run-bounded-cexpr-op
-        unique-name qualify text-input-stream output-stream next)
+        unique-name qualify text-input-stream output-stream then)
     #/sink-effects-run-nameless-op
-      unique-name qualify text-input-stream output-stream next)
+      unique-name qualify text-input-stream output-stream then)
   
   #/sink-effects-read-maybe-given-racket text-input-stream "/"
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
-    (w- next
+    (w- then
       (fn unique-name qualify text-input-stream output-stream
-        (sink-effects-peek-is-closing-bracket text-input-stream
+        (sink-effects-peek-whether-closing-bracket text-input-stream
         #/fn text-input-stream is-closing-bracket
         #/if (not is-closing-bracket)
           (cene-err "Encountered a syntax that began with /. and did not end at ) or ]")
-        #/next unique-name qualify text-input-stream output-stream))
+        #/then unique-name qualify text-input-stream output-stream))
     #/sink-effects-read-maybe-given-racket text-input-stream "."
     #/fn text-input-stream maybe-str
     #/mat maybe-str (just _)
       (sink-effects-read-and-run-bounded-cexpr-op
-        unique-name qualify text-input-stream output-stream next)
+        unique-name qualify text-input-stream output-stream then)
     #/sink-effects-run-nameless-op
-      unique-name qualify text-input-stream output-stream next)
+      unique-name qualify text-input-stream output-stream then)
   
   #/sink-effects-read-maybe-identifier text-input-stream
   #/fn text-input-stream maybe-identifier
@@ -1176,7 +1176,7 @@
       (sink-cexpr-var #/sink-name-for-string
       #/sink-string-from-located-string identifier)
     #/fn output-stream
-    #/next unique-name text-input-stream output-stream)
+    #/then unique-name text-input-stream output-stream)
   
   #/cene-err "Encountered an unrecognized case of the expression syntax"))
 
@@ -1207,7 +1207,11 @@
     (dissect state (local-state n-left rev-results)
     #/sink-effects-read-whitespace text-input-stream
     #/fn text-input-stream whitespace
-    #/sink-effects-peek-is-closing-bracket text-input-stream
+    #/sink-effects-peek-whether-eof text-input-stream
+    #/fn text-input-stream is-eof
+    #/if is-eof
+      (cene-err "Encountered end of file while expecting a speific number of expressions preceding a closing bracket")
+    #/sink-effects-peek-whether-closing-bracket text-input-stream
     #/fn text-input-stream is-closing-bracket
     #/if is-closing-bracket
       (expect n-left 0
@@ -1215,7 +1219,7 @@
       #/then unique-name qualify text-input-stream
         (reverse rev-results))
     #/w- output-stream
-      (sink-cexpr-sequence-output-stream #/box #/list state
+      (sink-cexpr-sequence-output-stream #/box #/just #/list state
         (fn state cexpr then
           (dissect state (local-state n-left rev-results)
           #/expect (nat->maybe n-left) (just n-left)
@@ -1283,7 +1287,8 @@
   #/sink-effects-claim-and-split unique-name 2
   #/dissectfn (list unique-name-writer unique-name-main)
   #/w- output-stream
-    (sink-cexpr-sequence-output-stream #/box #/list unique-name-writer
+    (sink-cexpr-sequence-output-stream #/box #/just #/list
+      unique-name-writer
       (fn unique-name-writer cexpr then
         ; If we encounter an expression, we evaluate it and call the
         ; result, passing in the current scope information.
@@ -1314,18 +1319,16 @@
   
   (begin (assert-cannot-get-cene-definitions!)
   #/dissect rt (cene-runtime defined-dexes defined-values)
-  #/run-cene-process rt #/with-gets-from-as-process defined-values
+  #/cene-process-run rt #/with-gets-from-as-process defined-values
     (fn
-      (dissect
-        (sink-effects-read-top-level
-          (unsafe:name #/list 'name:unique-name-root)
-          (sink-fn-curried 1 #/fn name
-            (expect (sink-name? name) #t
-              (cene-err "Expected the input to the root qualify function to be a name")
-            #/sink-name-qualify name))
-          (sink-text-input-stream #/box #/open-input-string string))
-        (sink-effects go!)
-      #/go!))
+      (sink-effects-run! #/sink-effects-read-top-level
+        (unsafe:name #/list 'name:unique-name-root)
+        (sink-fn-curried 1 #/fn name
+          (expect (sink-name? name) #t
+            (cene-err "Expected the input to the root qualify function to be a name")
+          #/sink-name-qualify name))
+        (sink-text-input-stream #/box #/just
+        #/open-input-string string)))
     (fn process process)))
 
 ; TODO: See if we'll use this.
@@ -1356,12 +1359,41 @@
     (-> sink-name? sink? void?)
     (def-dexable-value! name (sink-dex #/dex-give-up) value))
   
+  (define/contract (macro-impl body)
+    (->
+      (->
+        name? sink? sink-text-input-stream?
+        sink-cexpr-sequence-output-stream?
+        (->
+          name? sink? sink-text-input-stream?
+          sink-cexpr-sequence-output-stream?
+          sink-effects?)
+        sink-effects?)
+      sink?)
+    (sink-fn-curried 5 #/fn
+      unique-name qualify text-input-stream output-stream then
+      
+      (expect unique-name (sink-name unique-name)
+        (cene-err "Expected unique-name to be a name")
+      #/expect (sink-text-input-stream? text-input-stream) #t
+        (cene-err "Expected text-input-stream to be a text input stream")
+      #/expect (sink-cexpr-sequence-output-stream? output-stream) #t
+        (cene-err "Expected output-stream to be an expression sequence output stream")
+      #/body unique-name qualify text-input-stream output-stream
+      #/fn unique-name qualify text-input-stream output-stream
+      #/w- effects
+        (sink-call then (sink-name unique-name) qualify
+          text-input-stream output-stream)
+      #/expect (sink-effects? effects) #t
+        (cene-err "Expected the return value of a macro's callback to be an effectful computation")
+        effects)))
+  
   ; This creates a macro implementation function that reads a form
   ; body of precisely `n-args` cexprs, then writes a single cexpr
   ; computed from those using `body`.
   (define/contract (macro-impl-specific-number-of-args n-args body)
     (-> natural? (-> (listof sink-cexpr?) sink-cexpr?) sink?)
-    (sink-fn-curried 5 #/fn
+    (macro-impl #/fn
       unique-name qualify text-input-stream output-stream then
       
       (sink-effects-read-specific-number-of-cexprs
@@ -1369,8 +1401,7 @@
       #/fn unique-name qualify text-input-stream args
       #/sink-effects-cexpr-write output-stream (body args)
       #/fn output-stream
-      #/sink-call then
-        unique-name qualify text-input-stream output-stream)))
+      #/then unique-name qualify text-input-stream output-stream)))
   
   (define/contract (def-func! main-tag-string n-args racket-func)
     (-> string? exact-positive-integer? procedure? void?)
@@ -1526,23 +1557,14 @@
     (def-value!
       (sink-name-qualify #/sink-name-for-bounded-cexpr-op
       #/sink-name-for-string #/sink-string name-string)
-      (sink-fn-curried 5 #/fn
-        unique-name qualify text-input-stream
-        output-stream then
+      (macro-impl #/fn
+        unique-name qualify text-input-stream output-stream then
         
-        (expect unique-name (sink-name unique-name)
-          (cene-err "Expected unique-name to be a name")
-        #/expect (sink-text-input-stream? text-input-stream) #t
-          (cene-err "Expected text-input-stream to be a text input stream")
-        #/expect (sink-cexpr-sequence-output-stream? output-stream)
-          #t
-          (cene-err "Expected output-stream to be an expression sequence output stream")
-        #/body unique-name qualify text-input-stream
+        (body unique-name qualify text-input-stream
         #/fn unique-name qualify text-input-stream cexpr
         #/sink-effects-cexpr-write output-stream cexpr
         #/fn output-stream
-        #/sink-call then (sink-name unique-name) qualify
-          text-input-stream output-stream))))
+        #/then unique-name qualify text-input-stream output-stream))))
   
   
   
@@ -1558,19 +1580,11 @@
   ;
   (def-value!
     (sink-name-qualify #/sink-name-for-nameless-bounded-cexpr-op)
-    (sink-fn-curried 5 #/fn
-      unique-name qualify text-input-stream
-      cexpr-sequence-output-stream then
+    (macro-impl #/fn
+      unique-name qualify text-input-stream output-stream then
       
-      (dissect unique-name (sink-name unique-name)
-      #/sink-effects-read-and-run-bounded-cexpr-op
-        unique-name qualify text-input-stream
-        cexpr-sequence-output-stream
-      #/fn
-        unique-name qualify text-input-stream
-        cexpr-sequence-output-stream
-      #/sink-call then (sink-name unique-name) qualify
-        text-input-stream cexpr-sequence-output-stream)))
+      (sink-effects-read-and-run-bounded-cexpr-op
+        unique-name qualify text-input-stream output-stream then)))
   
   ; This binds the freestanding expression reader macro for `=`. This
   ; implementation is a line comment syntax: It consumes all the
@@ -1582,14 +1596,12 @@
   (def-value!
     (sink-name-qualify #/sink-name-for-freestanding-cexpr-op
     #/sink-name-for-string #/sink-string "=")
-    (sink-fn-curried 5 #/fn
-      unique-name qualify text-input-stream
-      cexpr-sequence-output-stream then
+    (macro-impl #/fn
+      unique-name qualify text-input-stream output-stream then
       
       (sink-effects-read-non-line-breaks text-input-stream
       #/fn text-input-stream non-line-breaks
-      #/sink-call then unique-name qualify text-input-stream
-        cexpr-sequence-output-stream)))
+      #/then unique-name qualify text-input-stream output-stream)))
   
   
   ; Miscellaneous
@@ -1701,7 +1713,11 @@
       #/expect maybe-param (just param)
         (sink-effects-read-whitespace text-input-stream
         #/fn text-input-stream whitespace
-        #/sink-effects-peek-is-closing-bracket text-input-stream
+        #/sink-effects-peek-whether-eof text-input-stream
+        #/fn text-input-stream is-eof
+        #/if is-eof
+          (cene-err "Encountered end of file in a fn form")
+        #/sink-effects-peek-whether-closing-bracket text-input-stream
         #/fn text-input-stream is-closing-bracket
         #/w- finish
           (fn unique-name qualify text-input-stream rev-params body
@@ -1918,10 +1934,9 @@
       (cene-err "Expected a to be a string")
     #/expect b (sink-string b)
       (cene-err "Expected b to be a string")
-    #/sink-effects #/fn
-    #/dissect (sink-call then #/sink-string #/string-append a b)
-      (sink-effects go!)
-    #/go!))
+    #/make-sink-effects #/fn
+    #/sink-effects-run!
+    #/sink-call then #/sink-string #/string-append a b))
   
   ; TODO: Implement the macro `str`.
   
@@ -1954,11 +1969,9 @@
       (cene-err "Expected start to be an int no greater than stop")
     #/expect (<= stop #/string-length string) #t
       (cene-err "Expected stop to be an int no greater than the length of string")
-    #/sink-effects #/fn
-    #/dissect
-      (sink-call then #/sink-string #/substring string start stop)
-      (sink-effects go!)
-    #/go!))
+    #/make-sink-effects #/fn
+    #/sink-effects-run!
+    #/sink-call then #/sink-string #/substring string start stop))
   
   
   ; Regexes
