@@ -1058,6 +1058,8 @@
   #/dissect (unbox b) (just in)
   #/peek-string 1000 0 in))
 
+; TODO: For every cexpr read this way, wrap that cexpr in a located
+; cexpr.
 (define/contract
   (sink-effects-read-cexprs
     unique-name qualify text-input-stream output-stream then)
@@ -1170,19 +1172,100 @@
   #/fn text-input-stream maybe-identifier
   #/mat maybe-identifier (just identifier)
     (sink-effects-cexpr-write output-stream
-      (sink-cexpr-var #/sink-name-for-string
+      (sink-cexpr-var #/sink-call qualify #/sink-name-for-string
       #/sink-string-from-located-string identifier)
     #/fn output-stream
     #/then unique-name text-input-stream output-stream)
   
   #/cene-err "Encountered an unrecognized case of the expression syntax"))
 
-; This reads cexprs until it reads precisely `n` of them (raising an
-; error if it gets more, and raising a different error if it notices a
-; closing bracket in between cexpr sequences before it's finished),
-; reads whitespace, verifies the next character is a closing bracket,
-; and then proceeds by calling `then` with updated values and the list
-; of cexprs read this way.
+(struct-easy (id-or-expr-id located-string qualified-name))
+(struct-easy (id-or-expr-expr expr))
+
+; This reads identifiers and cexprs until it gets to a closing
+; bracket.
+(define/contract
+  (sink-effects-read-bounded-ids-and-exprs
+    unique-name qualify text-input-stream then)
+  (->
+    name?
+    sink?
+    sink-text-input-stream?
+    (->
+      name?
+      sink?
+      sink-text-input-stream?
+      (listof #/or/c id-or-expr-id? id-or-expr-expr?)
+      sink-effects?)
+    sink-effects?)
+  (begin (assert-can-get-cene-definitions!)
+  #/w-loop next
+    unique-name unique-name
+    qualify qualify
+    text-input-stream text-input-stream
+    rev-results (list)
+    
+    (sink-effects-read-whitespace text-input-stream
+    #/fn text-input-stream whitespace
+    #/sink-effects-peek-whether-eof text-input-stream
+    #/fn text-input-stream is-eof
+    #/if is-eof
+      (cene-err "Encountered end of file while expecting any number of identifiers and expressions preceding a closing bracket")
+    #/sink-effects-peek-whether-closing-bracket text-input-stream
+    #/fn text-input-stream is-closing-bracket
+    #/if is-closing-bracket
+      (then unique-name qualify text-input-stream
+        (reverse rev-results))
+    #/sink-effects-read-maybe-identifier text-input-stream
+    #/fn text-input-stream maybe-id
+    #/mat maybe-id (just located-string)
+      (w- qualified-name
+        (sink-call qualify #/sink-name-for-string
+        #/sink-string-from-located-string located-string)
+      #/next unique-name qualify text-input-stream
+        (cons (id-or-expr-id located-string qualified-name)
+          rev-results))
+    #/w- output-stream
+      (sink-cexpr-sequence-output-stream #/box #/just #/list
+        rev-results
+        (fn rev-results cexpr then
+          (then #/cons (id-or-expr-expr cexpr) rev-results)))
+    #/sink-effects-read-cexprs
+      unique-name qualify text-input-stream output-stream
+    #/fn unique-name qualify text-input-stream output-stream
+    #/dissect (sink-cexpr-sequence-output-stream-spend! output-stream)
+      (list rev-results on-cexpr)
+    #/next unique-name qualify text-input-stream rev-results)))
+
+(define/contract (id-or-expr->cexpr id-or-expr)
+  (-> (or/c id-or-expr-id? id-or-expr-expr?) sink-cexpr?)
+  (mat id-or-expr (id-or-expr-id located-string qualified-name)
+    ; TODO: Wrap this in a located cexpr.
+    (sink-cexpr-var qualified-name)
+  #/dissect id-or-expr (id-or-expr-expr cexpr)
+    cexpr))
+
+; This reads cexprs until it gets to a closing bracket.
+(define/contract
+  (sink-effects-read-bounded-cexprs
+    unique-name qualify text-input-stream then)
+  (->
+    name?
+    sink?
+    sink-text-input-stream?
+    (-> name? sink? sink-text-input-stream? (listof sink-cexpr?)
+      sink-effects?)
+    sink-effects?)
+  (begin (assert-can-get-cene-definitions!)
+  #/sink-effects-read-bounded-ids-and-exprs
+    unique-name qualify text-input-stream
+  #/fn unique-name qualify text-input-stream ids-and-exprs
+  #/then unique-name qualify text-input-stream
+  #/list-map ids-and-exprs #/fn id-or-expr
+    (id-or-expr->cexpr id-or-expr)))
+
+; This reads cexprs until it gets to a closing bracket, and it
+; verifies that there are precisely `n` of them.
 (define/contract
   (sink-effects-read-specific-number-of-cexprs
     unique-name qualify text-input-stream n then)
@@ -1194,38 +1277,16 @@
     (-> name? sink? sink-text-input-stream? (listof sink-cexpr?)
       sink-effects?)
     sink-effects?)
-  (struct-easy (local-state n-left rev-results))
-  (w-loop next
-    unique-name unique-name
-    qualify qualify
-    text-input-stream text-input-stream
-    state (local-state n #/list)
-    
-    (dissect state (local-state n-left rev-results)
-    #/sink-effects-peek-whether-eof text-input-stream
-    #/fn text-input-stream is-eof
-    #/if is-eof
-      (cene-err "Encountered end of file while expecting a speific number of expressions preceding a closing bracket")
-    #/sink-effects-peek-whether-closing-bracket text-input-stream
-    #/fn text-input-stream is-closing-bracket
-    #/if is-closing-bracket
-      (expect n-left 0
-        (cene-err "Expected another expression")
-      #/then unique-name qualify text-input-stream
-        (reverse rev-results))
-    #/w- output-stream
-      (sink-cexpr-sequence-output-stream #/box #/just #/list state
-        (fn state cexpr then
-          (dissect state (local-state n-left rev-results)
-          #/expect (nat->maybe n-left) (just n-left)
-            (cene-err "Encountered too many expressions")
-          #/then #/local-state n-left #/cons cexpr rev-results)))
-    #/sink-effects-read-cexprs
-      unique-name qualify text-input-stream output-stream
-    #/fn unique-name qualify text-input-stream output-stream
-    #/dissect (sink-cexpr-sequence-output-stream-spend! output-stream)
-      (list state on-cexpr)
-    #/next unique-name qualify text-input-stream state)))
+  (begin (assert-can-get-cene-definitions!)
+  #/sink-effects-read-bounded-cexprs
+    unique-name qualify text-input-stream
+  #/fn unique-name qualify text-input-stream cexprs
+  #/w- actual-n (length cexprs)
+  #/if (< n actual-n)
+    (cene-err "Encountered too many expressions")
+  #/if (< actual-n n)
+    (cene-err "Expected another expression")
+  #/then unique-name qualify text-input-stream cexprs))
 
 (define/contract (core-sink-struct main-tag-string proj-strings)
   (-> string? (listof string?) (and/c pair? #/listof name?))
@@ -1695,61 +1756,17 @@
   ;   cast
   
   (def-macro! "fn" #/fn unique-name qualify text-input-stream then
-    (w-loop next
-      unique-name unique-name
-      qualify qualify
-      text-input-stream text-input-stream
-      rev-params (list)
-      
-      ; TODO: When this calls `sink-effects-read-whitespace`, it
-      ; doesn't allow for the possibility that that whitespace has
-      ; comments in it. Fix that. Our current syntax design makes it
-      ; hard to try to consume a comment without risking consuming a
-      ; few expressions instead, so we'll probably want to make a
-      ; reader that reads a sequence of cexprs *and* qualified names,
-      ; possibly interspersed, until it reaches a closing bracket.
-      ; This will likely replace the use of
-      ; `sink-effects-read-specific-number-of-cexprs` altogether.
-      (sink-effects-read-whitespace text-input-stream
-      #/fn text-input-stream whitespace
-      #/sink-effects-read-maybe-identifier text-input-stream
-      #/fn text-input-stream maybe-param
-      #/expect maybe-param (just param)
-        (sink-effects-read-whitespace text-input-stream
-        #/fn text-input-stream whitespace
-        #/sink-effects-peek-whether-eof text-input-stream
-        #/fn text-input-stream is-eof
-        #/if is-eof
-          (cene-err "Encountered end of file in a fn form")
-        #/sink-effects-peek-whether-closing-bracket text-input-stream
-        #/fn text-input-stream is-closing-bracket
-        #/w- finish
-          (fn unique-name qualify text-input-stream rev-params body
-            (then unique-name qualify text-input-stream
-              (list-foldl body rev-params #/fn body param-entry
-                (dissect param-entry
-                  (list param-located-string param-qualified-name)
-                #/sink-cexpr-opaque-fn param-qualified-name body))))
-        #/if is-closing-bracket
-          (expect rev-params (cons body-entry rev-params)
-            (cene-err "Expected a fn form to have a body expression")
-          #/dissect body-entry
-            (list body-located-string body-qualified-name)
-          #/finish unique-name qualify text-input-stream rev-params
-          ; TODO: Wrap this in a located cexpr.
-          #/sink-cexpr-var body-qualified-name)
-          (sink-effects-read-specific-number-of-cexprs
-            unique-name qualify text-input-stream 1
-          #/fn unique-name qualify text-input-stream bodies
-          #/dissect bodies (list body)
-          #/finish
-            unique-name qualify text-input-stream rev-params body))
-      #/next unique-name qualify text-input-stream
-        (cons
-          (list param
-            (sink-call qualify #/sink-name-for-string
-            #/sink-string-from-located-string param))
-          rev-params))))
+    (sink-effects-read-bounded-ids-and-exprs
+      unique-name qualify text-input-stream
+    #/fn unique-name qualify text-input-stream args
+    #/expect (reverse args) (cons body rev-params)
+      (cene-err "Expected a fn form to have a body expression")
+    #/then unique-name qualify text-input-stream
+    #/list-foldl (id-or-expr->cexpr body) rev-params #/fn body param
+      (expect param
+        (id-or-expr-id param-located-string param-qualified-name)
+        (cene-err "Expected every parameter of a fn form to be an identifier")
+      #/sink-cexpr-opaque-fn param-qualified-name body)))
   
   
   ; Tables
