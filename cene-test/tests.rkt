@@ -23,7 +23,7 @@
 
 (require #/only-in lathe-comforts dissect expect)
 
-(require cene/private)
+(require cene)
 
 ; (We provide nothing from this module.)
 

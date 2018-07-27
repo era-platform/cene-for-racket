@@ -42,14 +42,7 @@
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe name)
 
 
-; TODO: Document these exports.
-(provide #/rename-out [-cene-runtime? cene-runtime?])
-(provide cene-run-string)
-(provide cene-runtime-essentials)
-
-; TODO: See if we really want to provide these exports at all. If we
-; do, document them.
-(provide exn:fail:cene)
+(provide #/all-defined-out)
 
 
 
