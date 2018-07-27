@@ -1,8 +1,9 @@
 #lang parendown racket/base
 
-; cene
+; cene/private
 ;
-; A Racket library with entrypoints to the Cene programming language.
+; A Racket library with entrypoints to the Cene programming language
+; (implementation details).
 
 ;   Copyright 2018 The Era Authors
 ;
