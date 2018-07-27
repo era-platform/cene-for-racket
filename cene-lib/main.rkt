@@ -20,6 +20,7 @@
 
 
 (require cene/private)
+(require #/only-in cene/private/essentials cene-runtime-essentials)
 
 
 ; TODO: Document these exports.
