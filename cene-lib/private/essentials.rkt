@@ -21,23 +21,199 @@
 
 
 (require #/for-syntax racket/base)
+(require #/for-syntax #/only-in syntax/parse expr id nat syntax-parse)
 
-(require #/only-in racket/contract/base -> listof)
+
+(require #/only-in racket/contract/base -> ->i list/c listof)
 (require #/only-in racket/contract/region define/contract)
 (require #/only-in racket/math natural?)
+(require #/only-in syntax/parse/define define-simple-macro)
 
-(require #/only-in lathe-comforts dissect expect fn mat w-)
-(require #/only-in lathe-comforts/list list-foldl list-map)
-(require #/only-in lathe-comforts/maybe just nothing)
+(require #/only-in lathe-comforts
+  dissect dissectfn expect fn mat w- w-loop)
+(require #/only-in lathe-comforts/list list-all list-foldl list-map)
+(require #/only-in lathe-comforts/maybe just maybe-bind nothing)
+(require #/only-in lathe-comforts/struct struct-easy)
 
 (require #/only-in effection/order
-  dex-give-up dex-dex dex-name name? table-empty table-shadow)
+  compare-by-dex dex? dex-give-up dex-dex dex-name in-dex? name?
+  name-of ordering-eq table-empty table-shadow)
+(require #/prefix-in unsafe: #/only-in effection/order/unsafe
+  autoname-dex gen:dex-internals name table->sorted-list)
 
 (require cene/private)
 
 
 (provide cene-runtime-essentials)
 
+
+
+; TODO: We used this in `effection/order/base`, and we're using it
+; again here. See if it should be an export of Effection.
+(define-simple-macro (maybe-ordering-or first:expr second:expr)
+  (w- result first
+  #/expect result (just #/ordering-eq) result
+    second))
+
+; TODO: We used this in `effection/order/base`, and we're using it
+; again here. See if it should be an export of Effection.
+(define (maybe-compare-aligned-lists as bs maybe-compare-elems)
+  (expect (list as bs) (list (cons a as) (cons b bs))
+    (just #/ordering-eq)
+  #/maybe-ordering-or (maybe-compare-elems a b)
+  #/maybe-compare-aligned-lists as bs maybe-compare-elems))
+
+
+; Sorts `proj-tags` and `vals` to put them in a normalized order.
+(define/contract (normalize-proj-tags-and-vals proj-tags vals)
+  (->i ([proj-tags (listof name?)] [vals list?])
+    #:pre (proj-tags vals) (= (length proj-tags) (length vals))
+    [_ (list/c (listof name?) list?)])
+  (w- entries
+    (unsafe:table->sorted-list
+    #/list-foldl (table-empty) (map list proj-tags vals)
+    #/fn tab entry
+      (dissect entry (list proj-tag field-name-rep)
+      #/table-shadow proj-tag (just field-name-rep) tab))
+  #/list
+    (list-map entries #/dissectfn (list proj-tag val) proj-tag)
+    (list-map entries #/dissectfn (list proj-tag val) val)))
+
+(define/contract (normalize-tags-and-vals tags vals)
+  (->i ([tags (listof name?)] [vals list?])
+    #:pre (tags vals) (= (length tags) (add1 #/length vals))
+    [_ (list/c (listof name?) list?)])
+  (dissect tags (cons main-tag proj-tags)
+  #/dissect (normalize-proj-tags-and-vals proj-tags vals)
+    (list proj-tags vals)
+  #/list (cons main-tag proj-tags) vals))
+
+; TODO: Use this. We'll want Cene code to be able to make cexprs that
+; construct these values.
+;
+; The JavaScript version of Cene makes this functionality possible
+; using a combination of `cexpr-cline-struct`, `cline-by-dex`, and
+; `dex-by-cline`. We will probably be offering `get-dex-by-cline` (as
+; provided by Effection) instead of `dex-by-cline`, but the same
+; circuitous combination would work.
+;
+; Nevertheless, we should probably just offer a more direct
+; `cexpr-dex-struct` operation (along with a `dex-struct` operation
+; that compiles to those cexprs).
+;
+(struct-easy (dex-internals-sink-struct tags fields)
+  (#:guard-easy
+    (unless (and (list? tags) (list-all tags #/fn tag #/name? tag))
+      (error "Expected tags to be a list of names"))
+    (unless
+      (and
+        (list? fields)
+        (list-all fields #/fn dex-field #/dex? dex-field))
+      (error "Expected fields to be a list of dexes"))
+    (unless (= (length tags) (add1 #/length fields))
+      (error "Expected tags to have one more element than fields")))
+  
+  #:other
+  
+  #:methods unsafe:gen:dex-internals
+  [
+    
+    (define (dex-internals-tag this)
+      'tag:dex-sink-struct)
+    
+    (define (dex-internals-autoname this)
+      (dissect this (dex-internals-sink-struct tags fields)
+      #/dissect (normalize-tags-and-vals tags fields)
+        (list tags fields)
+      #/list* 'tag:dex-sink-struct tags
+      #/list-map fields #/fn dex-field
+        (unsafe:autoname-dex dex-field)))
+    
+    (define (dex-internals-autodex this other)
+      (dissect this (dex-internals-sink-struct a-tags a-fields)
+      #/dissect other (dex-internals-sink-struct b-tags b-fields)
+      #/dissect (normalize-tags-and-vals a-tags a-fields)
+        (list a-tags a-fields)
+      #/dissect (normalize-tags-and-vals b-tags b-fields)
+        (list b-tags b-fields)
+      #/maybe-ordering-or
+        (compare-by-dex (dex-name)
+          (unsafe:name
+          #/list-map a-tags #/dissectfn (unsafe:name tag) tag)
+          (unsafe:name
+          #/list-map b-tags #/dissectfn (unsafe:name tag) tag))
+      #/maybe-compare-aligned-lists a-fields b-fields
+      #/fn a-dex-field b-dex-field
+        (compare-by-dex (dex-dex) a-dex-field b-dex-field)))
+    
+    (define (dex-internals-in? this x)
+      (dissect this (dex-internals-sink-struct tags fields)
+      #/expect (unmake-sink-struct-maybe tags x) (just field-vals) #f
+      #/w-loop next field-dexes fields field-vals field-vals
+        (expect field-dexes (cons dex-field field-dexes) #t
+        #/dissect field-vals (cons field-val field-vals)
+        
+        ; We do a tail call if we can.
+        #/mat field-dexes (list) (in-dex? dex-field field-val)
+        
+        #/and (in-dex? dex-field field-val)
+        #/next field-dexes field-vals)))
+    
+    (define (dex-internals-name-of this x)
+      (dissect this (dex-internals-sink-struct tags fields)
+      #/maybe-bind (unmake-sink-struct-maybe tags x) #/fn field-vals
+      #/w-loop next
+        field-dexes fields
+        field-vals field-vals
+        rev-result (list)
+        
+        (expect field-dexes (cons dex-field field-dexes)
+          (dissect tags (cons (unsafe:name main-tag-rep) proj-tags)
+          #/dissect
+            (normalize-proj-tags-and-vals
+              proj-tags (reverse rev-result))
+            (list proj-tags field-name-reps)
+          #/just #/unsafe:name
+          #/list* 'name:sink-struct
+            (cons main-tag-rep
+            #/list-map proj-tags
+            #/dissectfn (unsafe:name proj-tag-rep) proj-tag-rep)
+            field-name-reps)
+        #/dissect field-vals (cons field-val field-vals)
+        #/maybe-bind (name-of dex-field field-val)
+        #/dissectfn (unsafe:name rep)
+        #/next field-dexes field-vals #/cons rep rev-result)))
+    
+    (define (dex-internals-compare this a b)
+      (dissect this (dex-internals-sink-struct tags fields)
+      #/maybe-bind (unmake-sink-struct-maybe tags a) #/fn as
+      #/maybe-bind (unmake-sink-struct-maybe tags b) #/fn bs
+      #/w-loop next as as bs bs fields fields
+        (expect fields (cons dex-field fields) (just #/ordering-eq)
+        #/dissect as (cons a as)
+        #/dissect bs (cons b bs)
+        
+        ; We do a tail call if we can.
+        #/mat fields (list) (compare-by-dex dex-field a b)
+        
+        #/maybe-bind (compare-by-dex dex-field a b) #/fn result
+        #/expect result (ordering-eq)
+          ; We have a potential result to use, but first we check that
+          ; the rest of the field values belong to their respective
+          ; dexes' domains. If they don't, this structure instance is
+          ; not part part of this dex's domain, so the result is
+          ; `(nothing)`.
+          (w-loop next as as bs bs fields fields
+            (expect fields (cons dex-field fields) (just result)
+            #/dissect as (cons a as)
+            #/dissect bs (cons b bs)
+            #/expect
+              (and (in-dex? dex-field a) (in-dex? dex-field b))
+              #t
+              (nothing)
+            #/next as bs fields))
+        #/next as bs fields)))
+  ])
 
 
 ; TODO: Use this in some kind of CLI entrypoint or something.
