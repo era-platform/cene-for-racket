@@ -26,26 +26,35 @@
 
 (require #/only-in racket/contract/base -> ->i list/c listof)
 (require #/only-in racket/contract/region define/contract)
+(require #/only-in racket/generic define/generic)
 (require #/only-in racket/math natural?)
 (require #/only-in syntax/parse/define define-simple-macro)
 
 (require #/only-in lathe-comforts
   dissect dissectfn expect fn mat w- w-loop)
-(require #/only-in lathe-comforts/list list-all list-foldl list-map)
-(require #/only-in lathe-comforts/maybe just maybe-bind nothing)
+(require #/only-in lathe-comforts/list
+  list-all list-any list-foldl list-map)
+(require #/only-in lathe-comforts/maybe
+  just maybe-bind maybe/c nothing)
 (require #/only-in lathe-comforts/struct struct-easy)
 
 (require #/only-in effection/order
   compare-by-dex dex? dex-give-up dex-dex dex-name in-dex? name?
-  name-of ordering-eq table-empty table-shadow)
+  name-of ordering-eq table-empty table-get table-shadow)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe
-  autoname-dex gen:dex-internals name table->sorted-list)
+  autoname-dex dex gen:dex-internals name table->sorted-list)
 
 (require cene/private)
 
 
 (provide cene-runtime-essentials)
 
+
+
+(define s-nil (core-sink-struct "nil" #/list))
+(define s-cons (core-sink-struct "cons" #/list "first" "rest"))
+
+(define s-assoc (core-sink-struct "assoc" #/list "key" "val"))
 
 
 ; TODO: We used this in `effection/order/base`, and we're using it
@@ -62,6 +71,16 @@
     (just #/ordering-eq)
   #/maybe-ordering-or (maybe-compare-elems a b)
   #/maybe-compare-aligned-lists as bs maybe-compare-elems))
+
+(define/contract (sink-list->maybe-racket sink-list)
+  (-> sink? #/maybe/c list?)
+  (mat (unmake-sink-struct-maybe s-nil sink-list) (just #/list)
+    (just #/list)
+  #/mat (unmake-sink-struct-maybe s-cons sink-list)
+    (just #/list first rest)
+    (maybe-bind (sink-list->maybe-racket rest) #/fn rest
+    #/just #/cons first rest)
+  #/nothing))
 
 
 ; Sorts `proj-tags` and `vals` to put them in a normalized order.
@@ -88,19 +107,6 @@
     (list proj-tags vals)
   #/list (cons main-tag proj-tags) vals))
 
-; TODO: Use this. We'll want Cene code to be able to make cexprs that
-; construct these values.
-;
-; The JavaScript version of Cene makes this functionality possible
-; using a combination of `cexpr-cline-struct`, `cline-by-dex`, and
-; `dex-by-cline`. We will probably be offering `get-dex-by-cline` (as
-; provided by Effection) instead of `dex-by-cline`, but the same
-; circuitous combination would work.
-;
-; Nevertheless, we should probably just offer a more direct
-; `cexpr-dex-struct` operation (along with a `dex-struct` operation
-; that compiles to those cexprs).
-;
 (struct-easy (dex-internals-sink-struct tags fields)
   (#:guard-easy
     (unless (and (list? tags) (list-all tags #/fn tag #/name? tag))
@@ -213,6 +219,32 @@
               (nothing)
             #/next as bs fields))
         #/next as bs fields)))
+  ])
+
+(struct-easy (cexpr-dex-struct main-tag-name projs)
+  
+  #:other
+  
+  #:methods gen:cexpr
+  [
+    (define/generic -has-free-vars? cexpr-has-free-vars?)
+    (define/generic -eval cexpr-eval)
+    
+    (define (cexpr-has-free-vars? this env)
+      (expect this (cexpr-dex-struct main-tag-name projs)
+        (error "Expected this to be a cexpr-dex-struct")
+      #/list-any projs #/dissectfn (list proj-name proj-cexpr)
+        (-has-free-vars? proj-cexpr env)))
+    
+    (define (cexpr-eval this env)
+      (expect this (cexpr-dex-struct main-tag-name projs)
+        (error "Expected this to be a cexpr-dex-struct")
+      #/sink-dex #/unsafe:dex #/dex-internals-sink-struct
+        (cons main-tag-name
+        #/list-map projs #/dissectfn (list proj-name proj-cexpr)
+          proj-name)
+      #/list-map projs #/dissectfn (list proj-name proj-cexpr)
+        (-eval proj-cexpr env)))
   ])
 
 
@@ -560,6 +592,40 @@
   
   
   ; Structs and function calls
+  
+  ; NOTE: The JavaScript version of Cene makes this functionality
+  ; possible using a combination of `cexpr-cline-struct`,
+  ; `cline-by-dex`, and `dex-by-cline`. We will probably be offering
+  ; `get-dex-by-cline` (as provided by Effection) instead of
+  ; `dex-by-cline`, but the same circuitous combination would work.
+  ; Nevertheless, we provide this operation directly.
+  (def-func! "cexpr-dex-struct" main-tag-name projections
+    (expect main-tag-name (sink-name main-tag-name)
+      (cene-err "Expected main-tag-name to be a name")
+    #/expect (sink-list->maybe-racket projections) (just projections)
+      (cene-err "Expected projections to be a list made up of cons and nil values")
+    #/w- projections
+      (list-map projections #/fn projection
+        (expect (unmake-sink-struct-maybe s-assoc projection)
+          (just #/list k v)
+          (cene-err "Expected projections to be a list of assoc values")
+        #/expect k (sink-name k)
+          (cene-err "Expected projections to be an association list with names as keys")
+        #/expect v (sink-cexpr v)
+          (cene-err "Expected projections to be an association list with cexprs as values")
+        #/list k v))
+    #/begin
+      (list-foldl (table-empty) projections #/fn tab projection
+        (dissect projection (list k v)
+        #/expect (table-get k tab) (nothing)
+          (cene-err "Expected projections to be an association list with mutually unique names as keys")
+        #/table-shadow k (just #/trivial) tab))
+    #/sink-cexpr #/cexpr-dex-struct main-tag-name projections))
+  
+  ; TODO: Implement a `dex-struct` macro that compiles to a
+  ; `cexpr-dex-struct` expression. Perhaps this can be defined on the
+  ; Cene side (in a prelude) rather than implemented in Racket, but
+  ; there's no harm in implementing it in Racket at first.
   
   ; TODO: Consider implementing the following.
   ;

@@ -23,8 +23,9 @@
 (require #/for-syntax racket/base)
 
 (require #/only-in racket/contract/base
-  -> ->* and/c any/c contract? list/c listof not/c or/c parameter/c)
+  -> ->* and/c any/c contract? list/c listof or/c parameter/c)
 (require #/only-in racket/contract/region define/contract)
+(require #/only-in racket/generic define/generic define-generics)
 (require #/only-in racket/math natural?)
 (require #/only-in syntax/parse/define define-simple-macro)
 
@@ -378,28 +379,152 @@
       rev-next-processes)
   #/error "Encountered an unrecognized kind of Cene process"))
 
-(struct-easy (cexpr-var name))
-(struct-easy (cexpr-native result))
-(struct-easy (cexpr-struct main-tag-name projs))
-(struct-easy (cexpr-call func arg))
-(struct-easy (cexpr-opaque-fn param body))
-(struct-easy (cexpr-let bindings body))
+(define-generics cexpr
+  (cexpr-has-free-vars? cexpr env)
+  (cexpr-eval cexpr env))
 
-(define/contract (cexpr? v)
-  (-> any/c boolean?)
+(struct-easy (cexpr-var name)
   
-  ; TODO: Add more cexpr constructors. The JavaScript version of Cene
-  ; hsa five more than we do:
-  ;
-  ;   located mat cline-struct merge-struct fuse-struct err
-  ;
-  (or
-    (cexpr-var? v)
-    (cexpr-native? v)
-    (cexpr-struct? v)
-    (cexpr-call? v)
-    (cexpr-opaque-fn? v)
-    (cexpr-let? v)))
+  #:other
+  
+  #:methods gen:cexpr
+  [
+    (define (cexpr-has-free-vars? this env)
+      (expect this (cexpr-var name)
+        (error "Expected this to be a cexpr-var")
+      #/expect (table-get name env) (just _)
+        #t
+        #f))
+    
+    (define (cexpr-eval this env)
+      (expect this (cexpr-var name)
+        (error "Expected this to be a cexpr-var")
+      #/expect (table-get name env) (just value)
+        (error "Tried to eval a cexpr that had a free variable")
+        value))
+  ])
+
+(struct-easy (cexpr-native result)
+  
+  #:other
+  
+  #:methods gen:cexpr
+  [
+    (define (cexpr-has-free-vars? this env)
+      (expect this (cexpr-native result)
+        (error "Expected this to be a cexpr-native")
+        #f))
+    
+    (define (cexpr-eval this env)
+      (expect this (cexpr-native result)
+        (error "Expected this to be a cexpr-native")
+        result))
+  ])
+
+(struct-easy (cexpr-struct main-tag-name projs)
+  
+  #:other
+  
+  #:methods gen:cexpr
+  [
+    (define/generic -has-free-vars? cexpr-has-free-vars?)
+    (define/generic -eval cexpr-eval)
+    
+    (define (cexpr-has-free-vars? this env)
+      (expect this (cexpr-struct main-tag-name projs)
+        (error "Expected this to be a cexpr-struct")
+      #/list-any projs #/dissectfn (list proj-name proj-cexpr)
+        (-has-free-vars? proj-cexpr env)))
+    
+    (define (cexpr-eval this env)
+      (expect this (cexpr-struct main-tag-name projs)
+        (error "Expected this to be a cexpr-struct")
+      #/make-sink-struct
+        (cons main-tag-name
+        #/list-map projs #/dissectfn (list proj-name proj-cexpr)
+          proj-name)
+      #/list-map projs #/dissectfn (list proj-name proj-cexpr)
+        (-eval proj-cexpr env)))
+  ])
+
+(struct-easy (cexpr-call func arg)
+  
+  #:other
+  
+  #:methods gen:cexpr
+  [
+    (define/generic -has-free-vars? cexpr-has-free-vars?)
+    (define/generic -eval cexpr-eval)
+    
+    (define (cexpr-has-free-vars? this env)
+      (expect this (cexpr-call func arg)
+        (error "Expected this to be a cexpr-call")
+      #/or (-has-free-vars? func env) (-has-free-vars? arg env)))
+    
+    (define (cexpr-eval this env)
+      (expect this (cexpr-call func arg)
+        (error "Expected this to be a cexpr-call")
+      #/sink-call (-eval func env) (-eval arg env)))
+  ])
+
+(struct-easy (cexpr-opaque-fn param body)
+  
+  #:other
+  
+  #:methods gen:cexpr
+  [
+    (define/generic -has-free-vars? cexpr-has-free-vars?)
+    (define/generic -eval cexpr-eval)
+    
+    (define (cexpr-has-free-vars? this env)
+      (expect this (cexpr-opaque-fn param body)
+        (error "Expected this to be a cexpr-opaque-fn")
+      #/-has-free-vars? body
+      #/table-shadow param (just #/trivial) env))
+    
+    (define (cexpr-eval this env)
+      (expect this (cexpr-opaque-fn param body)
+        (error "Expected this to be a cexpr-opaque-fn")
+      #/sink-opaque-fn #/fn arg
+        (-eval body #/table-shadow param (just arg) env)))
+  ])
+
+(struct-easy (cexpr-let bindings body)
+  
+  #:other
+  
+  #:methods gen:cexpr
+  [
+    (define/generic -has-free-vars? cexpr-has-free-vars?)
+    (define/generic -eval cexpr-eval)
+    
+    (define (cexpr-has-free-vars? this env)
+      (expect this (cexpr-let bindings body)
+        (error "Expected this to be a cexpr-let")
+      #/or
+        (list-any bindings #/dissectfn (list var val)
+          (-has-free-vars? val env))
+      #/-has-free-vars? body
+      #/list-foldl env bindings #/fn env binding
+        (dissect binding (list var val)
+        #/table-shadow var (just #/trivial) env)))
+    
+    (define (cexpr-eval this env)
+      (expect this (cexpr-let bindings body)
+        (error "Expected this to be a cexpr-let")
+      #/-eval body
+      #/list-foldl env
+        (list-map bindings #/dissectfn (list var val)
+          (list var #/-eval val env))
+      #/fn env binding
+        (dissect binding (list var val)
+        #/table-shadow var (just val) env)))
+  ])
+
+; TODO: Add more cexpr instances. The JavaScript version of Cene has
+; five more than we do:
+;
+;   located mat cline-struct merge-struct fuse-struct err
 
 ; NOTE: The only purpose of this is to help track down a common kind
 ; of error where the result of `go!` is mistakenly a `sink-effects?`
@@ -436,68 +561,6 @@
   (sink-effects-merge-list effects))
 
 (struct exn:fail:cene exn:fail (clamor))
-
-(define/contract (cexpr-has-free-vars? cexpr)
-  (-> sink-cexpr? boolean?)
-  (dissect cexpr (sink-cexpr cexpr)
-  #/w-loop recur bound-vars (table-empty) cexpr cexpr
-  #/mat cexpr (cexpr-var name)
-    (expect (table-get name bound-vars) (just _)
-      #t
-      #f)
-  #/mat cexpr (cexpr-native result)
-    #f
-  #/mat cexpr (cexpr-struct main-tag-name projs)
-    (list-any projs #/dissectfn (list proj-name proj-cexpr)
-      (recur bound-vars proj-cexpr))
-  #/mat cexpr (cexpr-call func arg)
-    (or (recur bound-vars func) (recur bound-vars arg))
-  #/mat cexpr (cexpr-opaque-fn param body)
-    (recur (table-shadow param (just #/trivial) bound-vars) body)
-  #/mat cexpr (cexpr-let bindings body)
-    (or
-      (list-any bindings #/dissectfn (list var val)
-        (recur bound-vars val))
-    #/recur
-      (list-foldl bound-vars bindings #/fn bound-vars binding
-        (dissect binding (list var val)
-        #/table-shadow var (just #/trivial) bound-vars))
-      body)
-  #/error "Encountered an unrecognized kind of cexpr"))
-
-(define/contract (cexpr-eval cexpr)
-  (-> (and/c sink-cexpr? #/not/c cexpr-has-free-vars?) sink?)
-  (begin (assert-can-get-cene-definitions!)
-  #/dissect cexpr (sink-cexpr cexpr)
-  #/w-loop recur bound-vars (table-empty) cexpr cexpr
-  #/mat cexpr (cexpr-var name)
-    (expect (table-get name bound-vars) (just value)
-      (error "Encountered a cexpr with free vars after already checking for free vars")
-      value)
-  #/mat cexpr (cexpr-native result)
-    result
-  #/mat cexpr (cexpr-struct main-tag-name projs)
-    (make-sink-struct
-      (cons main-tag-name
-      #/list-map projs #/dissectfn (list proj-name proj-cexpr)
-        proj-name)
-    #/list-map projs #/dissectfn (list proj-name proj-cexpr)
-      (recur bound-vars proj-cexpr))
-  #/mat cexpr (cexpr-call func arg)
-    (sink-call (recur bound-vars func) (recur bound-vars arg))
-  #/mat cexpr (cexpr-opaque-fn param body)
-    (sink-opaque-fn #/fn arg
-      (recur (table-shadow param (just arg) bound-vars) body))
-  #/mat cexpr (cexpr-let bindings body)
-    (recur
-      (list-foldl bound-vars
-        (list-map bindings #/dissectfn (list var val)
-          (list var #/recur bound-vars val))
-      #/fn bound-vars binding
-        (dissect binding (list var val)
-        #/table-shadow var (just val) bound-vars))
-      body)
-  #/error "Encountered an unrecognized kind of cexpr"))
 
 (define/contract (sink-cexpr-var name)
   (-> sink-name? sink-cexpr?)
@@ -632,22 +695,27 @@
   #/mat func (sink-struct tags projs)
     (dissect (list-map tags #/fn tag #/sink-name tag)
       (cons main-tag proj-tags)
+    
+    ; TODO: We should probably optimize this lookup, perhaps by
+    ; using memoization. If and when we do, we should profile it to
+    ; make sure it's a worthwhile optimization.
+    #/w- body
+      (cene-definition-get #/sink-name-for-function-implementation
+        main-tag
+        (list-foldr proj-tags (sink-table #/table-empty)
+        #/fn proj-tag rest
+          (sink-table-put-maybe rest proj-tag
+          ; TODO: See if there's a way we can either stop depending on
+          ; `s-trivial` here or move this code after the place where
+          ; `s-trivial` is defined.
+          #/just #/make-sink-struct s-trivial #/list)))
+    #/expect body (sink-cexpr body)
+      (cene-err "Tried to call a struct for which the function implementation was not an expression")
+    #/expect (cexpr-has-free-vars? body #/table-empty) #f
+      (cene-err "Tried to call a struct for which the function implementation had free variables")
+    
     #/sink-call-binary
-      (sink-call-binary
-        ; TODO: We should probably optimize this lookup, perhaps by
-        ; using memoization. If and when we do, we should profile it
-        ; to make sure it's a worthwhile optimization.
-        (cexpr-eval
-        #/cene-definition-get #/sink-name-for-function-implementation
-          main-tag
-          (list-foldr proj-tags (sink-table #/table-empty)
-          #/fn proj-tag rest
-            (sink-table-put-maybe rest proj-tag
-            ; TODO: See if there's a way we can either stop depending
-            ; on `s-trivial` here or move this code after the place
-            ; where `s-trivial` is defined.
-            #/just #/make-sink-struct s-trivial #/list)))
-        func)
+      (sink-call-binary (cexpr-eval body #/table-empty) func)
       arg)
   #/cene-err "Tried to call a value that wasn't an opaque function or a struct"))
 
@@ -1344,10 +1412,10 @@
         ; result, passing in the current scope information.
         (sink-effects-claim-and-split unique-name-writer 2
         #/dissectfn (list unique-name-first unique-name-rest)
-        #/expect (cexpr-has-free-vars? cexpr) #f
+        #/expect (cexpr-has-free-vars? cexpr #/table-empty) #f
           (cene-err "Encountered a top-level expression with at least one free variable")
         #/w- effects
-          (sink-call (cexpr-eval cexpr)
+          (sink-call (cexpr-eval cexpr #/table-empty)
             (sink-name unique-name-first)
             qualify)
         #/expect (sink-effects? effects) #t
