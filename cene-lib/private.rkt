@@ -1412,6 +1412,10 @@
         ; result, passing in the current scope information.
         (sink-effects-claim-and-split unique-name-writer 2
         #/dissectfn (list unique-name-first unique-name-rest)
+        #/expect cexpr (sink-cexpr cexpr)
+          ; TODO: Test that we can actually get this error. We might
+          ; already be checking for this condition elsewhere.
+          (cene-err "Encountered a top-level expression that compiled to a non-expression value")
         #/expect (cexpr-has-free-vars? cexpr #/table-empty) #f
           (cene-err "Encountered a top-level expression with at least one free variable")
         #/w- effects
