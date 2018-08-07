@@ -74,12 +74,17 @@
 
 (define/contract (sink-list->maybe-racket sink-list)
   (-> sink? #/maybe/c list?)
-  (mat (unmake-sink-struct-maybe s-nil sink-list) (just #/list)
-    (just #/list)
+  ; NOTE: We could call `sink-list->maybe-racket` itself recursively,
+  ; but we explicitly accumulate elements using a parameter
+  ; (`rev-racket-list`) of a recursive helper function (`next`) so
+  ; that we keep the call stack at a constant size throughout the list
+  ; traversal.
+  (w-loop next sink-list sink-list rev-racket-list (list)
+  #/mat (unmake-sink-struct-maybe s-nil sink-list) (just #/list)
+    (just #/reverse rev-racket-list)
   #/mat (unmake-sink-struct-maybe s-cons sink-list)
-    (just #/list first rest)
-    (maybe-bind (sink-list->maybe-racket rest) #/fn rest
-    #/just #/cons first rest)
+    (just #/list elem sink-list)
+    (next sink-list #/cons elem rev-racket-list)
   #/nothing))
 
 
