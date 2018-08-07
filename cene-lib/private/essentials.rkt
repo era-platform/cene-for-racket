@@ -281,7 +281,8 @@
       #/fn output-stream
       #/then unique-name qualify text-input-stream output-stream)))
   
-  (define/contract (def-func! main-tag-string n-args racket-func)
+  (define/contract
+    (def-func-verbose! main-tag-string n-args racket-func)
     (-> string? exact-positive-integer? procedure? void?)
     (w- main-tag-name
       (sink-name-for-string #/sink-string main-tag-string)
@@ -323,6 +324,14 @@
           (sink-fn-curried n-args racket-func)))
       
       ))
+  
+  (define-syntax (def-func! stx)
+    (syntax-parse stx #/
+      (_ main-tag-string:expr param:id ... body:expr)
+      #`(def-func-verbose! main-tag-string
+          '#,(length (syntax->list #'(param ...)))
+          (fn param ...
+            body))))
   
   (define/contract (def-nullary-func! main-tag-string result)
     (-> string? sink? void?)
@@ -501,7 +510,7 @@
   ; Errors and conscience
   
   ; TODO: Test this.
-  (def-func! "follow-heart" 1 #/fn clamor
+  (def-func! "follow-heart" clamor
     (raise-cene-err (current-continuation-marks) clamor))
   
   (def-data-struct! "clamor-err" #/list "message")
@@ -514,7 +523,7 @@
   ; TODO: Implement this.
   (def-nullary-func! "dex-cline" (sink-dex 'TODO))
   
-  (def-func! "cline-by-dex" 1 #/fn dex
+  (def-func! "cline-by-dex" dex
     ; TODO: Implement this.
     'TODO)
   
@@ -593,21 +602,21 @@
   
   ; Tables
   
-  (def-func! "dex-table" 1 #/fn dex-val
+  (def-func! "dex-table" dex-val
     ; TODO: Implement this.
     (sink-dex 'TODO))
   
-  (def-func! "merge-table" 1 #/fn merge-val
+  (def-func! "merge-table" merge-val
     ; TODO: Implement this.
     'TODO)
   
-  (def-func! "fuse-table" 1 #/fn fuse-val
+  (def-func! "fuse-table" fuse-val
     ; TODO: Implement this.
     'TODO)
   
   (def-nullary-func! "table-empty" (sink-table #/table-empty))
   
-  (def-func! "table-shadow" 3 #/fn key maybe-val table
+  (def-func! "table-shadow" key maybe-val table
     (expect (sink-name? key) #t
       (cene-err "Expected key to be a name")
     #/expect (sink-table? table) #t
@@ -619,7 +628,7 @@
       (sink-table-put-maybe table key #/just val)
     #/cene-err "Expected maybe-val to be a nothing or a just"))
   
-  (def-func! "table-get" 2 #/fn key table
+  (def-func! "table-get" key table
     (expect (sink-name? key) #t
       (cene-err "Expected key to be a name")
     #/expect (sink-table? table) #t
@@ -629,11 +638,11 @@
       (make-sink-struct s-nothing #/list)
     #/make-sink-struct s-just #/list result))
   
-  (def-func! "table-map-fuse" 3 #/fn table fuse key-to-operand
+  (def-func! "table-map-fuse" table fuse key-to-operand
     ; TODO: Implement this.
     'TODO)
   
-  (def-func! "table-sort" 2 #/fn cline table
+  (def-func! "table-sort" cline table
     ; TODO: Implement this.
     'TODO)
   
@@ -733,14 +742,14 @@
   ; TODO: Implement this.
   (def-nullary-func! "fuse-int-by-times" (sink-fuse 'TODO))
   
-  (def-func! "int-minus" 2 #/fn minuend subtrahend
+  (def-func! "int-minus" minuend subtrahend
     (expect minuend (sink-int minuend)
       (cene-err "Expected minuend to be an int")
     #/expect subtrahend (sink-int subtrahend)
       (cene-err "Expected subtrahend to be an int")
     #/sink-int #/- minuend subtrahend))
   
-  (def-func! "int-div-rounded-down" 2 #/fn dividend divisor
+  (def-func! "int-div-rounded-down" dividend divisor
     (expect dividend (sink-int dividend)
       (cene-err "Expected dividend to be an int")
     #/expect divisor (sink-int divisor)
@@ -766,7 +775,7 @@
   
   (def-nullary-func! "string-empty" (sink-string ""))
   
-  (def-func! "string-singleton" 1 #/fn unicode-scalar
+  (def-func! "string-singleton" unicode-scalar
     (expect unicode-scalar (sink-int unicode-scalar)
       (cene-err "Expected unicode-scalar to be an int")
     #/expect
@@ -778,7 +787,7 @@
     #/sink-string #/list->string #/list #/integer->char
       unicode-scalar))
   
-  (def-func! "string-append-later" 3 #/fn a b then
+  (def-func! "string-append-later" a b then
     (expect a (sink-string a)
       (cene-err "Expected a to be a string")
     #/expect b (sink-string b)
@@ -789,12 +798,12 @@
   
   ; TODO: Implement the macro `str`.
   
-  (def-func! "string-length" 1 #/fn string
+  (def-func! "string-length" string
     (expect string (sink-string string)
       (cene-err "Expected string to be a string")
     #/sink-int #/string-length string))
   
-  (def-func! "string-get-unicode-scalar" 2 #/fn string start
+  (def-func! "string-get-unicode-scalar" string start
     (expect string (sink-string string)
       (cene-err "Expected string to be a string")
     #/expect start (sink-int start)
@@ -805,7 +814,7 @@
       (cene-err "Expected start to be an int less than the length of string")
     #/sink-int #/char->integer #/string-ref string start))
   
-  (def-func! "string-cut-later" 4 #/fn string start stop then
+  (def-func! "string-cut-later" string start stop then
     (expect string (sink-string string)
       (cene-err "Expected string to be a string")
     #/expect start (sink-int start)
