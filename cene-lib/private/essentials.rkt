@@ -24,7 +24,7 @@
 (require #/for-syntax #/only-in syntax/parse expr id nat syntax-parse)
 
 
-(require #/only-in racket/contract/base -> ->i list/c listof)
+(require #/only-in racket/contract/base -> ->i any/c list/c listof)
 (require #/only-in racket/contract/region define/contract)
 (require #/only-in racket/generic define/generic)
 (require #/only-in racket/math natural?)
@@ -39,10 +39,12 @@
 (require #/only-in lathe-comforts/struct struct-easy)
 
 (require #/only-in effection/order
-  compare-by-dex dex? dex-give-up dex-dex dex-name in-dex? name?
+  cline-result? compare-by-cline compare-by-dex dex? dex-cline dex-dex
+  dex-give-up dex-name in-cline? in-dex? get-dex-from-cline name?
   name-of ordering-eq table-empty table-get table-shadow)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe
-  autoname-dex dex gen:dex-internals name table->sorted-list)
+  autoname-cline autoname-dex cline dex gen:cline-internals
+  gen:dex-internals name table->sorted-list)
 
 (require cene/private)
 
@@ -112,6 +114,104 @@
     (list proj-tags vals)
   #/list (cons main-tag proj-tags) vals))
 
+(define/contract
+  (sink-struct-op-autodex? a-tags a-fields b-tags b-fields dex-field)
+  (->i
+    (
+      [a-tags (listof name?)]
+      [a-fields list?]
+      [b-tags (listof name?)]
+      [b-fields list?]
+      [dex-field dex?])
+    #:pre (a-tags a-fields)
+      (= (length a-tags) (add1 #/length a-fields))
+    #:pre (b-tags b-fields)
+      (= (length b-tags) (add1 #/length b-fields))
+    [_ (maybe/c cline-result?)])
+  (maybe-ordering-or
+    (compare-by-dex (dex-name)
+      (unsafe:name
+      #/list-map a-tags #/dissectfn (unsafe:name tag) tag)
+      (unsafe:name
+      #/list-map b-tags #/dissectfn (unsafe:name tag) tag))
+  #/maybe-compare-aligned-lists a-fields b-fields #/fn a-field b-field
+    (compare-by-dex dex-field a-field b-field)))
+
+(define/contract
+  (sink-struct-in? tags comparators in-comparator? x)
+  (->i
+    (
+      [tags (listof name?)]
+      [comparators list?]
+      [in-comparator? (-> any/c any/c boolean?)]
+      [x any/c])
+    #:pre (tags comparators)
+      (= (length tags) (add1 #/length comparators))
+    [_ (maybe/c cline-result?)])
+  (expect (unmake-sink-struct-maybe tags x) (just field-vals) #f
+  #/w-loop next field-comparators comparators field-vals field-vals
+    (expect field-comparators
+      (cons comparator-field field-comparators)
+      #t
+    #/dissect field-vals (cons field-val field-vals)
+    
+    ; We do a tail call if we can.
+    #/mat field-comparators (list)
+      (in-comparator? comparator-field field-val)
+    
+    #/and (in-comparator? comparator-field field-val)
+    #/next field-comparators field-vals)))
+
+(define/contract
+  (sink-struct-compare
+    tags comparators in-comparator? compare-by-comparator a b)
+  (->i
+    (
+      [tags (listof name?)]
+      [comparators list?]
+      [in-comparator? (-> any/c any/c boolean?)]
+      [compare-by-comparator
+        (-> any/c any/c any/c #/maybe/c cline-result?)]
+      [a any/c]
+      [b any/c])
+    #:pre (tags comparators)
+      (= (length tags) (add1 #/length comparators))
+    [_ (maybe/c cline-result?)])
+  (maybe-bind (unmake-sink-struct-maybe tags a) #/fn as
+  #/maybe-bind (unmake-sink-struct-maybe tags b) #/fn bs
+  #/w-loop next as as bs bs comparators comparators
+    (expect comparators (cons comparator-field comparators)
+      (just #/ordering-eq)
+    #/dissect as (cons a as)
+    #/dissect bs (cons b bs)
+    
+    ; We do a tail call if we can.
+    #/mat comparators (list)
+      (compare-by-comparator comparator-field a b)
+    
+    #/maybe-bind (compare-by-comparator comparator-field a b)
+    #/fn result
+    #/expect result (ordering-eq)
+      ; We have a potential result to use, but first we check that
+      ; the rest of the field values belong to their respective
+      ; comparators' domains. If they don't, this structure instance
+      ; is not part part of this overall comparison's domain, so the
+      ; result is `(nothing)`.
+      (w-loop next as as bs bs comparators comparators
+        (expect comparators (cons comparator-field comparators)
+          (just result)
+        #/dissect as (cons a as)
+        #/dissect bs (cons b bs)
+        #/expect
+          (and
+            (in-comparator? comparator-field a)
+            (in-comparator? comparator-field b))
+          #t
+          (nothing)
+        #/next as bs comparators))
+    #/next as bs comparators)))
+
+
 (struct-easy (dex-internals-sink-struct tags fields)
   (#:guard-easy
     (unless (and (list? tags) (list-all tags #/fn tag #/name? tag))
@@ -143,32 +243,12 @@
     (define (dex-internals-autodex this other)
       (dissect this (dex-internals-sink-struct a-tags a-fields)
       #/dissect other (dex-internals-sink-struct b-tags b-fields)
-      #/dissect (normalize-tags-and-vals a-tags a-fields)
-        (list a-tags a-fields)
-      #/dissect (normalize-tags-and-vals b-tags b-fields)
-        (list b-tags b-fields)
-      #/maybe-ordering-or
-        (compare-by-dex (dex-name)
-          (unsafe:name
-          #/list-map a-tags #/dissectfn (unsafe:name tag) tag)
-          (unsafe:name
-          #/list-map b-tags #/dissectfn (unsafe:name tag) tag))
-      #/maybe-compare-aligned-lists a-fields b-fields
-      #/fn a-dex-field b-dex-field
-        (compare-by-dex (dex-dex) a-dex-field b-dex-field)))
+      #/sink-struct-op-autodex? a-tags a-fields b-tags b-fields
+        (dex-dex)))
     
     (define (dex-internals-in? this x)
       (dissect this (dex-internals-sink-struct tags fields)
-      #/expect (unmake-sink-struct-maybe tags x) (just field-vals) #f
-      #/w-loop next field-dexes fields field-vals field-vals
-        (expect field-dexes (cons dex-field field-dexes) #t
-        #/dissect field-vals (cons field-val field-vals)
-        
-        ; We do a tail call if we can.
-        #/mat field-dexes (list) (in-dex? dex-field field-val)
-        
-        #/and (in-dex? dex-field field-val)
-        #/next field-dexes field-vals)))
+      #/sink-struct-in? tags fields in-dex? x))
     
     (define (dex-internals-name-of this x)
       (dissect this (dex-internals-sink-struct tags fields)
@@ -197,33 +277,7 @@
     
     (define (dex-internals-compare this a b)
       (dissect this (dex-internals-sink-struct tags fields)
-      #/maybe-bind (unmake-sink-struct-maybe tags a) #/fn as
-      #/maybe-bind (unmake-sink-struct-maybe tags b) #/fn bs
-      #/w-loop next as as bs bs fields fields
-        (expect fields (cons dex-field fields) (just #/ordering-eq)
-        #/dissect as (cons a as)
-        #/dissect bs (cons b bs)
-        
-        ; We do a tail call if we can.
-        #/mat fields (list) (compare-by-dex dex-field a b)
-        
-        #/maybe-bind (compare-by-dex dex-field a b) #/fn result
-        #/expect result (ordering-eq)
-          ; We have a potential result to use, but first we check that
-          ; the rest of the field values belong to their respective
-          ; dexes' domains. If they don't, this structure instance is
-          ; not part part of this dex's domain, so the result is
-          ; `(nothing)`.
-          (w-loop next as as bs bs fields fields
-            (expect fields (cons dex-field fields) (just result)
-            #/dissect as (cons a as)
-            #/dissect bs (cons b bs)
-            #/expect
-              (and (in-dex? dex-field a) (in-dex? dex-field b))
-              #t
-              (nothing)
-            #/next as bs fields))
-        #/next as bs fields)))
+      #/sink-struct-compare tags fields in-dex? compare-by-dex a b))
   ])
 
 (struct-easy (cexpr-dex-struct main-tag-name projs)
@@ -245,6 +299,83 @@
       (expect this (cexpr-dex-struct main-tag-name projs)
         (error "Expected this to be a cexpr-dex-struct")
       #/sink-dex #/unsafe:dex #/dex-internals-sink-struct
+        (cons main-tag-name
+        #/list-map projs #/dissectfn (list proj-name proj-cexpr)
+          proj-name)
+      #/list-map projs #/dissectfn (list proj-name proj-cexpr)
+        (-eval proj-cexpr env)))
+  ])
+
+
+(struct-easy (cline-internals-sink-struct tags fields)
+  (#:guard-easy
+    (unless (and (list? tags) (list-all tags #/fn tag #/name? tag))
+      (error "Expected tags to be a list of names"))
+    (unless
+      (and
+        (list? fields)
+        (list-all fields #/fn dex-field #/dex? dex-field))
+      (error "Expected fields to be a list of dexes"))
+    (unless (= (length tags) (add1 #/length fields))
+      (error "Expected tags to have one more element than fields")))
+  
+  #:other
+  
+  #:methods unsafe:gen:cline-internals
+  [
+    
+    (define (cline-internals-tag this)
+      'tag:cline-sink-struct)
+    
+    (define (cline-internals-autoname this)
+      (dissect this (cline-internals-sink-struct tags fields)
+      #/dissect (normalize-tags-and-vals tags fields)
+        (list tags fields)
+      #/list* 'tag:cline-sink-struct tags
+      #/list-map fields #/fn cline-field
+        (unsafe:autoname-cline cline-field)))
+    
+    (define (cline-internals-autodex this other)
+      (dissect this (cline-internals-sink-struct a-tags a-fields)
+      #/dissect other (cline-internals-sink-struct b-tags b-fields)
+      #/sink-struct-op-autodex? a-tags a-fields b-tags b-fields
+        (dex-cline)))
+    
+    (define (cline-internals-in? this x)
+      (dissect this (cline-internals-sink-struct tags fields)
+      #/sink-struct-in? tags fields in-cline? x))
+    
+    (define (cline-internals-dex this)
+      (dissect this (cline-internals-sink-struct tags fields)
+      #/dex-internals-sink-struct tags
+      #/list-map fields #/fn cline-field
+        (get-dex-from-cline cline-field)))
+    
+    (define (cline-internals-compare this a b)
+      (dissect this (cline-internals-sink-struct tags fields)
+      #/sink-struct-compare
+        tags fields in-cline? compare-by-cline a b))
+  ])
+
+(struct-easy (cexpr-cline-struct main-tag-name projs)
+  
+  #:other
+  
+  #:methods gen:cexpr
+  [
+    (define/generic -has-free-vars? cexpr-has-free-vars?)
+    (define/generic -eval cexpr-eval)
+    
+    (define (cexpr-has-free-vars? this env)
+      (expect this (cexpr-cline-struct main-tag-name projs)
+        (error "Expected this to be a cexpr-cline-struct")
+      #/list-any projs #/dissectfn (list proj-name proj-cexpr)
+        (-has-free-vars? proj-cexpr env)))
+    
+    (define (cexpr-eval this env)
+      (expect this (cexpr-cline-struct main-tag-name projs)
+        (error "Expected this to be a cexpr-cline-struct")
+      #/sink-cline #/unsafe:cline #/cline-internals-sink-struct
         (cons main-tag-name
         #/list-map projs #/dissectfn (list proj-name proj-cexpr)
           proj-name)
@@ -598,13 +729,10 @@
   
   ; Structs and function calls
   
-  ; NOTE: The JavaScript version of Cene makes this functionality
-  ; possible using a combination of `cexpr-cline-struct`,
-  ; `cline-by-dex`, and `dex-by-cline`. We will probably be offering
-  ; `get-dex-by-cline` (as provided by Effection) instead of
-  ; `dex-by-cline`, but the same circuitous combination would work.
-  ; Nevertheless, we provide this operation directly.
-  (def-func! "cexpr-dex-struct" main-tag-name projections
+  (define/contract
+    (verify-cexpr-struct-args! main-tag-name projections)
+    (-> sink? sink? void?)
+    
     (expect main-tag-name (sink-name main-tag-name)
       (cene-err "Expected main-tag-name to be a name")
     #/expect (sink-list->maybe-racket projections) (just projections)
@@ -625,6 +753,16 @@
         #/expect (table-get k tab) (nothing)
           (cene-err "Expected projections to be an association list with mutually unique names as keys")
         #/table-shadow k (just #/trivial) tab))
+    #/void))
+  
+  ; NOTE: The JavaScript version of Cene makes this functionality
+  ; possible using a combination of `cexpr-cline-struct`,
+  ; `cline-by-dex`, and `dex-by-cline`. We will probably be offering
+  ; `get-dex-by-cline` (as provided by Effection) instead of
+  ; `dex-by-cline`, but the same circuitous combination would work.
+  ; Nevertheless, we provide this operation directly.
+  (def-func! "cexpr-dex-struct" main-tag-name projections
+    (begin (verify-cexpr-struct-args! main-tag-name projections)
     #/sink-cexpr #/cexpr-dex-struct main-tag-name projections))
   
   ; TODO: Implement a `dex-struct` macro that compiles to a
@@ -632,9 +770,12 @@
   ; Cene side (in a prelude) rather than implemented in Racket, but
   ; there's no harm in implementing it in Racket at first.
   
+  (def-func! "cexpr-cline-struct" main-tag-name projections
+    (begin (verify-cexpr-struct-args! main-tag-name projections)
+    #/sink-cexpr #/cexpr-cline-struct main-tag-name projections))
+  
   ; TODO: Consider implementing the following.
   ;
-  ;   cexpr-cline-struct
   ;   cline-struct
   ;   cexpr-merge-struct
   ;   merge-struct
