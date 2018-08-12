@@ -39,12 +39,14 @@
 (require #/only-in lathe-comforts/struct struct-easy)
 
 (require #/only-in effection/order
-  cline-result? compare-by-cline compare-by-dex dex? dex-cline dex-dex
-  dex-give-up dex-name in-cline? in-dex? get-dex-from-cline name?
-  name-of ordering-eq table-empty table-get table-shadow)
+  call-fuse call-merge cline-result? compare-by-cline compare-by-dex
+  dex? dex-cline dex-dex dex-fuse dex-give-up dex-merge dex-name
+  in-cline? in-dex? get-dex-from-cline name? name-of ordering-eq
+  table-empty table-get table-shadow)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe
-  autoname-cline autoname-dex cline dex gen:cline-internals
-  gen:dex-internals name table->sorted-list)
+  autoname-cline autoname-dex autoname-fuse autoname-merge cline dex
+  fuse gen:cline-internals gen:dex-internals gen:furge-internals merge
+  name table->sorted-list)
 
 (require cene/private)
 
@@ -376,6 +378,104 @@
       (expect this (cexpr-cline-struct main-tag-name projs)
         (error "Expected this to be a cexpr-cline-struct")
       #/sink-cline #/unsafe:cline #/cline-internals-sink-struct
+        (cons main-tag-name
+        #/list-map projs #/dissectfn (list proj-name proj-cexpr)
+          proj-name)
+      #/list-map projs #/dissectfn (list proj-name proj-cexpr)
+        (-eval proj-cexpr env)))
+  ])
+
+
+(struct-easy
+  (furge-internals-sink-struct
+    autoname-furge dex-furge call-furge tags fields)
+  #:other
+  
+  #:methods unsafe:gen:furge-internals
+  [
+    
+    (define (furge-internals-tag this)
+      'tag:furge-sink-struct)
+    
+    (define (furge-internals-autoname this)
+      (dissect this
+        (furge-internals-sink-struct autoname-furge _ _ tags fields)
+      #/dissect (normalize-tags-and-vals tags fields)
+        (list tags fields)
+      #/list* 'tag:furge-sink-struct tags
+      #/list-map fields #/fn furge-field
+        (autoname-furge furge-field)))
+    
+    (define (furge-internals-autodex this other)
+      (dissect this
+        (furge-internals-sink-struct _ dex-furge _ a-tags a-fields)
+      #/dissect other
+        (furge-internals-sink-struct _ _ _ b-tags b-fields)
+      #/sink-struct-op-autodex? a-tags a-fields b-tags b-fields
+        dex-furge))
+    
+    (define (furge-internals-call this a b)
+      (dissect this
+        (furge-internals-sink-struct _ _ call-furge tags fields)
+      #/maybe-bind (unmake-sink-struct-maybe tags a) #/fn as
+      #/maybe-bind (unmake-sink-struct-maybe tags b) #/fn bs
+      #/w- n (length fields)
+      #/w-loop next as as bs bs fields fields rev-furged (list)
+        (expect fields (cons furge-field fields)
+          (make-sink-struct tags #/reverse rev-furged)
+        #/dissect as (cons a as)
+        #/dissect bs (cons b bs)
+        #/next fields as bs
+        #/cons (call-furge furge-field a b) rev-furged)))
+  ])
+
+(struct-easy (cexpr-merge-struct main-tag-name projs)
+  
+  #:other
+  
+  #:methods gen:cexpr
+  [
+    (define/generic -has-free-vars? cexpr-has-free-vars?)
+    (define/generic -eval cexpr-eval)
+    
+    (define (cexpr-has-free-vars? this env)
+      (expect this (cexpr-merge-struct main-tag-name projs)
+        (error "Expected this to be a cexpr-merge-struct")
+      #/list-any projs #/dissectfn (list proj-name proj-cexpr)
+        (-has-free-vars? proj-cexpr env)))
+    
+    (define (cexpr-eval this env)
+      (expect this (cexpr-merge-struct main-tag-name projs)
+        (error "Expected this to be a cexpr-merge-struct")
+      #/sink-merge #/unsafe:merge #/furge-internals-sink-struct
+        unsafe:autoname-merge (dex-merge) call-merge
+        (cons main-tag-name
+        #/list-map projs #/dissectfn (list proj-name proj-cexpr)
+          proj-name)
+      #/list-map projs #/dissectfn (list proj-name proj-cexpr)
+        (-eval proj-cexpr env)))
+  ])
+
+(struct-easy (cexpr-fuse-struct main-tag-name projs)
+  
+  #:other
+  
+  #:methods gen:cexpr
+  [
+    (define/generic -has-free-vars? cexpr-has-free-vars?)
+    (define/generic -eval cexpr-eval)
+    
+    (define (cexpr-has-free-vars? this env)
+      (expect this (cexpr-fuse-struct main-tag-name projs)
+        (error "Expected this to be a cexpr-fuse-struct")
+      #/list-any projs #/dissectfn (list proj-name proj-cexpr)
+        (-has-free-vars? proj-cexpr env)))
+    
+    (define (cexpr-eval this env)
+      (expect this (cexpr-fuse-struct main-tag-name projs)
+        (error "Expected this to be a cexpr-fuse-struct")
+      #/sink-fuse #/unsafe:fuse #/furge-internals-sink-struct
+        unsafe:autoname-fuse (dex-fuse) call-fuse
         (cons main-tag-name
         #/list-map projs #/dissectfn (list proj-name proj-cexpr)
           proj-name)
@@ -774,14 +874,28 @@
     (begin (verify-cexpr-struct-args! main-tag-name projections)
     #/sink-cexpr #/cexpr-cline-struct main-tag-name projections))
   
+  ; TODO: Implement `cline-struct`.
+  
+  (def-func! "cexpr-merge-struct" main-tag-name projections
+    (begin (verify-cexpr-struct-args! main-tag-name projections)
+    #/sink-cexpr #/cexpr-merge-struct main-tag-name projections))
+  
+  ; TODO: Implement `merge-struct`.
+  
+  (def-func! "cexpr-fuse-struct" main-tag-name projections
+    (begin (verify-cexpr-struct-args! main-tag-name projections)
+    #/sink-cexpr #/cexpr-fuse-struct main-tag-name projections))
+  
+  ; TODO: Implement `fuse-struct`.
+  
+  ; TODO: The JavaScript version called this `cexpr-construct`. See
+  ; which name we prefer.
+  (def-func! "cexpr-struct" main-tag-name projections
+    (begin (verify-cexpr-struct-args! main-tag-name projections)
+    #/sink-cexpr #/cexpr-struct main-tag-name projections))
+  
   ; TODO: Consider implementing the following.
   ;
-  ;   cline-struct
-  ;   cexpr-merge-struct
-  ;   merge-struct
-  ;   cexpr-fuse-struct
-  ;   fuse-struct
-  ;   cexpr-construct
   ;   cexpr-case
   ;   case
   ;   cexpr-call
