@@ -696,9 +696,13 @@
     (dissect (list-map tags #/fn tag #/sink-name tag)
       (cons main-tag proj-tags)
     
-    ; TODO: We should probably optimize this lookup, perhaps by
-    ; using memoization. If and when we do, we should profile it to
-    ; make sure it's a worthwhile optimization.
+    ; TODO: This currently does a lookup and a `cexpr-eval` that are
+    ; probably expensive, not to mention that `cexpr-eval` should only
+    ; be possible to perform as a side effect during macroexpansion
+    ; (`sink-effects-cexpr-eval`). Let's make it so the evaluation is
+    ; set in motion at function definition time. Once we do, this
+    ; should be able to just look up the result.
+    ;
     #/w- body
       (cene-definition-get #/sink-name-for-function-implementation
         main-tag
@@ -713,10 +717,9 @@
       (cene-err "Tried to call a struct for which the function implementation was not an expression")
     #/expect (cexpr-has-free-vars? body #/table-empty) #f
       (cene-err "Tried to call a struct for which the function implementation had free variables")
+    #/w- impl (cexpr-eval body #/table-empty)
     
-    #/sink-call-binary
-      (sink-call-binary (cexpr-eval body #/table-empty) func)
-      arg)
+    #/sink-call-binary (sink-call-binary impl func) arg)
   #/cene-err "Tried to call a value that wasn't an opaque function or a struct"))
 
 (define/contract (sink-call-list func args)
@@ -1389,6 +1392,28 @@
     #/w- rest (name-rep-map unique-name #/fn n #/list 'name:rest n)
     #/next n rest #/cons first names)))
 
+; This performs some computation during the side effect runner, rather
+; than performing it right away.
+(define/contract (sink-effects-later then)
+  (-> (-> sink-effects?) sink-effects?)
+  (make-sink-effects #/fn #/sink-effects-run! #/then))
+
+(define/contract (cexpr-can-eval? cexpr)
+  (-> cexpr? boolean?)
+  (not #/cexpr-has-free-vars? cexpr #/table-empty))
+
+; This evaluates the given cexpr. If the current side effects runner
+; doesn't support evaluating cexprs, this causes an error instead.
+;
+; The macroexpander's side effects runner supports the operation, and
+; so far we've only written code for the macroexpander's side effects
+; runner (TODO), so this particular version always succeeds.
+;
+(define/contract (sink-effects-cexpr-eval cexpr then)
+  (-> (and/c cexpr? cexpr-can-eval?) (-> sink? sink-effects?)
+    sink-effects?)
+  (sink-effects-later #/fn #/then #/cexpr-eval cexpr #/table-empty))
+
 ; This returns a computation that reads all the content of the given
 ; text input stream and runs the reader macros it encounters. Unlike
 ; typical Lisp readers, this does not read first-class values; it only
@@ -1418,14 +1443,15 @@
           (cene-err "Encountered a top-level expression that compiled to a non-expression value")
         #/expect (cexpr-has-free-vars? cexpr #/table-empty) #f
           (cene-err "Encountered a top-level expression with at least one free variable")
+        #/sink-effects-merge (then unique-name-rest)
+        #/sink-effects-cexpr-eval cexpr #/fn cexpr-result
         #/w- effects
-          (sink-call (cexpr-eval cexpr #/table-empty)
+          (sink-call cexpr-result
             (sink-name unique-name-first)
             qualify)
         #/expect (sink-effects? effects) #t
           (cene-err "Expected every top-level expression to evaluate to a callable value that takes two arguments and returns side effects")
-        #/sink-effects-merge effects
-        #/then unique-name-rest)))
+          effects)))
   #/sink-effects-read-cexprs
     unique-name-main qualify text-input-stream output-stream
   #/fn unique-name-main qualify text-input-stream output-stream
