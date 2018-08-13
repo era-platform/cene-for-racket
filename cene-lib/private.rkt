@@ -631,8 +631,9 @@
     body))
 
 (define/contract
-  (sink-name-for-function-implementation main-tag-name proj-tag-names)
-  (-> sink-name? sink-table? sink-name?)
+  (sink-name-for-function-implementation
+    result-tag main-tag-name proj-tag-names)
+  (-> symbol? sink-name? sink-table? sink-name?)
   (dissect main-tag-name (sink-name #/unsafe:name main-tag)
   #/dissect proj-tag-names (sink-table proj-tag-names)
   
@@ -657,8 +658,26 @@
     (name-of (dex-table #/dex-struct trivial)
     #/table-v-map proj-tag-names #/fn ignored #/trivial)
     (just #/unsafe:name proj-table-name)
-  #/sink-name #/unsafe:name #/list 'name:function-implementation
-    main-tag proj-table-name))
+  #/sink-name #/unsafe:name
+  #/list result-tag main-tag proj-table-name))
+
+(define/contract
+  (sink-name-for-function-implementation-code
+    main-tag-name proj-tag-names)
+  (-> sink-name? sink-table? sink-name?)
+  (sink-name-for-function-implementation
+    'name:function-implementation-code
+    main-tag-name
+    proj-tag-names))
+
+(define/contract
+  (sink-name-for-function-implementation-value
+    main-tag-name proj-tag-names)
+  (-> sink-name? sink-table? sink-name?)
+  (sink-name-for-function-implementation
+    'name:function-implementation-value
+    main-tag-name
+    proj-tag-names))
 
 (define/contract (sink-fn-curried n-args racket-func)
   (-> exact-positive-integer? procedure? sink-opaque-fn?)
@@ -696,15 +715,11 @@
     (dissect (list-map tags #/fn tag #/sink-name tag)
       (cons main-tag proj-tags)
     
-    ; TODO: This currently does a lookup and a `cexpr-eval` that are
-    ; probably expensive, not to mention that `cexpr-eval` should only
-    ; be possible to perform as a side effect during macroexpansion
-    ; (`sink-effects-cexpr-eval`). Let's make it so the evaluation is
-    ; set in motion at function definition time. Once we do, this
-    ; should be able to just look up the result.
-    ;
-    #/w- body
-      (cene-definition-get #/sink-name-for-function-implementation
+    ; TODO: This lookup might be expensive. See if we should memoize
+    ; it.
+    #/w- impl
+      (cene-definition-get
+      #/sink-name-for-function-implementation-value
         main-tag
         (list-foldr proj-tags (sink-table #/table-empty)
         #/fn proj-tag rest
@@ -713,11 +728,6 @@
           ; `s-trivial` here or move this code after the place where
           ; `s-trivial` is defined.
           #/just #/make-sink-struct s-trivial #/list)))
-    #/expect body (sink-cexpr body)
-      (cene-err "Tried to call a struct for which the function implementation was not an expression")
-    #/expect (cexpr-has-free-vars? body #/table-empty) #f
-      (cene-err "Tried to call a struct for which the function implementation had free variables")
-    #/w- impl (cexpr-eval body #/table-empty)
     
     #/sink-call-binary (sink-call-binary impl func) arg)
   #/cene-err "Tried to call a value that wasn't an opaque function or a struct"))

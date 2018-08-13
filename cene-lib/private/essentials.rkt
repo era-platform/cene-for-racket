@@ -550,6 +550,20 @@
       #/then unique-name qualify text-input-stream output-stream)))
   
   (define/contract
+    (def-func-impl-native!
+      qualified-main-tag-name qualified-proj-tag-names impl)
+    (-> sink-name? sink-table? sink? void?)
+    (def-value!
+      (sink-name-for-function-implementation-code
+        qualified-main-tag-name qualified-proj-tag-names)
+      (sink-cexpr-native impl))
+    (def-value!
+      (sink-name-for-function-implementation-value
+        qualified-main-tag-name qualified-proj-tag-names)
+      impl))
+  
+  
+  (define/contract
     (def-func-verbose! main-tag-string n-args racket-func)
     (-> string? exact-positive-integer? procedure? void?)
     (w- main-tag-name
@@ -585,10 +599,10 @@
       
       ; We define a Cene struct function implementation containing
       ; the function's run time behavior.
-      (def-value!
-        (sink-name-for-function-implementation qualified-main-tag-name
-          (sink-table #/table-empty))
-        (sink-cexpr-native #/sink-opaque-fn #/fn struct-value
+      (def-func-impl-native!
+        qualified-main-tag-name
+        (sink-table #/table-empty)
+        (sink-opaque-fn #/fn struct-value
           (sink-fn-curried n-args racket-func)))
       
       ))
@@ -630,10 +644,10 @@
       
       ; We define a Cene struct function implementation containing
       ; the function's run time behavior.
-      (def-value!
-        (sink-name-for-function-implementation qualified-main-tag-name
-          (sink-table #/table-empty))
-        (sink-cexpr-native #/sink-fn-curried 2 #/fn struct-value arg
+      (def-func-impl-native!
+        qualified-main-tag-name
+        (sink-table #/table-empty)
+        (sink-fn-curried 2 #/fn struct-value arg
           (expect (unmake-sink-struct-maybe s-trivial arg)
             (just #/list)
             (cene-err "Expected the argument to a nullary function to be a trivial")
@@ -683,13 +697,13 @@
       ; an error. We do this so that we do in fact have a function
       ; implementation for every struct we use, which might be an
       ; invariant that comes in handy. (TODO: See if it does.)
-      (def-value!
-        (sink-name-for-function-implementation qualified-main-tag-name
-          (list-foldl (sink-table #/table-empty) qualified-proj-names
-          #/fn table proj-name
-            (sink-table-put-maybe table proj-name
-            #/just #/make-sink-struct s-trivial #/list)))
-        (sink-cexpr-native #/sink-opaque-fn #/fn struct-value
+      (def-func-impl-native!
+        qualified-main-tag-name
+        (list-foldl (sink-table #/table-empty) qualified-proj-names
+        #/fn table proj-name
+          (sink-table-put-maybe table proj-name
+          #/just #/make-sink-struct s-trivial #/list))
+        (sink-opaque-fn #/fn struct-value
           (cene-err "Called a struct that wasn't intended for calling")))
       
       ; TODO: Also define something we can use to look up an ordered
