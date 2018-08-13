@@ -780,6 +780,12 @@
       ; TODO: Now that we have this in place, implement Cene's
       ; destructuring operations.
       ;
+      ; TODO: Expose a `dex-list` operation to Cene so that Cene code
+      ; can install a definition with a dex that's the same as this
+      ; one's dex. Cene code would otherwise be able to make something
+      ; which *behaved the same* as `dex-list`, but with the exception
+      ; that it wouldn't count as the same dex.
+      ;
       (def-dexable-value!
         (sink-name-qualify
         #/sink-name-for-struct-metadata main-tag-name)
