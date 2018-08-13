@@ -33,16 +33,18 @@
 (require #/only-in lathe-comforts
   dissect dissectfn expect fn mat w- w-loop)
 (require #/only-in lathe-comforts/list
-  list-all list-any list-foldl list-map)
+  list-all list-any list-foldl list-foldr list-map)
 (require #/only-in lathe-comforts/maybe
   just maybe-bind maybe/c nothing)
 (require #/only-in lathe-comforts/struct struct-easy)
 
-(require #/only-in effection/order
+(require #/only-in effection/order dex-immutable-string)
+(require #/only-in effection/order/base
   call-fuse call-merge cline-result? compare-by-cline compare-by-dex
-  dex? dex-cline dex-dex dex-fuse dex-give-up dex-merge dex-name
-  in-cline? in-dex? get-dex-from-cline name? name-of ordering-eq
-  table-empty table-get table-shadow)
+  dex? dexable dex-cline dex-default dex-dex dex-fix dex-fuse
+  dex-give-up dex-merge dex-name dex-struct in-cline? in-dex?
+  get-dex-from-cline name? name-of ordering-eq table-empty table-get
+  table-shadow)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe
   autoname-cline autoname-dex autoname-fuse autoname-merge cline dex
   fuse gen:cline-internals gen:dex-internals gen:furge-internals merge
@@ -59,6 +61,10 @@
 (define s-cons (core-sink-struct "cons" #/list "first" "rest"))
 
 (define s-assoc (core-sink-struct "assoc" #/list "key" "val"))
+
+(define s-struct-metadata
+  (core-sink-struct "struct-metadata"
+  #/list "main-tag-name" "projections"))
 
 
 ; TODO: We used this in `effection/order/base`, and we're using it
@@ -77,7 +83,7 @@
   #/maybe-compare-aligned-lists as bs maybe-compare-elems))
 
 (define/contract (sink-list->maybe-racket sink-list)
-  (-> sink? #/maybe/c list?)
+  (-> sink? #/maybe/c #/listof sink?)
   ; NOTE: We could call `sink-list->maybe-racket` itself recursively,
   ; but we explicitly accumulate elements using a parameter
   ; (`rev-racket-list`) of a recursive helper function (`next`) so
@@ -90,6 +96,12 @@
     (just #/list elem sink-list)
     (next sink-list #/cons elem rev-racket-list)
   #/nothing))
+
+(define/contract (racket-list->sink racket-list)
+  (-> (listof sink?) sink?)
+  (list-foldr racket-list (make-sink-struct s-nil #/list)
+  #/fn elem rest
+    (make-sink-struct s-cons #/list elem rest)))
 
 
 ; Sorts `proj-tags` and `vals` to put them in a normalized order.
@@ -281,6 +293,20 @@
       (dissect this (dex-internals-sink-struct tags fields)
       #/sink-struct-compare tags fields in-dex? compare-by-dex a b))
   ])
+
+(define/contract (dex-sink-struct tags fields)
+  (->i ([tags (listof name?)] [fields (listof dex?)])
+    #:pre (tags fields) (= (length tags) (add1 #/length fields))
+    [_ dex?])
+  (unsafe:dex #/dex-internals-sink-struct tags fields))
+
+(define/contract (sink-dex-struct tags fields)
+  (->i ([tags (listof name?)] [fields (listof sink-dex?)])
+    #:pre (tags fields) (= (length tags) (add1 #/length fields))
+    [_ sink-dex?])
+  (sink-dex #/dex-sink-struct tags
+  #/list-map fields #/dissectfn (sink-dex dex-field)
+    dex-field))
 
 (struct-easy (cexpr-dex-struct main-tag-name projs)
   
@@ -484,6 +510,38 @@
   ])
 
 
+(struct-easy (fix-for-sink-dex-list dex-elem)
+  #:other
+  
+  #:property prop:procedure
+  (fn this dex
+    (dissect this (fix-for-sink-dex-list dex-elem)
+    #/dex-default
+      (dex-sink-struct s-nil #/list)
+      (dex-sink-struct s-cons #/list dex-elem this))))
+
+(define/contract (sink-dex-list dex-elem)
+  (-> sink-dex? sink-dex?)
+  (dissect dex-elem (sink-dex dex-elem)
+  #/sink-dex #/dex-fix #/dexable
+    (dex-struct fix-for-sink-dex-list #/dex-dex)
+    (fix-for-sink-dex-list dex-elem)))
+
+(define/contract (sink-dex-name)
+  (-> sink-dex?)
+  (sink-dex #/dex-struct sink-name #/dex-name))
+
+(define/contract (sink-dex-string)
+  (-> sink-dex?)
+  (sink-dex #/dex-struct sink-string #/dex-immutable-string))
+
+
+(define/contract (sink-name-for-struct-metadata inner-name)
+  (-> sink-name? sink-name?)
+  (sink-name-rep-map inner-name #/fn n
+    (list 'name:struct-metadata n)))
+
+
 ; TODO: Use this in some kind of CLI entrypoint or something.
 (define/contract (cene-runtime-essentials)
   (-> cene-runtime?)
@@ -662,11 +720,16 @@
     #/w- qualified-main-tag-name
       (sink-name-qualify
       #/sink-name-for-struct-main-tag main-tag-name)
-    #/w- qualified-proj-names
+    #/w- qualified-proj-name-entries
       (list-map proj-strings #/fn proj-string
-        (sink-name-qualify #/sink-name-for-struct-proj
+        (list proj-string
+        #/sink-name-qualify #/sink-name-for-struct-proj
           qualified-main-tag-name
         #/sink-name-for-string #/sink-string proj-string))
+    #/w- qualified-proj-names
+      (list-map qualified-proj-name-entries
+      #/dissectfn (list proj-string qualified-proj-name)
+        qualified-proj-name)
       
       ; We define a reader macro so that the user can write code that
       ; compiles into an expression that constructs a struct with this
@@ -706,11 +769,32 @@
         (sink-opaque-fn #/fn struct-value
           (cene-err "Called a struct that wasn't intended for calling")))
       
-      ; TODO: Also define something we can use to look up an ordered
-      ; list of `sink-name-for-string` projection names, given the
-      ; `sink-name-for-string` name the main tag name is made from.
-      ; Once we have that in place, we'll be able to implement Cene's
+      ; We also define something we can use to look up a qualified
+      ; main tag name and an ordered list of qualified and unqualified
+      ; projection names, given the `sink-name-for-string` name the
+      ; main tag name is made from.
+      ;
+      ; TODO: We haven't even tried to store this in the same format
+      ; as the JavaScript version of Cene does. See if we should.
+      ;
+      ; TODO: Now that we have this in place, implement Cene's
       ; destructuring operations.
+      ;
+      (def-dexable-value!
+        (sink-name-qualify
+        #/sink-name-for-struct-metadata main-tag-name)
+        (sink-dex-struct s-struct-metadata #/list
+          (sink-dex-name)
+          (sink-dex-list #/sink-dex-struct s-assoc #/list
+            (sink-dex-string)
+            (sink-dex-name)))
+        (make-sink-struct s-struct-metadata #/list
+          qualified-main-tag-name
+          (racket-list->sink #/list-map qualified-proj-name-entries
+          #/dissectfn (list proj-string qualified-proj-name)
+            (make-sink-struct s-assoc #/list
+              (sink-string proj-string)
+              qualified-proj-name))))
       
       ))
   
@@ -842,6 +926,9 @@
   
   
   ; Structs and function calls
+  
+  (def-data-struct! "struct-metadata"
+    (list "main-tag-name" "projections"))
   
   (define/contract
     (verify-cexpr-struct-args! main-tag-name projections)
