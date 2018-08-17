@@ -40,11 +40,12 @@
 
 (require #/only-in effection/order dex-immutable-string)
 (require #/only-in effection/order/base
-  call-fuse call-merge cline-result? compare-by-cline compare-by-dex
-  dex? dexable dex-cline dex-default dex-dex dex-fix dex-fuse
-  dex-give-up dex-merge dex-name dex-struct in-cline? in-dex?
-  get-dex-from-cline name? name-of ordering-eq table-empty table-get
-  table-shadow)
+  call-fuse call-merge cline-by-dex cline-give-up cline-result?
+  compare-by-cline compare-by-dex dex? dexable dex-cline dex-default
+  dex-dex dex-fix dex-fuse dex-give-up dex-merge dex-name dex-struct
+  dex-table fuse-struct fuse-table in-cline? in-dex?
+  get-dex-from-cline merge-struct merge-table name? name-of
+  ordering-eq table-empty table-get table-shadow)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe
   autoname-cline autoname-dex autoname-fuse autoname-merge cline dex
   fuse gen:cline-internals gen:dex-internals gen:furge-internals merge
@@ -510,6 +511,39 @@
   ])
 
 
+(struct-easy (cexpr-case subject-expr tags vars then-expr else-expr)
+  
+  #:other
+  
+  #:methods gen:cexpr
+  [
+    (define/generic -has-free-vars? cexpr-has-free-vars?)
+    (define/generic -eval cexpr-eval)
+    
+    (define (cexpr-has-free-vars? this env)
+      (expect this
+        (cexpr-case subject-expr tags vars then-expr else-expr)
+        (error "Expected this to be a cexpr-case")
+      #/or
+        (-has-free-vars? subject-expr env)
+        (-has-free-vars? then-expr #/list-foldl env vars #/fn env var
+          (table-shadow var (just #/trivial) env))
+        (-has-free-vars? else-expr env)))
+    
+    (define (cexpr-eval this env)
+      (expect this
+        (cexpr-case subject-expr tags vars then-expr else-expr)
+        (error "Expected this to be a cexpr-case")
+      #/w- subject (-eval subject-expr env)
+      #/mat (unmake-sink-struct-maybe tags subject) (just vals)
+        (-eval then-expr
+        #/list-foldl env (map list vars vals) #/fn env entry
+          (dissect entry (list var val)
+          #/table-shadow var (just val) env))
+        (-eval else-expr env)))
+  ])
+
+
 (struct-easy (fix-for-sink-dex-list dex-elem)
   #:other
   
@@ -892,15 +926,14 @@
   
   ; Order
   
-  ; TODO: Implement this.
-  (def-nullary-func! "dex-cline" (sink-dex 'TODO))
+  (def-nullary-func! "dex-cline" (sink-dex #/dex-cline))
   
   (def-func! "cline-by-dex" dex
-    ; TODO: Implement this.
-    'TODO)
+    (expect dex (sink-dex dex)
+      (cene-err "Expected dex to be a dex")
+    #/sink-cline #/cline-by-dex dex))
   
-  ; TODO: Implement this.
-  (def-nullary-func! "cline-give-up" (sink-cline 'TODO))
+  (def-nullary-func! "cline-give-up" (sink-cline #/cline-give-up))
   
   ; TODO: Consider implementing the following. This list was taken
   ; from the docs of the JavaScript version of Cene, but Effection has
@@ -952,7 +985,7 @@
         #/expect k (sink-name k)
           (cene-err "Expected projections to be an association list with names as keys")
         #/expect v (sink-cexpr v)
-          (cene-err "Expected projections to be an association list with cexprs as values")
+          (cene-err "Expected projections to be an association list with expressions as values")
         #/list k v))
     #/begin
       (list-foldl (table-empty) projections #/fn tab projection
@@ -1001,11 +1034,59 @@
     (begin (verify-cexpr-struct-args! main-tag-name projections)
     #/sink-cexpr #/cexpr-struct main-tag-name projections))
   
+  (def-func! "cexpr-case"
+    subject-expr main-tag-name projections then-expr else-expr
+    (expect subject-expr (sink-cexpr subject-expr)
+      (cene-err "Expected subject-expr to be an expression")
+    #/expect main-tag-name (sink-name main-tag-name)
+      (cene-err "Expected main-tag-name to be a name")
+    #/expect (sink-list->maybe-racket projections) (just projections)
+      (cene-err "Expected projections to be a list made up of cons and nil values")
+    #/w- projections
+      (list-map projections #/fn projection
+        (expect (unmake-sink-struct-maybe s-assoc projection)
+          (just #/list k v)
+          (cene-err "Expected projections to be a list of assoc values")
+        #/expect k (sink-name k)
+          (cene-err "Expected projections to be an association list with names as keys")
+        #/expect v (sink-name v)
+          (cene-err "Expected projections to be an association list with names as values")
+        #/list k v))
+    #/begin
+      (list-foldl (table-empty) projections #/fn tab projection
+        (dissect projection (list k v)
+        #/expect (table-get k tab) (nothing)
+          (cene-err "Expected projections to be an association list with mutually unique names as keys")
+        #/table-shadow k (just #/trivial) tab))
+      (list-foldl (table-empty) projections #/fn tab projection
+        (dissect projection (list k v)
+        #/expect (table-get v tab) (nothing)
+          (cene-err "Expected projections to be an association list with mutually unique names as values")
+        #/table-shadow v (just #/trivial) tab))
+    #/expect then-expr (sink-cexpr then-expr)
+      (cene-err "Expected then-expr to be an expression")
+    #/expect else-expr (sink-cexpr else-expr)
+      (cene-err "Expected else-expr to be an expression")
+    #/sink-cexpr #/cexpr-case subject-expr
+      (cons main-tag-name
+      #/list-map projections #/dissectfn (list proj-name var)
+        var)
+      (list-map projections #/dissectfn (list proj-name var)
+        proj-name)
+      then-expr
+      else-expr))
+  
+  ; TODO: Implement `case`.
+  
+  (def-func! "cexpr-call" func-expr arg-expr
+    (expect func-expr (sink-cexpr func-expr)
+      (cene-err "Expected func-expr to be an expression")
+    #/expect arg-expr (sink-cexpr arg-expr)
+      (cene-err "Expected arg-expr to be an expression")
+    #/sink-cexpr #/cexpr-call func-expr arg-expr))
+  
   ; TODO: Consider implementing the following.
   ;
-  ;   cexpr-case
-  ;   case
-  ;   cexpr-call
   ;   c
   ;   constructor-tag
   ;   function-implementation-from-cexpr
@@ -1036,16 +1117,19 @@
   ; Tables
   
   (def-func! "dex-table" dex-val
-    ; TODO: Implement this.
-    (sink-dex 'TODO))
+    (expect dex-val (sink-dex dex-val)
+      (cene-err "Expected dex-val to be a dex")
+    #/sink-dex #/dex-struct sink-table #/dex-table dex-val))
   
   (def-func! "merge-table" merge-val
-    ; TODO: Implement this.
-    'TODO)
+    (expect merge-val (sink-merge merge-val)
+      (cene-err "Expected merge-val to be a merge")
+    #/sink-merge #/merge-struct sink-table #/merge-table merge-val))
   
   (def-func! "fuse-table" fuse-val
-    ; TODO: Implement this.
-    'TODO)
+    (expect fuse-val (sink-fuse fuse-val)
+      (cene-err "Expected fuse-val to be a fuse")
+    #/sink-fuse #/fuse-struct sink-table #/fuse-table fuse-val))
   
   (def-nullary-func! "table-empty" (sink-table #/table-empty))
   
@@ -1203,8 +1287,7 @@
   
   ; Strings
   
-  ; TODO: Implement this.
-  (def-nullary-func! "dex-string" (sink-dex 'TODO))
+  (def-nullary-func! "dex-string" (sink-dex-string))
   
   (def-nullary-func! "string-empty" (sink-string ""))
   
