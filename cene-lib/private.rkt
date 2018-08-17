@@ -567,6 +567,13 @@
   (->* () #:rest (listof sink-effects?) sink-effects?)
   (sink-effects-merge-list effects))
 
+; This performs some computation during the side effect runner, rather
+; than performing it right away. The computation doesn't have to be
+; pure.
+(define/contract (sink-effects-later then)
+  (-> (-> sink-effects?) sink-effects?)
+  (make-sink-effects #/fn #/sink-effects-run! #/then))
+
 (struct exn:fail:cene exn:fail (clamor))
 
 (define/contract (sink-cexpr-var name)
@@ -809,10 +816,10 @@
     sink-cexpr-sequence-output-stream? sink-cexpr?
     (-> sink-cexpr-sequence-output-stream? sink-effects?)
     sink-effects?)
-  (make-sink-effects #/fn
+  (sink-effects-later #/fn
   #/dissect (sink-cexpr-sequence-output-stream-spend! output-stream)
     (list state on-cexpr)
-  #/sink-effects-run! #/on-cexpr state cexpr #/fn state
+  #/on-cexpr state cexpr #/fn state
   #/then #/sink-cexpr-sequence-output-stream #/box #/just #/list
     state on-cexpr))
 
@@ -833,12 +840,11 @@
     sink-effects?
     (-> sink-text-input-stream? sink-effects?)
     sink-effects?)
-  (make-sink-effects #/fn
+  (sink-effects-later #/fn
   #/w- in (sink-text-input-stream-spend! text-input-stream)
   #/if (eof-object? #/peek-byte in)
     (begin (close-input-port in)
-    #/sink-effects-run! on-eof)
-  #/sink-effects-run!
+      on-eof)
   #/else #/sink-text-input-stream #/box #/just in))
 
 (define/contract
@@ -847,9 +853,9 @@
     sink-text-input-stream?
     (-> sink-text-input-stream? boolean? sink-effects?)
     sink-effects?)
-  (make-sink-effects #/fn
+  (sink-effects-later #/fn
   #/w- in (sink-text-input-stream-spend! text-input-stream)
-  #/sink-effects-run! #/then (sink-text-input-stream #/box #/just in)
+  #/then (sink-text-input-stream #/box #/just in)
     (eof-object? #/peek-byte in)))
 
 (define/contract
@@ -860,7 +866,7 @@
     (-> sink-text-input-stream? (maybe/c sink-located-string?)
       sink-effects?)
     sink-effects?)
-  (make-sink-effects #/fn
+  (sink-effects-later #/fn
   #/w- in (sink-text-input-stream-spend! text-input-stream)
   #/let-values
     (
@@ -868,14 +874,13 @@
         (start-line start-column start-position)
         (port-next-location in)])
   #/expect (regexp-try-match pattern in) (list bytes)
-    (sink-effects-run! #/then (sink-text-input-stream #/box #/just in)
-      (nothing))
+    (then (sink-text-input-stream #/box #/just in) (nothing))
   #/let-values
     (
       [
         (stop-line stop-column stop-position)
         (port-next-location in)])
-  #/sink-effects-run! #/then (sink-text-input-stream #/box #/just in)
+  #/then (sink-text-input-stream #/box #/just in)
     (just #/sink-located-string #/list
       (list
         (list start-line start-column start-position)
@@ -1410,12 +1415,6 @@
     #/w- first (name-rep-map unique-name #/fn n #/list 'name:first n)
     #/w- rest (name-rep-map unique-name #/fn n #/list 'name:rest n)
     #/next n rest #/cons first names)))
-
-; This performs some computation during the side effect runner, rather
-; than performing it right away.
-(define/contract (sink-effects-later then)
-  (-> (-> sink-effects?) sink-effects?)
-  (make-sink-effects #/fn #/sink-effects-run! #/then))
 
 (define/contract (cexpr-can-eval? cexpr)
   (-> cexpr? boolean?)
