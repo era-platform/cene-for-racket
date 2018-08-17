@@ -36,6 +36,7 @@
   list-all list-any list-foldl list-foldr list-map)
 (require #/only-in lathe-comforts/maybe
   just maybe-bind maybe/c nothing)
+(require #/only-in lathe-comforts/string immutable-string?)
 (require #/only-in lathe-comforts/struct struct-easy)
 
 (require #/only-in effection/order dex-immutable-string)
@@ -657,7 +658,7 @@
   
   (define/contract
     (def-func-verbose! main-tag-string n-args racket-func)
-    (-> string? exact-positive-integer? procedure? void?)
+    (-> immutable-string? exact-positive-integer? procedure? void?)
     (w- main-tag-name
       (sink-name-for-string #/sink-string main-tag-string)
     #/w- qualified-main-tag-name
@@ -708,7 +709,7 @@
             body))))
   
   (define/contract (def-nullary-func! main-tag-string result)
-    (-> string? sink? void?)
+    (-> immutable-string? sink? void?)
     (w- main-tag-name
       (sink-name-for-string #/sink-string main-tag-string)
     #/w- qualified-main-tag-name
@@ -748,7 +749,7 @@
       ))
   
   (define/contract (def-data-struct! main-tag-string proj-strings)
-    (-> string? (listof string?) void?)
+    (-> immutable-string? (listof immutable-string?) void?)
     (w- main-tag-name
       (sink-name-for-string #/sink-string main-tag-string)
     #/w- qualified-main-tag-name
@@ -840,7 +841,7 @@
   
   (define/contract (def-macro! name-string body)
     (->
-      string?
+      immutable-string?
       (->
         name? sink? sink-text-input-stream?
         (-> name? sink? sink-text-input-stream? sink-cexpr?
@@ -1300,17 +1301,17 @@
         (not #/<= #xD800 unicode-scalar #xDFFF))
       #t
       (cene-err "Expected unicode-scalar to be in the range of valid Unicode scalars")
-    #/sink-string #/list->string #/list #/integer->char
-      unicode-scalar))
+    #/sink-string #/string->immutable-string
+    #/list->string #/list #/integer->char unicode-scalar))
   
   (def-func! "string-append-later" a b then
     (expect a (sink-string a)
       (cene-err "Expected a to be a string")
     #/expect b (sink-string b)
       (cene-err "Expected b to be a string")
-    #/make-sink-effects #/fn
-    #/sink-effects-run!
-    #/sink-call then #/sink-string #/string-append a b))
+    #/sink-effects-later #/fn
+    #/sink-call then
+    #/sink-string #/string->immutable-string #/string-append a b))
   
   ; TODO: Implement the macro `str`.
   
@@ -1343,9 +1344,10 @@
       (cene-err "Expected start to be an int no greater than stop")
     #/expect (<= stop #/string-length string) #t
       (cene-err "Expected stop to be an int no greater than the length of string")
-    #/make-sink-effects #/fn
-    #/sink-effects-run!
-    #/sink-call then #/sink-string #/substring string start stop))
+    #/sink-effects-later #/fn
+    #/sink-call then
+    #/sink-string #/string->immutable-string
+    #/substring string start stop))
   
   
   ; Regexes

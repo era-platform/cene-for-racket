@@ -34,6 +34,7 @@
 (require #/only-in lathe-comforts/list
   list-any list-foldl list-foldr list-map list-zip-map nat->maybe)
 (require #/only-in lathe-comforts/maybe just maybe/c nothing)
+(require #/only-in lathe-comforts/string immutable-string?)
 (require #/only-in lathe-comforts/struct struct-easy)
 
 (require #/only-in effection/order
@@ -130,7 +131,13 @@
   (sink-cexpr-sequence-output-stream box-of-maybe-state-and-handler))
 (struct-easy (sink-text-input-stream box-of-maybe-input))
 (struct-easy (sink-located-string parts))
-(struct-easy (sink-string racket-string))
+(struct-easy (sink-string racket-string)
+  (#:guard-easy
+    ; Racket's basic string operations make it easy to end up with a
+    ; mutable string by accident, so we go out of our way to check
+    ; that all `sink-string` values are immutable.
+    (unless (immutable-string? racket-string)
+      (error "Expected racket-string to be an immutable string"))))
 (struct-easy (sink-opaque-fn racket-fn))
 (struct-easy (sink-table racket-table))
 (struct-easy (sink-int racket-int))
@@ -746,9 +753,10 @@
   (-> sink-located-string? sink-string?)
   (dissect located-string (sink-located-string parts)
   ; TODO: See if this is a painter's algorithm.
-  #/sink-string #/list-foldl "" parts #/fn state part
+  #/sink-string #/string->immutable-string
+  #/list-foldl "" parts #/fn state part
     (dissect part (list start-loc string stop-loc)
-      (string-append state string))))
+    #/string-append state string)))
 
 (define/contract (sink-name-for-string string)
   (-> sink-string? sink-name?)
@@ -1364,7 +1372,8 @@
   #/then unique-name qualify text-input-stream cexprs))
 
 (define/contract (core-sink-struct main-tag-string proj-strings)
-  (-> string? (listof string?) (and/c pair? #/listof name?))
+  (-> immutable-string? (listof immutable-string?)
+    (and/c pair? #/listof name?))
   (w- main-tag-name
     (sink-name-qualify #/sink-name-for-struct-main-tag
     #/sink-name-for-string #/sink-string main-tag-string)
