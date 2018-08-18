@@ -31,11 +31,11 @@
 (require #/only-in syntax/parse/define define-simple-macro)
 
 (require #/only-in lathe-comforts
-  dissect dissectfn expect fn mat w- w-loop)
+  dissect dissectfn expect expectfn fn mat w- w-loop)
 (require #/only-in lathe-comforts/list
   list-all list-any list-foldl list-foldr list-map)
 (require #/only-in lathe-comforts/maybe
-  just maybe-bind maybe/c nothing)
+  just maybe-bind maybe/c maybe-map nothing)
 (require #/only-in lathe-comforts/string immutable-string?)
 (require #/only-in lathe-comforts/struct struct-easy)
 
@@ -44,11 +44,13 @@
   fuse-exact-rational-by-plus fuse-exact-rational-by-times)
 (require #/only-in effection/order/base
   call-fuse call-merge cline-by-dex cline-give-up cline-result?
-  cline-struct compare-by-cline compare-by-dex dex? dexable dex-cline
-  dex-default dex-dex dex-fix dex-fuse dex-give-up dex-merge dex-name
-  dex-struct dex-table fuse-struct fuse-table in-cline? in-dex?
-  get-dex-from-cline merge-struct merge-table name? name-of
-  ordering-eq table-empty table-get table-shadow)
+  cline-struct compare-by-cline compare-by-dex dex? dexable
+  dex-by-own-method dex-cline dex-default dex-dex dex-fix dex-fuse
+  dex-give-up dex-merge dex-name dex-struct dex-table fuse-struct
+  fuse-table in-cline? in-dex? get-dex-from-cline
+  make-ordering-private-gt make-ordering-private-lt merge-struct
+  merge-table name? name-of ordering-eq ordering-private? table-empty
+  table-get table-shadow)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe
   autoname-cline autoname-dex autoname-fuse autoname-merge cline dex
   fuse gen:cline-internals gen:dex-internals gen:furge-internals merge
@@ -61,10 +63,17 @@
 
 
 
+(define s-yep (core-sink-struct "yep" #/list "val"))
+(define s-nope (core-sink-struct "nope" #/list "val"))
+
 (define s-nil (core-sink-struct "nil" #/list))
 (define s-cons (core-sink-struct "cons" #/list "first" "rest"))
 
 (define s-assoc (core-sink-struct "assoc" #/list "key" "val"))
+
+(define s-ordering-eq (core-sink-struct "ordering-eq" #/list))
+
+(define s-dexable (core-sink-struct "dexable" #/list "dex" "val"))
 
 (define s-struct-metadata
   (core-sink-struct "struct-metadata"
@@ -86,6 +95,26 @@
   #/maybe-ordering-or (maybe-compare-elems a b)
   #/maybe-compare-aligned-lists as bs maybe-compare-elems))
 
+(define/contract (racket-boolean->sink racket-boolean)
+  (-> boolean? sink?)
+  (if racket-boolean
+    (make-sink-struct s-yep #/list #/make-sink-struct s-nil #/list)
+    (make-sink-struct s-nope #/list #/make-sink-struct s-nil #/list)))
+
+(define/contract (sink-maybe->maybe-racket sink-maybe)
+  (-> sink? #/maybe/c #/maybe/c sink?)
+  (mat (unmake-sink-struct-maybe s-nothing sink-maybe) (just #/list)
+    (just #/nothing)
+  #/mat (unmake-sink-struct-maybe s-just sink-maybe) (just #/list val)
+    (just #/just val)
+  #/nothing))
+
+(define/contract (racket-maybe->sink racket-maybe)
+  (-> (maybe/c sink?) sink?)
+  (mat racket-maybe (just val)
+    (make-sink-struct s-just #/list val)
+    (make-sink-struct s-nothing #/list)))
+
 (define/contract (sink-list->maybe-racket sink-list)
   (-> sink? #/maybe/c #/listof sink?)
   ; NOTE: We could call `sink-list->maybe-racket` itself recursively,
@@ -106,6 +135,18 @@
   (list-foldr racket-list (make-sink-struct s-nil #/list)
   #/fn elem rest
     (make-sink-struct s-cons #/list elem rest)))
+
+
+(struct-easy (sink-ordering-private racket-ordering-private)
+  #:other #:methods gen:sink [])
+(struct-easy (sink-cline cline)
+  #:other #:methods gen:sink [])
+(struct-easy (sink-merge merge)
+  #:other #:methods gen:sink [])
+(struct-easy (sink-fuse fuse)
+  #:other #:methods gen:sink [])
+(struct-easy (sink-int racket-int)
+  #:other #:methods gen:sink [])
 
 
 ; Sorts `proj-tags` and `vals` to put them in a normalized order.
@@ -579,6 +620,20 @@
     (list 'name:struct-metadata n)))
 
 
+(struct-easy (get-method-for-sink-dex-by-own-method get-method)
+  #:other
+  
+  #:property prop:procedure
+  (fn this x
+    (dissect this (get-method-for-sink-dex-by-own-method get-method)
+    #/expect (sink-maybe->maybe-racket #/sink-call get-method x)
+      (just maybe-dex)
+      (error "Expected the result of a dex-by-own-method method to be a maybe value")
+    #/maybe-map maybe-dex #/expectfn (sink-dex dex)
+      (error "Expected the result of a dex-by-own-method method to be a maybe of a dex")
+      dex)))
+
+
 ; TODO: Use this in some kind of CLI entrypoint or something.
 (define/contract (cene-runtime-essentials)
   (-> cene-runtime?)
@@ -929,6 +984,81 @@
   
   ; Order
   
+  (def-data-struct! "ordering-lt" #/list)
+  (def-data-struct! "ordering-eq" #/list)
+  (def-data-struct! "ordering-gt" #/list)
+  
+  (def-func! "is-ordering-private" v
+    (racket-boolean->sink #/sink-ordering-private? v))
+  
+  (def-nullary-func! "make-ordering-private-lt"
+    (sink-ordering-private #/make-ordering-private-lt))
+  
+  (def-nullary-func! "make-ordering-private-gt"
+    (sink-ordering-private #/make-ordering-private-gt))
+  
+  (def-func! "in-dex" dex v
+    (expect dex (sink-dex dex)
+      (cene-err "Expected dex to be a dex")
+    #/racket-boolean->sink #/in-dex? dex v))
+  
+  (def-func! "name-of" dex v
+    (expect dex (sink-dex dex)
+      (cene-err "Expected dex to be a dex")
+    #/racket-maybe->sink #/maybe-map (name-of dex v) #/fn name
+      (sink-name name)))
+  
+  (def-func! "compare-by-dex" dex a b
+    (expect dex (sink-dex dex)
+      (cene-err "Expected dex to be a dex")
+    #/racket-maybe->sink
+    #/maybe-map (compare-by-dex dex a b) #/fn dex-result
+      (if (ordering-private? dex-result)
+        (sink-ordering-private dex-result)
+      #/dissect dex-result (ordering-eq)
+      #/make-sink-struct s-ordering-eq #/list)))
+  
+  (def-data-struct! "dexable" #/list "dex" "val")
+  
+  (def-nullary-func! "dex-name"
+    (sink-dex #/dex-struct sink-name #/dex-name))
+  
+  (def-nullary-func! "dex-dex"
+    (sink-dex #/dex-struct sink-dex #/dex-dex))
+  
+  (def-nullary-func! "dex-give-up" (sink-dex #/dex-give-up))
+  
+  (def-func! "dex-default" dex-for-trying-first dex-for-trying-second
+    (expect dex-for-trying-first (sink-dex dex-for-trying-first)
+      (cene-err "Expected dex-for-trying-first to be a dex")
+    #/expect dex-for-trying-second (sink-dex dex-for-trying-second)
+      (cene-err "Expected dex-for-trying-second to be a dex")
+    #/sink-dex
+    #/dex-default dex-for-trying-first dex-for-trying-second))
+  
+  (def-func! "dex-by-own-method" dexable-get-method
+    (expect (unmake-sink-struct-maybe s-dexable dexable-get-method)
+      (just #/list dex-get-method get-method)
+      (cene-err "Expected dexable-get-method to be a dexable")
+    #/expect dex-get-method (sink-dex dex-get-method)
+      (cene-err "Expected dexable-get-method to be a dexable whose dex was a dex")
+    #/expect (in-dex? dex-get-method get-method) #t
+      (cene-err "Expected dexable-get-method to be a valid dexable")
+    #/sink-dex #/dex-by-own-method #/dexable
+      (dex-struct get-method-for-sink-dex-by-own-method
+        dex-get-method)
+      (get-method-for-sink-dex-by-own-method get-method)))
+  
+  ; TODO: Implement the following. Note that unlike the JavaScript
+  ; version of Cene, we're using the names `compare-by-{dex,cline}`
+  ; instead of `call-{dex,cline}` and the operation
+  ; `get-dex-from-cline` instead of `dex-by-cline`.
+  ;
+  ;   dex-fix
+  ;   get-dex-from-cline
+  ;   in-cline
+  ;   compare-by-cline
+  
   (def-nullary-func! "dex-cline" (sink-dex #/dex-cline))
   
   (def-func! "cline-by-dex" dex
@@ -938,33 +1068,23 @@
   
   (def-nullary-func! "cline-give-up" (sink-cline #/cline-give-up))
   
-  ; TODO: Consider implementing the following. This list was taken
-  ; from the docs of the JavaScript version of Cene, but Effection has
-  ; incorporated some lessons learned since then, so we might want to
-  ; work against the list of Effection building blocks instead.
+  ; TODO: Implement the following. Note that this particularly does
+  ; not include `merge-default` or `fuse-default` from the JavaScript
+  ; version of Cene, which are not well-behaved furges.
   ;
   ;   cline-default
   ;   cline-by-own-method
   ;   cline-fix
-  ;   call-cline
-  ;   in-cline
-  ;   dexable
-  ;   dex-dex
-  ;   dex-by-cline
-  ;   name-of
-  ;   dex-name
-  ;   dex-merge
-  ;   merge-by-dex
-  ;   merge-default
-  ;   merge-by-own-method
-  ;   merge-fix
   ;   call-merge
-  ;   dex-fuse
-  ;   fuse-by-merge
-  ;   fuse-default
-  ;   fuse-by-own-method
-  ;   fuse-fix
   ;   call-fuse
+  ;   dex-merge
+  ;   dex-fuse
+  ;   merge-by-dex
+  ;   fuse-by-merge
+  ;   merge-by-own-method
+  ;   fuse-by-own-method
+  ;   merge-fix
+  ;   fuse-fix
   
   
   ; Structs and function calls
@@ -1141,22 +1261,16 @@
       (cene-err "Expected key to be a name")
     #/expect (sink-table? table) #t
       (cene-err "Expected table to be a table")
-    #/mat (unmake-sink-struct-maybe s-nothing maybe-val) (just #/list)
-      (sink-table-put-maybe table key #/nothing)
-    #/mat (unmake-sink-struct-maybe s-just maybe-val)
-      (just #/list val)
-      (sink-table-put-maybe table key #/just val)
-    #/cene-err "Expected maybe-val to be a nothing or a just"))
+    #/expect (sink-maybe->maybe-racket maybe-val) (just maybe-val)
+      (cene-err "Expected maybe-val to be a nothing or a just")
+    #/sink-table-put-maybe table key maybe-val))
   
   (def-func! "table-get" key table
     (expect (sink-name? key) #t
       (cene-err "Expected key to be a name")
     #/expect (sink-table? table) #t
       (cene-err "Expected table to be a table")
-    #/w- result (sink-table-get-maybe table key)
-    #/expect result (just result)
-      (make-sink-struct s-nothing #/list)
-    #/make-sink-struct s-just #/list result))
+    #/racket-maybe->sink #/sink-table-get-maybe table key))
   
   (def-func! "table-map-fuse" table fuse key-to-operand
     ; TODO: Implement this.

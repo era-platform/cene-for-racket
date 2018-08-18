@@ -121,50 +121,39 @@
       (cons (hash-ref proj-hash proj-tag) rev-projs))))
 
 
-(struct-easy (sink-dex dex))
-(struct-easy (sink-cline cline))
-(struct-easy (sink-merge merge))
-(struct-easy (sink-fuse fuse))
-(struct-easy (sink-name name))
-(struct-easy (sink-effects go!))
+(define-generics sink)
+
+(struct-easy (sink-dex dex)
+  #:other #:methods gen:sink [])
+(struct-easy (sink-name name)
+  #:other #:methods gen:sink [])
+(struct-easy (sink-effects go!)
+  #:other #:methods gen:sink [])
 (struct-easy
-  (sink-cexpr-sequence-output-stream box-of-maybe-state-and-handler))
-(struct-easy (sink-text-input-stream box-of-maybe-input))
-(struct-easy (sink-located-string parts))
+  (sink-cexpr-sequence-output-stream box-of-maybe-state-and-handler)
+  #:other #:methods gen:sink [])
+(struct-easy (sink-text-input-stream box-of-maybe-input)
+  #:other #:methods gen:sink [])
+(struct-easy (sink-located-string parts)
+  #:other #:methods gen:sink [])
 (struct-easy (sink-string racket-string)
   (#:guard-easy
     ; Racket's basic string operations make it easy to end up with a
     ; mutable string by accident, so we go out of our way to check
     ; that all `sink-string` values are immutable.
     (unless (immutable-string? racket-string)
-      (error "Expected racket-string to be an immutable string"))))
-(struct-easy (sink-opaque-fn racket-fn))
-(struct-easy (sink-table racket-table))
-(struct-easy (sink-int racket-int))
+      (error "Expected racket-string to be an immutable string")))
+  #:other #:methods gen:sink [])
+(struct-easy (sink-opaque-fn racket-fn)
+  #:other #:methods gen:sink [])
+(struct-easy (sink-table racket-table)
+  #:other #:methods gen:sink [])
 
 ; NOTE: The term "cexpr" is short for "compiled expression." It's the
 ; kind of expression that macros generate in order to use as function
 ; definitions.
-(struct-easy (sink-cexpr cexpr))
-
-(define/contract (sink? v)
-  (-> any/c boolean?)
-  (or
-    (sink-struct? v)
-    (sink-dex? v)
-    (sink-cline? v)
-    (sink-merge? v)
-    (sink-fuse? v)
-    (sink-name? v)
-    (sink-effects? v)
-    (sink-cexpr-sequence-output-stream? v)
-    (sink-text-input-stream? v)
-    (sink-located-string? v)
-    (sink-string? v)
-    (sink-opaque-fn? v)
-    (sink-table? v)
-    (sink-int? v)
-    (sink-cexpr? v)))
+(struct-easy (sink-cexpr cexpr)
+  #:other #:methods gen:sink [])
 
 (define/contract (name-rep-map name func)
   (-> name? (-> any/c any/c) name?)
