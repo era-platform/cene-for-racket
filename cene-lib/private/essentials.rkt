@@ -39,12 +39,14 @@
 (require #/only-in lathe-comforts/string immutable-string?)
 (require #/only-in lathe-comforts/struct struct-easy)
 
-(require #/only-in effection/order dex-immutable-string)
+(require #/only-in effection/order
+  cline-exact-rational dex-exact-rational dex-immutable-string
+  fuse-exact-rational-by-plus fuse-exact-rational-by-times)
 (require #/only-in effection/order/base
   call-fuse call-merge cline-by-dex cline-give-up cline-result?
-  compare-by-cline compare-by-dex dex? dexable dex-cline dex-default
-  dex-dex dex-fix dex-fuse dex-give-up dex-merge dex-name dex-struct
-  dex-table fuse-struct fuse-table in-cline? in-dex?
+  cline-struct compare-by-cline compare-by-dex dex? dexable dex-cline
+  dex-default dex-dex dex-fix dex-fuse dex-give-up dex-merge dex-name
+  dex-struct dex-table fuse-struct fuse-table in-cline? in-dex?
   get-dex-from-cline merge-struct merge-table name? name-of
   ordering-eq table-empty table-get table-shadow)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe
@@ -1247,18 +1249,21 @@
   
   ; Integers
   
-  ; TODO: Implement this.
-  (def-nullary-func! "cline-int" (sink-cline 'TODO))
+  (def-nullary-func! "dex-int"
+    (sink-dex #/dex-struct sink-int #/dex-exact-rational))
+  
+  (def-nullary-func! "cline-int"
+    (sink-cline #/cline-struct sink-int #/cline-exact-rational))
   
   (def-nullary-func! "int-zero" (sink-int 0))
   
   (def-nullary-func! "int-one" (sink-int 1))
   
-  ; TODO: Implement this.
-  (def-nullary-func! "fuse-int-by-plus" (sink-fuse 'TODO))
+  (def-nullary-func! "fuse-int-by-plus"
+    (sink-fuse #/fuse-struct sink-int #/fuse-exact-rational-by-plus))
   
-  ; TODO: Implement this.
-  (def-nullary-func! "fuse-int-by-times" (sink-fuse 'TODO))
+  (def-nullary-func! "fuse-int-by-times"
+    (sink-fuse #/fuse-struct sink-int #/fuse-exact-rational-by-times))
   
   (def-func! "int-minus" minuend subtrahend
     (expect minuend (sink-int minuend)
