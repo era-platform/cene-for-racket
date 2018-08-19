@@ -65,7 +65,7 @@
   id-or-expr->cexpr
   id-or-expr-id
   sink-effects-read-bounded-ids-and-exprs
-  sink-effects-read-specific-number-of-cexprs)
+  sink-effects-read-bounded-specific-number-of-cexprs)
 
 
 (provide cene-runtime-essentials)
@@ -784,7 +784,7 @@
     (macro-impl #/fn
       unique-name qualify text-input-stream output-stream then
       
-      (sink-effects-read-specific-number-of-cexprs
+      (sink-effects-read-bounded-specific-number-of-cexprs
         unique-name qualify text-input-stream
         sink-name-for-local-variable n-args
       #/fn unique-name qualify text-input-stream args
@@ -830,9 +830,9 @@
         ; number of arguments to a function; instead it just passes in
         ; all the arguments it gets. But I find it's common for me to
         ; accidentally omit arguments or include extra arguments, so
-        ; in `sink-effects-read-specific-number-of-cexprs`, we do some
-        ; error-checking as an ad hoc line of defense against that
-        ; kind of mistake.
+        ; in `sink-effects-read-bounded-specific-number-of-cexprs`, we
+        ; do some error-checking as an ad hoc line of defense against
+        ; that kind of mistake.
         ;
         (macro-impl-specific-number-of-args n-args #/fn args
           (list-foldl
@@ -933,9 +933,9 @@
         ; certain amount; instead it just passes all the excess
         ; arguments as function arguments. I find it's common for me
         ; to accidentally omit arguments or include extra arguments,
-        ; so in `sink-effects-read-specific-number-of-cexprs`, we do
-        ; some error-checking as an ad hoc line of defense against
-        ; that kind of mistake.
+        ; so in `sink-effects-read-bounded-specific-number-of-cexprs`,
+        ; we do some error-checking as an ad hoc line of defense
+        ; against that kind of mistake.
         ;
         #/macro-impl-specific-number-of-args n-projs #/fn proj-cexprs
           (sink-cexpr-struct qualified-main-tag-name

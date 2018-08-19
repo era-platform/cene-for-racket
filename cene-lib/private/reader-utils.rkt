@@ -37,14 +37,22 @@
 (provide
   id-or-expr-id
   id-or-expr-expr
-  sink-effects-read-bounded-ids-and-exprs
   id-or-expr->cexpr
-  sink-effects-read-specific-number-of-cexprs)
+  sink-effects-read-bounded-ids-and-exprs
+  sink-effects-read-bounded-specific-number-of-cexprs)
 
 
 
 (struct-easy (id-or-expr-id located-string qualified-name))
 (struct-easy (id-or-expr-expr expr))
+
+(define/contract (id-or-expr->cexpr id-or-expr)
+  (-> (or/c id-or-expr-id? id-or-expr-expr?) sink-cexpr?)
+  (mat id-or-expr (id-or-expr-id located-string qualified-name)
+    ; TODO: Wrap this in a located cexpr.
+    (sink-cexpr-var qualified-name)
+  #/dissect id-or-expr (id-or-expr-expr cexpr)
+    cexpr))
 
 ; This reads identifiers and cexprs until it gets to a closing
 ; bracket.
@@ -102,14 +110,6 @@
       (list rev-results on-cexpr)
     #/next unique-name qualify text-input-stream rev-results)))
 
-(define/contract (id-or-expr->cexpr id-or-expr)
-  (-> (or/c id-or-expr-id? id-or-expr-expr?) sink-cexpr?)
-  (mat id-or-expr (id-or-expr-id located-string qualified-name)
-    ; TODO: Wrap this in a located cexpr.
-    (sink-cexpr-var qualified-name)
-  #/dissect id-or-expr (id-or-expr-expr cexpr)
-    cexpr))
-
 ; This reads cexprs until it gets to a closing bracket.
 (define/contract
   (sink-effects-read-bounded-cexprs
@@ -133,7 +133,7 @@
 ; This reads cexprs until it gets to a closing bracket, and it
 ; verifies that there are precisely `n` of them.
 (define/contract
-  (sink-effects-read-specific-number-of-cexprs
+  (sink-effects-read-bounded-specific-number-of-cexprs
     unique-name qualify text-input-stream pre-qualify n then)
   (->
     name?
