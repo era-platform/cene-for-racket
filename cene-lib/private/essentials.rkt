@@ -43,13 +43,14 @@
   cline-exact-rational dex-exact-rational dex-immutable-string
   fuse-exact-rational-by-plus fuse-exact-rational-by-times)
 (require #/only-in effection/order/base
-  call-fuse call-merge cline-by-dex cline-give-up cline-result?
-  cline-struct compare-by-cline compare-by-dex dex? dexable dex-cline
-  dex-default dex-dex dex-fix dex-fuse dex-give-up dex-merge dex-name
-  dex-struct dex-table fuse-struct fuse-table in-cline? in-dex?
-  get-dex-from-cline make-ordering-private-gt make-ordering-private-lt
-  merge-struct merge-table name? name-of ordering-eq ordering-private?
-  table-empty table-get table-shadow)
+  call-fuse call-merge cline-by-dex cline-default cline-give-up
+  cline-result? cline-struct compare-by-cline compare-by-dex dex?
+  dexable dex-cline dex-default dex-dex dex-fix dex-fuse dex-give-up
+  dex-merge dex-name dex-struct dex-table fuse-by-merge fuse-struct
+  fuse-table in-cline? in-dex? get-dex-from-cline
+  make-ordering-private-gt make-ordering-private-lt merge-by-dex
+  merge-struct merge-table name? name-of ordering-eq ordering-gt
+  ordering-lt ordering-private? table-empty table-get table-shadow)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe
   autoname-cline autoname-dex autoname-fuse autoname-merge cline
   cline-by-own-method-unchecked cline-fix-unchecked dex
@@ -74,7 +75,9 @@
 
 (define s-assoc (core-sink-struct "assoc" #/list "key" "val"))
 
+(define s-ordering-lt (core-sink-struct "ordering-lt" #/list))
 (define s-ordering-eq (core-sink-struct "ordering-eq" #/list))
+(define s-ordering-gt (core-sink-struct "ordering-gt" #/list))
 
 (define s-dexable (core-sink-struct "dexable" #/list "dex" "val"))
 
@@ -1088,6 +1091,8 @@
     #/racket-maybe->sink #/maybe-map (name-of dex v) #/fn name
       (sink-name name)))
   
+  ; NOTE: In the JavaScript version of Cene, this was called
+  ; `call-dex`.
   (def-func! "compare-by-dex" dex a b
     (expect dex (sink-dex dex)
       (cene-err "Expected dex to be a dex")
@@ -1130,16 +1135,36 @@
     #/sink-dex #/unsafe:dex-fix-unchecked
     #/make-converter-for-dex-fix dexable-unwrap))
   
-  ; TODO: Implement the following. Note that unlike the JavaScript
-  ; version of Cene, we're using the names `compare-by-{dex,cline}`
-  ; instead of `call-{dex,cline}` and the operation
-  ; `get-dex-from-cline` instead of `dex-by-cline`.
-  ;
-  ;   get-dex-from-cline
-  ;   in-cline
-  ;   compare-by-cline
+  ; NOTE: In the JavaScript version of Cene, there was a similar
+  ; operation called `dex-by-cline`.
+  (def-func! "get-dex-from-cline" cline
+    (expect cline (sink-cline cline)
+      (cene-err "Expected cline to be a cline")
+    #/sink-dex #/get-dex-from-cline cline))
   
-  (def-nullary-func! "dex-cline" (sink-dex #/dex-cline))
+  (def-func! "in-cline" cline v
+    (expect cline (sink-cline cline)
+      (cene-err "Expected cline to be a cline")
+    #/racket-boolean->sink #/in-cline? cline v))
+  
+  ; NOTE: In the JavaScript version of Cene, this was called
+  ; `call-cline`.
+  (def-func! "compare-by-cline" cline a b
+    (expect cline (sink-cline cline)
+      (cene-err "Expected cline to be a cline")
+    #/racket-maybe->sink
+    #/maybe-map (compare-by-cline cline a b) #/fn cline-result
+      (if (ordering-private? cline-result)
+        (sink-ordering-private cline-result)
+      #/mat cline-result (ordering-lt)
+        (make-sink-struct s-ordering-lt #/list)
+      #/mat cline-result (ordering-gt)
+        (make-sink-struct s-ordering-gt #/list)
+      #/dissect cline-result (ordering-eq)
+      #/make-sink-struct s-ordering-eq #/list)))
+  
+  (def-nullary-func! "dex-cline"
+    (sink-dex #/dex-struct sink-cline #/dex-cline))
   
   (def-func! "cline-by-dex" dex
     (expect dex (sink-dex dex)
@@ -1148,7 +1173,15 @@
   
   (def-nullary-func! "cline-give-up" (sink-cline #/cline-give-up))
   
-  ; TODO: Implement `cline-default`.
+  (def-func! "cline-default"
+    cline-for-trying-first cline-for-trying-second
+    
+    (expect cline-for-trying-first (sink-cline cline-for-trying-first)
+      (cene-err "Expected cline-for-trying-first to be a cline")
+    #/expect cline-for-trying-second (sink-cline cline-for-trying-second)
+      (cene-err "Expected cline-for-trying-second to be a cline")
+    #/sink-cline
+    #/cline-default cline-for-trying-first cline-for-trying-second))
   
   (def-func! "cline-by-own-method" dexable-get-method
     (expect (sink-valid-dexable->maybe-racket dexable-get-method)
@@ -1164,16 +1197,35 @@
     #/sink-cline #/unsafe:cline-fix-unchecked
     #/make-converter-for-cline-fix dexable-unwrap))
   
-  ; TODO: Implement the following. Note that this particularly does
-  ; not include `merge-default` or `fuse-default` from the JavaScript
-  ; version of Cene, which are not well-behaved furges.
-  ;
-  ;   call-merge
-  ;   call-fuse
-  ;   dex-merge
-  ;   dex-fuse
-  ;   merge-by-dex
-  ;   fuse-by-merge
+  (def-func! "call-merge" merge a b
+    (expect merge (sink-merge merge)
+      (cene-err "Expected merge to be a merge")
+    #/racket-maybe->sink #/call-merge merge a b))
+  
+  (def-func! "call-fuse" fuse a b
+    (expect fuse (sink-fuse fuse)
+      (cene-err "Expected fuse to be a fuse")
+    #/racket-maybe->sink #/call-fuse fuse a b))
+  
+  (def-nullary-func! "dex-merge"
+    (sink-dex #/dex-struct sink-merge #/dex-merge))
+  
+  (def-nullary-func! "dex-fuse"
+    (sink-dex #/dex-struct sink-fuse #/dex-fuse))
+  
+  ; NOTE: We do not implement operations like `merge-default` or
+  ; `fuse-default` from the JavaScript version of Cene since they are
+  ; not well-behaved furges.
+  
+  (def-func! "merge-by-dex" dex
+    (expect dex (sink-dex dex)
+      (cene-err "Expected dex to be a dex")
+    #/sink-merge #/merge-by-dex dex))
+  
+  (def-func! "fuse-by-merge" merge
+    (expect merge (sink-merge merge)
+      (cene-err "Expected merge to be a merge")
+    #/sink-fuse #/fuse-by-merge merge))
   
   (def-func! "merge-by-own-method" dexable-get-method
     (expect (sink-valid-dexable->maybe-racket dexable-get-method)
