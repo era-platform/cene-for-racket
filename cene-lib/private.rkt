@@ -59,6 +59,9 @@
   #/ordering-eq? comparison))
 
 
+(define-generics sink)
+
+
 ; NOTE: The "sink" part of the name "sink-struct" refers to the fact
 ; that this is only one case of Cene's kitchen sink type. Cene is an
 ; untyped language, but if it ever becomes a typed language, all the
@@ -72,7 +75,8 @@
 ; The projections' names should have no duplicates. The value of
 ; `projs` should be a list of Cene values which are the values of the
 ; projections.
-(struct-easy (sink-struct tags projs))
+(struct-easy (sink-struct tags projs)
+  #:other #:methods gen:sink [])
 
 (define/contract (make-sink-struct tags projs)
   (-> pair? (or/c (list) pair?) sink-struct?)
@@ -120,8 +124,6 @@
     #/next (hash-remove proj-hash proj-tag) proj-tags
       (cons (hash-ref proj-hash proj-tag) rev-projs))))
 
-
-(define-generics sink)
 
 (struct-easy (sink-dex dex)
   #:other #:methods gen:sink [])
