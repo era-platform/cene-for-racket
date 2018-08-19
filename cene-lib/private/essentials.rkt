@@ -785,8 +785,8 @@
       unique-name qualify text-input-stream output-stream then
       
       (sink-effects-read-specific-number-of-cexprs
-        unique-name qualify text-input-stream n-args
-        sink-name-for-local-variable
+        unique-name qualify text-input-stream
+        sink-name-for-local-variable n-args
       #/fn unique-name qualify text-input-stream args
       #/sink-effects-cexpr-write output-stream (body args)
       #/fn output-stream
