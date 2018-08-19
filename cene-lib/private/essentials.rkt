@@ -61,6 +61,11 @@
   table->sorted-list)
 
 (require cene/private)
+(require #/only-in cene/private/reader-utils
+  id-or-expr->cexpr
+  id-or-expr-id
+  sink-effects-read-bounded-ids-and-exprs
+  sink-effects-read-specific-number-of-cexprs)
 
 
 (provide cene-runtime-essentials)
