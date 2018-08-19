@@ -634,6 +634,10 @@
   (sink-dex #/dex-struct sink-string #/dex-immutable-string))
 
 
+(define/contract (sink-name-for-local-variable inner-name)
+  (-> sink-name? sink-name?)
+  (sink-name-rep-map inner-name #/fn n #/list 'name:local-variable n))
+
 (define/contract (sink-name-for-struct-metadata inner-name)
   (-> sink-name? sink-name?)
   (sink-name-rep-map inner-name #/fn n
@@ -782,6 +786,7 @@
       
       (sink-effects-read-specific-number-of-cexprs
         unique-name qualify text-input-stream n-args
+        sink-name-for-local-variable
       #/fn unique-name qualify text-input-stream args
       #/sink-effects-cexpr-write output-stream (body args)
       #/fn output-stream
@@ -1400,6 +1405,7 @@
   (def-macro! "fn" #/fn unique-name qualify text-input-stream then
     (sink-effects-read-bounded-ids-and-exprs
       unique-name qualify text-input-stream
+      sink-name-for-local-variable
     #/fn unique-name qualify text-input-stream args
     #/expect (reverse args) (cons body rev-params)
       (cene-err "Expected a fn form to have a body expression")

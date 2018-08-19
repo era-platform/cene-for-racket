@@ -50,11 +50,12 @@
 ; bracket.
 (define/contract
   (sink-effects-read-bounded-ids-and-exprs
-    unique-name qualify text-input-stream then)
+    unique-name qualify text-input-stream pre-qualify then)
   (->
     name?
     sink?
     sink-text-input-stream?
+    (-> sink-name? sink-name?)
     (->
       name?
       sink?
@@ -84,7 +85,7 @@
     #/fn text-input-stream maybe-id
     #/mat maybe-id (just located-string)
       (w- qualified-name
-        (sink-call qualify #/sink-name-for-string
+        (sink-call qualify #/pre-qualify #/sink-name-for-string
         #/sink-string-from-located-string located-string)
       #/next unique-name qualify text-input-stream
         (cons (id-or-expr-id located-string qualified-name)
@@ -112,17 +113,18 @@
 ; This reads cexprs until it gets to a closing bracket.
 (define/contract
   (sink-effects-read-bounded-cexprs
-    unique-name qualify text-input-stream then)
+    unique-name qualify text-input-stream pre-qualify then)
   (->
     name?
     sink?
     sink-text-input-stream?
+    (-> sink-name? sink-name?)
     (-> name? sink? sink-text-input-stream? (listof sink-cexpr?)
       sink-effects?)
     sink-effects?)
   (begin (assert-can-get-cene-definitions!)
   #/sink-effects-read-bounded-ids-and-exprs
-    unique-name qualify text-input-stream
+    unique-name qualify text-input-stream pre-qualify
   #/fn unique-name qualify text-input-stream ids-and-exprs
   #/then unique-name qualify text-input-stream
   #/list-map ids-and-exprs #/fn id-or-expr
@@ -132,18 +134,19 @@
 ; verifies that there are precisely `n` of them.
 (define/contract
   (sink-effects-read-specific-number-of-cexprs
-    unique-name qualify text-input-stream n then)
+    unique-name qualify text-input-stream pre-qualify n then)
   (->
     name?
     sink?
     sink-text-input-stream?
+    (-> sink-name? sink-name?)
     natural?
     (-> name? sink? sink-text-input-stream? (listof sink-cexpr?)
       sink-effects?)
     sink-effects?)
   (begin (assert-can-get-cene-definitions!)
   #/sink-effects-read-bounded-cexprs
-    unique-name qualify text-input-stream
+    unique-name qualify text-input-stream pre-qualify
   #/fn unique-name qualify text-input-stream cexprs
   #/w- actual-n (length cexprs)
   #/if (< n actual-n)

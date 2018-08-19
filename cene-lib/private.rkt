@@ -1151,22 +1151,26 @@
   
   ; NOTE: These are the cases we should handle.
   ;
-  ;  <eof>
-  ;  <whitespace>
-  ;  abc
-  ;  \<op>...
-  ;  
-  ;  (.<op>...)
-  ;  [.<op>...]
-  ;  
-  ;  /.<op>...
-  ;  
-  ;  (...)
-  ;  [...]
-  ;  /
-  ;  
-  ;  )
-  ;  ]
+  ;   <eof>
+  ;   <whitespace>
+  ;   \<op>...
+  ;   
+  ;   (.<op>...)
+  ;   [.<op>...]
+  ;   
+  ;   /.<op>...
+  ;   
+  ;   (...)
+  ;   [...]
+  ;   /
+  ;   
+  ;   )
+  ;   ]
+  ;
+  ; We do not handle identifiers here. Clients who anticipate
+  ; identifiers should try to read them with
+  ; `sink-effects-read-maybe-identifier` before calling this.
+  
   
   (begin (assert-can-get-cene-definitions!)
   #/sink-effects-read-whitespace text-input-stream
@@ -1244,15 +1248,6 @@
         unique-name qualify text-input-stream output-stream then)
     #/sink-effects-run-nameless-op
       unique-name qualify text-input-stream output-stream then)
-  
-  #/sink-effects-read-maybe-identifier text-input-stream
-  #/fn text-input-stream maybe-identifier
-  #/mat maybe-identifier (just identifier)
-    (sink-effects-cexpr-write output-stream
-      (sink-cexpr-var #/sink-call qualify #/sink-name-for-string
-      #/sink-string-from-located-string identifier)
-    #/fn output-stream
-    #/then unique-name text-input-stream output-stream)
   
   #/cene-err "Encountered an unrecognized case of the expression syntax"))
 
