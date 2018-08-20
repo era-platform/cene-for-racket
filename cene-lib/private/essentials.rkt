@@ -114,11 +114,15 @@
   #/maybe-compare-aligned-lists as bs maybe-compare-elems))
 
 ; TODO: See if this should be an export of Effection.
+; TODO: Decide between this and `names-have-duplicate?` from
+; `effection/private`.
 (define/contract (names-mutually-unique? names)
   (-> (listof name?) boolean?)
   (just? #/assocs->table-if-mutually-unique #/list-map names #/fn name
     (cons name #/trivial)))
 
+; TODO: Decide between this and `sink-names-have-duplicate?` from
+; `effection/private`.
 (define/contract (sink-names-mutually-unique? ns)
   (-> (listof sink-name?) boolean?)
   (names-mutually-unique? #/list-map ns #/dissectfn (sink-name n) n))
@@ -287,6 +291,7 @@
     (list proj-tags vals)
   #/list (cons main-tag proj-tags) vals))
 
+; TODO: Remove the question mark from this name.
 (define/contract
   (sink-struct-op-autodex? a-tags a-fields b-tags b-fields dex-field)
   (->i
@@ -745,6 +750,7 @@
   (sink-dex #/dex-struct sink-string #/dex-immutable-string))
 
 
+; TODO BUILTINS: Add this as a Cene built-in.
 (define/contract (sink-name-for-struct-metadata inner-name)
   (-> sink-name? sink-name?)
   (sink-name-rep-map inner-name #/fn n
@@ -834,6 +840,10 @@
 
 
 ; TODO: Use this in some kind of CLI entrypoint or something.
+;
+; TODO BUILTINS: See if we should add something like this as a Cene
+; built-in. Yes, a Cene built-in that installs the Cene built-ins.
+;
 (define/contract (cene-runtime-essentials)
   (-> cene-runtime?)
   
@@ -1989,6 +1999,8 @@
   ; something similar for interacting with Racket.
   
   
+  ; Other
+  ;
   ; TODO: Figure out what section of operations to put these in.
   
   (def-func! "directive" directive

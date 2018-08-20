@@ -135,6 +135,9 @@
   #:other #:methods gen:sink [])
 (struct-easy (sink-effects go!)
   #:other #:methods gen:sink [])
+; TODO BUILTINS: Add built-in operations that process
+; `sink-cexpr-sequence-output-stream`, `sink-text-input-stream`,
+; `sink-located-string`, and `sink-cexpr` values.
 (struct-easy
   (sink-cexpr-sequence-output-stream box-of-maybe-state-and-handler)
   #:other #:methods gen:sink [])
@@ -150,6 +153,12 @@
     (unless (immutable-string? racket-string)
       (error "Expected racket-string to be an immutable string")))
   #:other #:methods gen:sink [])
+; TODO BUILTINS: In Effection, add a `make-fusable-procedure`
+; procedure, a `fusable-procedure?` predicate, and a
+; `(fuse-fusable-procedure arg-to-fuse-result)` fuse constructor. Add
+; corresponding operations to Cene. We can represent
+; `(fuse-fusable-procedure ...)` as
+; `(fuse-struct sink-opaque-fn #/fuse-fusable-procedure ...)`.
 (struct-easy (sink-opaque-fn racket-fn)
   #:other #:methods gen:sink [])
 (struct-easy (sink-table racket-table)
@@ -175,11 +184,13 @@
   (-> name? name?)
   (sink-name-rep-map unqualified-name #/fn n #/list 'name:qualified n))
 
+; TODO BUILTINS: Add this as a Cene built-in.
 (define/contract (sink-name-qualify unqualified-name)
   (-> sink-name? sink-name?)
   (sink-name-rep-map unqualified-name #/fn n
     (list 'name:qualified n)))
 
+; TODO BUILTINS: Add this as a Cene built-in.
 (define/contract (name-claimed name)
   (-> name? name?)
   (name-rep-map name #/fn n #/list 'name:claimed n))
@@ -469,6 +480,7 @@
       #/sink-call (-eval func env) (-eval arg env)))
   ])
 
+; TODO BUILTINS: Add this as a Cene built-in.
 (struct-easy (cexpr-opaque-fn param body)
   
   #:other
@@ -532,10 +544,12 @@
   (-> (-> cene-process?) sink-effects?)
   (sink-effects go!))
 
+; TODO BUILTINS: Add this as a Cene built-in.
 (define/contract (sink-effects-get name then)
   (-> sink-name? (-> sink? sink-effects?) sink-effects?)
   (make-sink-effects #/fn #/cene-process-get name then))
 
+; TODO BUILTINS: Add this as a Cene built-in.
 (define/contract (sink-effects-put name dex value)
   (-> sink-name? sink-dex? sink? sink-effects?)
   (make-sink-effects #/fn #/cene-process-put name dex value))
@@ -543,6 +557,8 @@
 (define/contract (sink-effects-noop)
   (-> sink-effects?)
   (make-sink-effects #/fn #/cene-process-noop))
+
+; TODO: Rename `sink-effects-merge...` to `sink-effects-fuse...`.
 
 (define/contract (sink-effects-merge-binary a b)
   (-> sink-effects? sink-effects? sink-effects?)
@@ -562,6 +578,9 @@
 ; This performs some computation during the side effect runner, rather
 ; than performing it right away. The computation doesn't have to be
 ; pure.
+;
+; TODO BUILTINS: Add this as a Cene built-in.
+;
 (define/contract (sink-effects-later then)
   (-> (-> sink-effects?) sink-effects?)
   (make-sink-effects #/fn #/sink-effects-run! #/then))
@@ -670,6 +689,7 @@
   #/sink-name #/unsafe:name
   #/list result-tag main-tag proj-table-name))
 
+; TODO BUILTINS: Add this as a Cene built-in.
 (define/contract
   (sink-name-for-function-implementation-code
     main-tag-name proj-tag-names)
@@ -679,6 +699,7 @@
     main-tag-name
     proj-tag-names))
 
+; TODO BUILTINS: Add this as a Cene built-in.
 (define/contract
   (sink-name-for-function-implementation-value
     main-tag-name proj-tag-names)
@@ -751,6 +772,7 @@
   (begin (assert-can-get-cene-definitions!)
   #/sink-call-list func args))
 
+; TODO BUILTINS: Add this as a Cene built-in.
 (define/contract (sink-string-from-located-string located-string)
   (-> sink-located-string? sink-string?)
   (dissect located-string (sink-located-string parts)
@@ -771,25 +793,30 @@
   (-> sink-string? sink-name?)
   (sink-name #/name-for-sink-string string))
 
+; TODO BUILTINS: Add this as a Cene built-in.
 (define/contract (sink-name-for-freestanding-cexpr-op inner-name)
   (-> sink-name? sink-name?)
   (sink-name-rep-map inner-name #/fn n
     (list 'name:freestanding-cexpr-op n)))
 
+; TODO BUILTINS: Add this as a Cene built-in.
 (define/contract (sink-name-for-bounded-cexpr-op inner-name)
   (-> sink-name? sink-name?)
   (sink-name-rep-map inner-name #/fn n
     (list 'name:bounded-cexpr-op n)))
 
+; TODO BUILTINS: Add this as a Cene built-in.
 (define/contract (sink-name-for-nameless-bounded-cexpr-op)
   (-> sink-name?)
   (sink-name #/unsafe:name #/list 'name:nameless-bounded-cexpr-op))
 
+; TODO BUILTINS: Add this as a Cene built-in.
 (define/contract (sink-name-for-struct-main-tag inner-name)
   (-> sink-name? sink-name?)
   (sink-name-rep-map inner-name #/fn n
     (list 'name:struct-main-tag n)))
 
+; TODO BUILTINS: Add this as a Cene built-in.
 (define/contract
   (sink-name-for-struct-proj qualified-main-tag-name inner-name)
   (-> sink-name? sink-name? sink-name?)
@@ -811,6 +838,7 @@
     (set-box! b (nothing))
     state-and-handler))
 
+; TODO BUILTINS: Add this as a Cene built-in.
 (define/contract (sink-effects-cexpr-write output-stream cexpr then)
   (->
     sink-cexpr-sequence-output-stream? sink-cexpr?
@@ -833,6 +861,7 @@
     (set-box! b (nothing))
     input-port))
 
+; TODO BUILTINS: Add this as a Cene built-in.
 (define/contract
   (sink-effects-read-eof text-input-stream on-eof else)
   (->
@@ -847,6 +876,7 @@
       on-eof)
   #/else #/sink-text-input-stream #/box #/just in))
 
+; TODO BUILTINS: Add this as a Cene built-in.
 (define/contract
   (sink-effects-peek-whether-eof text-input-stream then)
   (->
@@ -858,6 +888,10 @@
   #/then (sink-text-input-stream #/box #/just in)
     (eof-object? #/peek-byte in)))
 
+; TODO BUILTINS: Figure out how this could be achieved in Cene. The
+; JavaScript version of Cene has a suite of `regex-...` operations
+; that will probably be more than enough to recreate this if we add a
+; way to match a regex on an input stream.
 (define/contract
   (sink-effects-read-regexp text-input-stream pattern then)
   (->
@@ -887,6 +921,7 @@
         (bytes->string/utf-8 bytes)
         (list stop-line stop-column stop-position)))))
 
+; TODO BUILTINS: Add the regex we're using here as a Cene built-in.
 (define/contract
   (sink-effects-read-whitespace text-input-stream then)
   (->
@@ -899,6 +934,7 @@
   #/dissect maybe-located-string (just located-string)
   #/then text-input-stream located-string))
 
+; TODO BUILTINS: Add the regex we're using here as a Cene built-in.
 (define/contract
   (sink-effects-read-non-line-breaks text-input-stream then)
   (->
@@ -911,6 +947,7 @@
   #/dissect maybe-located-string (just located-string)
   #/then text-input-stream located-string))
 
+; TODO BUILTINS: Add the regexes we're using here as Cene built-ins.
 (define/contract
   (sink-effects-read-maybe-identifier
     qualify text-input-stream pre-qualify then)
@@ -935,6 +972,7 @@
     #/sink-call qualify #/pre-qualify #/sink-name-for-string
     #/sink-string-from-located-string located-string)))
 
+; TODO BUILTINS: Add the regex we're using here as a Cene built-in.
 (define/contract
   (sink-effects-read-maybe-op-character text-input-stream then)
   (->
@@ -978,6 +1016,7 @@
     (then text-input-stream #t)
     (then text-input-stream #f)))
 
+; TODO BUILTINS: Add the regexes we're using here as Cene built-ins.
 (define/contract
   (sink-effects-peek-whether-closing-bracket text-input-stream then)
   (->
@@ -991,6 +1030,7 @@
   #/sink-effects-peek-whether-given-racket text-input-stream "]"
     then))
 
+; TODO BUILTINS: Add the regexes we're using here as Cene built-ins.
 (define/contract
   (sink-effects-read-op text-input-stream qualify pre-qualify then)
   (->
@@ -1157,6 +1197,9 @@
 
 ; TODO: For every cexpr read this way, wrap that cexpr in a located
 ; cexpr.
+;
+; TODO BUILTINS: Add the regexes we're using here as Cene built-ins.
+;
 (define/contract
   (sink-effects-read-cexprs
     unique-name qualify text-input-stream output-stream then)
@@ -1311,6 +1354,8 @@
     #/w- rest (name-rep-map unique-name #/fn n #/list 'name:rest n)
     #/next n rest #/cons first names)))
 
+; TODO BUILTINS: Add this as a Cene built-in, possibly as a side
+; effect.
 (define/contract (cexpr-can-eval? cexpr)
   (-> cexpr? boolean?)
   (not #/cexpr-has-free-vars? cexpr #/table-empty))
@@ -1322,6 +1367,8 @@
 ; so far we've only written code for the macroexpander's side effects
 ; runner (TODO), so this particular version always succeeds.
 ;
+; TODO BUILTINS: Add this as a Cene built-in.
+;
 (define/contract (sink-effects-cexpr-eval cexpr then)
   (-> (and/c cexpr? cexpr-can-eval?) (-> sink? sink-effects?)
     sink-effects?)
@@ -1331,6 +1378,11 @@
 ; text input stream and runs the reader macros it encounters. Unlike
 ; typical Lisp readers, this does not read first-class values; it only
 ; reads and performs side effects.
+;
+; TODO BUILTINS: Add this as a Cene built-in. It would be even better
+; if we could just add the boxing/spending part as a built-in and
+; write the rest in Cene code.
+;
 (define/contract
   (sink-effects-read-top-level unique-name qualify text-input-stream)
   (-> name? sink? sink-text-input-stream? sink-effects?)
