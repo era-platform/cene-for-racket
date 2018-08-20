@@ -1405,7 +1405,8 @@
       projections))
   
   (define/contract
-    (expand-struct-op unique-name qualify text-input-stream then)
+    (sink-effects-expand-struct-op
+      unique-name qualify text-input-stream then)
     (->
       name?
       sink?
@@ -1446,7 +1447,8 @@
   (def-macro! "dex-struct" #/fn
     unique-name qualify text-input-stream then
     
-    (expand-struct-op unique-name qualify text-input-stream
+    (sink-effects-expand-struct-op
+      unique-name qualify text-input-stream
     #/fn unique-name qualify text-input-stream maybe-pieces
     #/expect maybe-pieces (just #/list main-tag-name projections)
       (cene-err "Expected a dex-struct form to designate a struct metadata name")
@@ -1461,7 +1463,8 @@
   (def-macro! "cline-struct" #/fn
     unique-name qualify text-input-stream then
     
-    (expand-struct-op unique-name qualify text-input-stream
+    (sink-effects-expand-struct-op
+      unique-name qualify text-input-stream
     #/fn unique-name qualify text-input-stream maybe-pieces
     #/expect maybe-pieces (just #/list main-tag-name projections)
       (cene-err "Expected a cline-struct form to designate a struct metadata name")
@@ -1476,7 +1479,8 @@
   (def-macro! "merge-struct" #/fn
     unique-name qualify text-input-stream then
     
-    (expand-struct-op unique-name qualify text-input-stream
+    (sink-effects-expand-struct-op
+      unique-name qualify text-input-stream
     #/fn unique-name qualify text-input-stream maybe-pieces
     #/expect maybe-pieces (just #/list main-tag-name projections)
       (cene-err "Expected a merge-struct form to designate a struct metadata name")
@@ -1491,7 +1495,8 @@
   (def-macro! "fuse-struct" #/fn
     unique-name qualify text-input-stream then
     
-    (expand-struct-op unique-name qualify text-input-stream
+    (sink-effects-expand-struct-op
+      unique-name qualify text-input-stream
     #/fn unique-name qualify text-input-stream maybe-pieces
     #/expect maybe-pieces (just #/list main-tag-name projections)
       (cene-err "Expected a fuse-struct form to designate a struct metadata name")
@@ -1507,7 +1512,8 @@
   (def-macro! "construct" #/fn
     unique-name qualify text-input-stream then
     
-    (expand-struct-op unique-name qualify text-input-stream
+    (sink-effects-expand-struct-op
+      unique-name qualify text-input-stream
     #/fn unique-name qualify text-input-stream maybe-pieces
     #/expect maybe-pieces (just #/list main-tag-name projections)
       (cene-err "Expected a construct form to designate a struct metadata name")
