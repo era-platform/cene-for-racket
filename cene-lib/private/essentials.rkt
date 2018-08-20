@@ -24,7 +24,8 @@
 (require #/for-syntax #/only-in syntax/parse expr id nat syntax-parse)
 
 
-(require #/only-in racket/contract/base -> ->i any/c list/c listof)
+(require #/only-in racket/contract/base
+  -> ->i any/c cons/c list/c listof)
 (require #/only-in racket/contract/region define/contract)
 (require #/only-in racket/generic define/generic)
 (require #/only-in racket/math natural?)
@@ -35,7 +36,7 @@
 (require #/only-in lathe-comforts/list
   list-all list-any list-foldl list-foldr list-map)
 (require #/only-in lathe-comforts/maybe
-  just maybe-bind maybe/c maybe-map nothing)
+  just just? maybe-bind maybe/c maybe-map nothing)
 (require #/only-in lathe-comforts/string immutable-string?)
 (require #/only-in lathe-comforts/struct struct-easy)
 
@@ -50,7 +51,8 @@
   fuse-table in-cline? in-dex? get-dex-from-cline
   make-ordering-private-gt make-ordering-private-lt merge-by-dex
   merge-struct merge-table name? name-of ordering-eq ordering-gt
-  ordering-lt ordering-private? table-empty table-get table-shadow)
+  ordering-lt ordering-private? table? table-empty table-get
+  table-shadow)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe
   autoname-cline autoname-dex autoname-fuse autoname-merge cline
   cline-by-own-method-unchecked cline-fix-unchecked dex
@@ -65,7 +67,10 @@
   id-or-expr->cexpr
   id-or-expr-id
   sink-effects-read-bounded-ids-and-exprs
-  sink-effects-read-bounded-specific-number-of-cexprs)
+  sink-effects-read-bounded-specific-number-of-cexprs
+  sink-effects-read-leading-specific-number-of-cexprs
+  sink-effects-read-leading-specific-number-of-identifiers
+  sink-name-for-local-variable)
 
 
 (provide cene-runtime-essentials)
@@ -105,6 +110,24 @@
     (just #/ordering-eq)
   #/maybe-ordering-or (maybe-compare-elems a b)
   #/maybe-compare-aligned-lists as bs maybe-compare-elems))
+
+; TODO: See if this should be an export of Effection.
+(define/contract (assocs->table-if-mutually-unique assocs)
+  (-> (listof #/cons/c name? any/c) #/maybe/c table?)
+  (w-loop next assocs assocs result (table-empty)
+    (expect assocs (cons (cons k v) assocs) (just result)
+    #/expect (table-get k result) (nothing) (nothing)
+    #/next assocs #/table-shadow k (just v) result)))
+
+; TODO: See if this should be an export of Effection.
+(define/contract (names-mutually-unique? names)
+  (-> (listof name?) boolean?)
+  (just? #/assocs->table-if-mutually-unique #/list-map names #/fn name
+    (cons name #/trivial)))
+
+(define/contract (sink-names-mutually-unique? ns)
+  (-> (listof sink-name?) boolean?)
+  (names-mutually-unique? #/list-map ns #/dissectfn (sink-name n) n))
 
 (define/contract (racket-boolean->sink racket-boolean)
   (-> boolean? sink?)
@@ -157,6 +180,64 @@
   #/dexable dex val))
 
 
+(struct-easy
+  (cene-struct-metadata tags proj-string-to-name proj-name-to-string))
+
+(define/contract (sink-struct-metadata-parse-force sink-metadata)
+  (-> sink? cene-struct-metadata?)
+        (sink-dex-struct s-struct-metadata #/list
+          (sink-dex-name)
+          (sink-dex-list #/sink-dex-struct s-assoc #/list
+            (sink-dex-string)
+            (sink-dex-name)))
+  (expect (unmake-sink-struct-maybe s-struct-metadata sink-metadata)
+    (just #/list main-tag-name projs)
+    (cene-err "Expected a defined struct metadata entry to be a struct-metadata")
+  #/expect main-tag-name (sink-name main-tag-name)
+    (cene-err "Expected a defined struct metadata entry to have a main tag name that was a name")
+  #/expect (sink-list->maybe-racket projs) (just projs)
+    (cene-err "Expected a defined struct metadata entry to have a cons list of projections")
+  #/w- projs
+    (list-map projs #/fn entry
+      (expect (unmake-sink-struct-maybe s-assoc entry)
+        (just #/list proj-string proj-name)
+        (cene-err "Expected a defined struct metadata entry to have a projection list where each entry was an assoc")
+      #/expect proj-string (sink-string proj-string)
+        (cene-err "Expected a defined struct metadata entry to have a projection list where each key was a string")
+      #/expect proj-name (sink-name proj-name)
+        (cene-err "Expected a defined struct metadata entry to have a projection list where each associated value was a name")
+      #/w- proj-string-name
+        (name-for-sink-string #/sink-string proj-string)
+      #/list proj-string proj-string-name proj-name))
+  #/expect
+    (assocs->table-if-mutually-unique
+    #/list-map projs #/dissectfn (list string string-name name)
+      (cons string-name name))
+    (just proj-string-to-name)
+    (cene-err "Expected a defined struct metadata entry to have a projection list with mutually unique strings")
+  #/expect
+    (assocs->table-if-mutually-unique
+    #/list-map projs #/dissectfn (list string string-name name)
+      (cons name string))
+    (just proj-name-to-string)
+    (cene-err "Expected a defined struct metadata entry to have a projection list with mutually unique names")
+  #/cene-struct-metadata
+    (cons main-tag-name
+    #/list-map projs #/dissectfn (list string string-name name) name)
+    proj-string-to-name proj-name-to-string))
+
+(define/contract (struct-metadata-tags metadata)
+  (-> cene-struct-metadata? #/listof name?)
+  (dissect metadata (cene-struct-metadata tags _ _)
+    tags))
+
+(define/contract (struct-metadata-n-projs metadata)
+  (-> cene-struct-metadata? #/listof name?)
+  (dissect metadata
+    (cene-struct-metadata (cons main-tag-name proj-names) _ _)
+  #/length proj-names))
+
+
 (struct-easy (sink-ordering-private racket-ordering-private)
   #:other #:methods gen:sink [])
 (struct-easy (sink-cline cline)
@@ -174,12 +255,11 @@
   (->i ([proj-tags (listof name?)] [vals list?])
     #:pre (proj-tags vals) (= (length proj-tags) (length vals))
     [_ (list/c (listof name?) list?)])
-  (w- entries
-    (unsafe:table->sorted-list
-    #/list-foldl (table-empty) (map list proj-tags vals)
-    #/fn tab entry
-      (dissect entry (list proj-tag field-name-rep)
-      #/table-shadow proj-tag (just field-name-rep) tab))
+  (expect
+    (assocs->table-if-mutually-unique #/map cons proj-tags vals)
+    (just projs-table)
+    (error "Expected proj-tags to be a list of mutually unique names")
+  #/w- entries (unsafe:table->sorted-list projs-table)
   #/list
     (list-map entries #/dissectfn (list proj-tag val) proj-tag)
     (list-map entries #/dissectfn (list proj-tag val) val)))
@@ -607,6 +687,23 @@
         (-eval else-expr env)))
   ])
 
+(define/contract
+  (sink-cexpr-case subject-expr tags vars then-expr else-expr)
+  (->i
+    (
+      [subject-expr sink-cexpr?]
+      [tags (listof name?)]
+      [vars (listof sink-name?)]
+      [then-expr sink-cexpr?]
+      [else-expr sink-cexpr?])
+    #:pre (tags vars) (= (length tags) (add1 #/length vars))
+    [_ sink-cexpr?])
+  (dissect subject-expr (sink-cexpr subject-expr)
+  #/dissect then-expr (sink-cexpr then-expr)
+  #/dissect else-expr (sink-cexpr else-expr)
+  #/w- vars (list-map vars #/dissectfn (sink-name var) var)
+  #/sink-cexpr
+  #/cexpr-case subject-expr tags vars then-expr else-expr))
 
 (struct-easy (fix-for-sink-dex-list dex-elem)
   #:other
@@ -633,10 +730,6 @@
   (-> sink-dex?)
   (sink-dex #/dex-struct sink-string #/dex-immutable-string))
 
-
-(define/contract (sink-name-for-local-variable inner-name)
-  (-> sink-name? sink-name?)
-  (sink-name-rep-map inner-name #/fn n #/list 'name:local-variable n))
 
 (define/contract (sink-name-for-struct-metadata inner-name)
   (-> sink-name? sink-name?)
@@ -785,8 +878,7 @@
       unique-name qualify text-input-stream output-stream then
       
       (sink-effects-read-bounded-specific-number-of-cexprs
-        unique-name qualify text-input-stream
-        sink-name-for-local-variable n-args
+        unique-name qualify text-input-stream n-args
       #/fn unique-name qualify text-input-stream args
       #/sink-effects-cexpr-write output-stream (body args)
       #/fn output-stream
@@ -915,6 +1007,14 @@
       (list-map qualified-proj-name-entries
       #/dissectfn (list proj-string qualified-proj-name)
         qualified-proj-name)
+    #/expect
+      (assocs->table-if-mutually-unique
+      #/list-map qualified-proj-names
+      #/dissectfn (sink-name proj-name)
+        (cons proj-name #/make-sink-struct s-trivial #/list))
+      (just qualified-proj-names-table)
+      (error "Expected the projection strings to be mutually unique")
+    #/begin
       
       ; We define a reader macro so that the user can write code that
       ; compiles into an expression that constructs a struct with this
@@ -947,10 +1047,7 @@
       ; invariant that comes in handy. (TODO: See if it does.)
       (def-func-impl-native!
         qualified-main-tag-name
-        (list-foldl (sink-table #/table-empty) qualified-proj-names
-        #/fn table proj-name
-          (sink-table-put-maybe table proj-name
-          #/just #/make-sink-struct s-trivial #/list))
+        (sink-table qualified-proj-names-table)
         (sink-opaque-fn #/fn struct-value
           (cene-err "Called a struct that wasn't intended for calling")))
       
@@ -1289,12 +1386,11 @@
         #/expect v (sink-cexpr v)
           (cene-err "Expected projections to be an association list with expressions as values")
         #/list k v))
-    #/begin
-      (list-foldl (table-empty) projections #/fn tab projection
-        (dissect projection (list k v)
-        #/expect (table-get k tab) (nothing)
-          (cene-err "Expected projections to be an association list with mutually unique names as keys")
-        #/table-shadow k (just #/trivial) tab))
+    #/expect
+      (names-mutually-unique?
+      #/list-map projections #/dissectfn (list k v) k)
+      #t
+      (cene-err "Expected projections to be an association list with mutually unique names as keys")
     #/void))
   
   ; NOTE: The JavaScript version of Cene makes this functionality
@@ -1354,17 +1450,16 @@
         #/expect v (sink-name v)
           (cene-err "Expected projections to be an association list with names as values")
         #/list k v))
-    #/begin
-      (list-foldl (table-empty) projections #/fn tab projection
-        (dissect projection (list k v)
-        #/expect (table-get k tab) (nothing)
-          (cene-err "Expected projections to be an association list with mutually unique names as keys")
-        #/table-shadow k (just #/trivial) tab))
-      (list-foldl (table-empty) projections #/fn tab projection
-        (dissect projection (list k v)
-        #/expect (table-get v tab) (nothing)
-          (cene-err "Expected projections to be an association list with mutually unique names as values")
-        #/table-shadow v (just #/trivial) tab))
+    #/expect
+      (names-mutually-unique?
+      #/list-map projections #/dissectfn (list k v) k)
+      #t
+      (cene-err "Expected projections to be an association list with mutually unique names as keys")
+    #/expect
+      (names-mutually-unique?
+      #/list-map projections #/dissectfn (list k v) v)
+      #t
+      (cene-err "Expected projections to be an association list with mutually unique names as values")
     #/expect then-expr (sink-cexpr then-expr)
       (cene-err "Expected then-expr to be an expression")
     #/expect else-expr (sink-cexpr else-expr)
@@ -1378,7 +1473,38 @@
       then-expr
       else-expr))
   
-  ; TODO: Implement `case`.
+  (def-macro! "case" #/fn unique-name qualify text-input-stream then
+    
+    (sink-effects-read-leading-specific-number-of-cexprs
+      unique-name qualify text-input-stream 1
+    #/fn unique-name qualify text-input-stream args-subject
+    #/dissect args-subject (list subject-expr)
+    
+    #/sink-effects-read-maybe-identifier
+      qualify text-input-stream sink-name-for-struct-metadata
+    #/fn text-input-stream maybe-metadata-name
+    #/expect maybe-metadata-name
+      (just #/list located-string metadata-name)
+      (cene-err "Expected a case form to designate a struct metadata name")
+    #/sink-effects-get metadata-name #/fn metadata
+    #/w- metadata (sink-struct-metadata-parse-force metadata)
+    #/w- tags (struct-metadata-tags metadata)
+    #/w- n-projs (struct-metadata-n-projs metadata)
+    
+    #/sink-effects-read-leading-specific-number-of-identifiers
+      qualify text-input-stream n-projs sink-name-for-local-variable
+    #/fn text-input-stream vars
+    #/w- vars
+      (list-map vars #/dissectfn (list located-string var) var)
+    #/expect (sink-names-mutually-unique? vars) #t
+      (cene-err "Expected the variables of a case form to be mutually unique")
+    
+    #/sink-effects-read-bounded-specific-number-of-cexprs
+      unique-name qualify text-input-stream 2
+    #/fn unique-name qualify text-input-stream args-branches
+    #/dissect args-branches (list then-expr else-expr)
+    
+    #/sink-cexpr-case subject-expr tags vars then-expr else-expr))
   
   (def-func! "cexpr-call" func-expr arg-expr
     (expect func-expr (sink-cexpr func-expr)

@@ -33,11 +33,13 @@
   dissect dissectfn expect fn mat w- w-loop)
 (require #/only-in lathe-comforts/list
   list-any list-foldl list-foldr list-map list-zip-map nat->maybe)
-(require #/only-in lathe-comforts/maybe just maybe/c nothing)
+(require #/only-in lathe-comforts/maybe
+  just maybe/c maybe-map nothing)
 (require #/only-in lathe-comforts/string immutable-string?)
 (require #/only-in lathe-comforts/struct struct-easy)
 
-(require #/only-in effection/order
+(require #/only-in effection/order dex-immutable-string)
+(require #/only-in effection/order/base
   compare-by-dex dex? dex-give-up dex-dex dex-name dex-struct
   dex-table fuse-by-merge merge-by-dex merge-table name? name-of
   ordering-eq? table-empty table-get table-map-fuse table-shadow)
@@ -756,11 +758,16 @@
     (dissect part (list start-loc string stop-loc)
     #/string-append state string)))
 
+(define/contract (name-for-sink-string string)
+  (-> sink-string? name?)
+  (dissect
+    (name-of (dex-struct sink-string #/dex-immutable-string) string)
+    (just result)
+    result))
+
 (define/contract (sink-name-for-string string)
   (-> sink-string? sink-name?)
-  (dissect string (sink-string racket-string)
-  #/sink-name #/unsafe:name
-  #/list 'name:string #/string->symbol racket-string))
+  (sink-name #/name-for-sink-string string))
 
 (define/contract (sink-name-for-freestanding-cexpr-op inner-name)
   (-> sink-name? sink-name?)
@@ -903,10 +910,15 @@
   #/then text-input-stream located-string))
 
 (define/contract
-  (sink-effects-read-maybe-identifier text-input-stream then)
+  (sink-effects-read-maybe-identifier
+    qualify text-input-stream pre-qualify then)
   (->
+    sink?
     sink-text-input-stream?
-    (-> sink-text-input-stream? (maybe/c sink-located-string?)
+    (-> sink-name? sink-name?)
+    (->
+      sink-text-input-stream?
+      (maybe/c #/list/c sink-located-string? sink-name?)
       sink-effects?)
     sink-effects?)
   ; TODO: Support a more Unicode-aware notion of identifier. Not only
@@ -914,7 +926,12 @@
   ; Unicode algorithms, it should normalize it according to a Unicode
   ; algorithm as well.
   (sink-effects-read-regexp text-input-stream #px"^[-01-9a-zA-Z]+"
-    then))
+  #/fn text-input-stream maybe-located-string
+  #/then text-input-stream
+  #/maybe-map maybe-located-string #/fn located-string
+    (list located-string
+    #/sink-call qualify #/pre-qualify #/sink-name-for-string
+    #/sink-string-from-located-string located-string)))
 
 (define/contract
   (sink-effects-read-maybe-op-character text-input-stream then)
@@ -1016,12 +1033,11 @@
   #/mat maybe-str (just _)
     (cene-err "The use of [ to delimit a macro name is not yet supported")
   
-  #/sink-effects-read-maybe-identifier text-input-stream
-  #/fn text-input-stream maybe-identifier
-  #/mat maybe-identifier (just identifier)
-    (then text-input-stream
-    #/sink-call qualify #/pre-qualify #/sink-name-for-string
-    #/sink-string-from-located-string identifier)
+  #/sink-effects-read-maybe-identifier
+    qualify text-input-stream pre-qualify
+  #/fn text-input-stream maybe-name
+  #/mat maybe-name (just #/list located-string name)
+    (then text-input-stream name)
   
   #/cene-err "Encountered an unrecognized case of the expression operator syntax"))
 
