@@ -1073,14 +1073,11 @@
       ; TODO: We haven't even tried to store this in the same format
       ; as the JavaScript version of Cene does. See if we should.
       ;
-      ; TODO: Now that we have this in place, implement Cene's
-      ; destructuring operations.
-      ;
-      ; TODO: Expose a `dex-list` operation to Cene so that Cene code
-      ; can install a definition with a dex that's the same as this
-      ; one's dex. Cene code would otherwise be able to make something
-      ; which *behaved the same* as `dex-list`, but with the exception
-      ; that it wouldn't count as the same dex.
+      ; TODO BUILTINS: Expose a `dex-list` operation to Cene so that
+      ; Cene code can install a definition with a dex that's the same
+      ; as this one's dex. Cene code would otherwise be able to make
+      ; something which *behaved the same* as `dex-list`, but with the
+      ; exception that it wouldn't count as the same dex.
       ;
       (def-dexable-value!
         (sink-name-qualify
@@ -1183,7 +1180,7 @@
   
   (def-data-struct! "clamor-err" #/list "message")
   
-  ; TODO: Implement the macro `err`.
+  ; TODO BUILTINS: Implement the macro `err`.
   
   
   ; Order
@@ -1669,7 +1666,7 @@
     #/sink-cexpr #/list-foldl func-expr args-args #/fn func arg
       (cexpr-call func arg)))
   
-  ; TODO: Consider implementing the following.
+  ; TODO BUILTINS: Consider implementing the following.
   ;
   ;   constructor-tag
   ;   function-implementation-from-cexpr
@@ -1759,7 +1756,7 @@
   ;
   (def-nullary-func! "effects-noop" (sink-effects-noop))
   
-  ; TODO: Consider implementing the following.
+  ; TODO BUILTINS: Consider implementing the following.
   ;
   ;   fuse-effects
   ;   get-mode
@@ -1773,14 +1770,14 @@
   
   ; Unit tests
   
-  ; TODO: Consider implementing the following.
+  ; TODO BUILTINS: Consider implementing the following.
   ;
   ;   test-async
   
   
   ; Namespaces
   
-  ; TODO: Consider implementing the following.
+  ; TODO BUILTINS: Consider implementing the following.
   ;
   ;   procure-sub-ns-table
   ;   procure-name
@@ -1796,11 +1793,11 @@
   
   ; Macros
   
-  ; TODO: Consider implementing the following. This is the list of
-  ; macro-relevant operations from the JavaScript implementation of
-  ; Cene, which has an s-expression-based macro system. Now that we're
-  ; using a text-stream-based macro system here, several of these will
-  ; be unnecessary.
+  ; TODO BUILTINS: Consider implementing the following. This is the
+  ; list of macro-relevant operations from the JavaScript
+  ; implementation of Cene, which has an s-expression-based macro
+  ; system. Now that we're using a text-stream-based macro system
+  ; here, several of these will be unnecessary.
   ;
   ;   istring-nil
   ;   istring-cons
@@ -1901,7 +1898,7 @@
     #/sink-call then
     #/sink-string #/string->immutable-string #/string-append a b))
   
-  ; TODO: Implement the macro `str`.
+  ; TODO BUILTINS: Implement the macro `str`.
   
   (def-func! "string-length" string
     (expect string (sink-string string)
@@ -1940,7 +1937,7 @@
   
   ; Regexes
   
-  ; TODO: Consider implementing the following.
+  ; TODO BUILTINS: Consider implementing the following.
   ;
   ;   regex-give-up
   ;   regex-empty
@@ -1960,7 +1957,7 @@
   
   ; File I/O for simple builds
   
-  ; TODO: Consider implementing the following.
+  ; TODO BUILTINS: Consider implementing the following.
   ;
   ;   encapsulated-string
   ;   cli-arguments
@@ -1981,8 +1978,8 @@
   
   ; FFI
   
-  ; TODO: The JavaScript version of Cene has FFI operations for
-  ; interacting with JavaScript, naturally. See if we should do
+  ; TODO BUILTINS: The JavaScript version of Cene has FFI operations
+  ; for interacting with JavaScript, naturally. See if we should do
   ; something similar for interacting with Racket.
   
   

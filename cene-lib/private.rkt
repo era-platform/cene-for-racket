@@ -521,10 +521,7 @@
         #/table-shadow var (just val) env)))
   ])
 
-; TODO: Add more cexpr instances. The JavaScript version of Cene has
-; five more than we do:
-;
-;   located mat cline-struct merge-struct fuse-struct err
+; TODO BUILTINS: Add and use a `located` cexpr instance.
 
 ; NOTE: The only purpose of this is to help track down a common kind
 ; of error where the result of `go!` is mistakenly a `sink-effects?`
