@@ -421,7 +421,7 @@
         result))
   ])
 
-(struct-easy (cexpr-struct main-tag-name projs)
+(struct-easy (cexpr-construct main-tag-name projs)
   
   #:other
   
@@ -431,14 +431,14 @@
     (define/generic -eval cexpr-eval)
     
     (define (cexpr-has-free-vars? this env)
-      (expect this (cexpr-struct main-tag-name projs)
-        (error "Expected this to be a cexpr-struct")
+      (expect this (cexpr-construct main-tag-name projs)
+        (error "Expected this to be a cexpr-construct")
       #/list-any projs #/dissectfn (list proj-name proj-cexpr)
         (-has-free-vars? proj-cexpr env)))
     
     (define (cexpr-eval this env)
-      (expect this (cexpr-struct main-tag-name projs)
-        (error "Expected this to be a cexpr-struct")
+      (expect this (cexpr-construct main-tag-name projs)
+        (error "Expected this to be a cexpr-construct")
       #/make-sink-struct
         (cons main-tag-name
         #/list-map projs #/dissectfn (list proj-name proj-cexpr)
@@ -590,23 +590,23 @@
   (names-have-duplicate?
   #/list-map names #/dissectfn (sink-name name) name))
 
-(define/contract (sink-cexpr-struct main-tag-name projs)
+(define/contract (sink-cexpr-construct main-tag-name projs)
   (-> sink-name? (listof #/list/c sink-name? sink-cexpr?) sink-cexpr?)
   (dissect main-tag-name (sink-name main-tag-name)
   #/if
     (sink-names-have-duplicate? #/list-map projs
     #/dissectfn (list proj-name proj-cexpr) proj-name)
     (error "Encountered a duplicate projection name")
-  #/sink-cexpr #/cexpr-struct main-tag-name #/list-map projs
+  #/sink-cexpr #/cexpr-construct main-tag-name #/list-map projs
   #/dissectfn (list (sink-name proj-name) (sink-cexpr proj-cexpr))
     (list proj-name proj-cexpr)))
 
-(define/contract (make-sink-cexpr-struct tags proj-cexprs)
+(define/contract (make-sink-cexpr-construct tags proj-cexprs)
   (-> (and/c pair? #/listof name?) (listof sink-cexpr?) sink-cexpr?)
   (dissect tags (cons main-tag-name proj-names)
   #/expect (= (length proj-names) (length proj-cexprs)) #t
     (error "Expected tags to have one more entry than proj-cexprs")
-  #/sink-cexpr-struct (sink-name main-tag-name)
+  #/sink-cexpr-construct (sink-name main-tag-name)
   #/list-zip-map proj-names proj-cexprs #/fn proj-name proj-cexpr
     (list (sink-name proj-name) proj-cexpr)))
 

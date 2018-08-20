@@ -226,6 +226,26 @@
     #/list-map projs #/dissectfn (list string string-name name) name)
     proj-string-to-name proj-name-to-string))
 
+(define/contract
+  (sink-effects-read-maybe-struct-metadata
+    qualify text-input-stream then)
+  (->
+    sink?
+    sink-text-input-stream?
+    (->
+      sink-text-input-stream?
+      (maybe/c #/list/c sink-located-string? sink-name?)
+      sink-effects?)
+    sink-effects?)
+  (sink-effects-read-maybe-identifier
+    qualify text-input-stream sink-name-for-struct-metadata
+  #/fn text-input-stream maybe-metadata-name
+  #/expect maybe-metadata-name
+    (just #/list located-string metadata-name)
+    (then #/nothing)
+  #/sink-effects-get metadata-name #/fn metadata
+  #/then #/just #/verify-sink-struct-metadata! metadata))
+
 (define/contract (struct-metadata-tags metadata)
   (-> cene-struct-metadata? #/listof name?)
   (dissect metadata (cene-struct-metadata tags _ _)
@@ -928,7 +948,7 @@
         ;
         (macro-impl-specific-number-of-args n-args #/fn args
           (list-foldl
-            (sink-cexpr-struct qualified-main-tag-name #/list)
+            (sink-cexpr-construct qualified-main-tag-name #/list)
             args
           #/fn func arg #/sink-cexpr-call func arg)))
       
@@ -974,8 +994,8 @@
         ;
         (macro-impl-specific-number-of-args 0 #/fn args
           (sink-cexpr-call
-            (sink-cexpr-struct qualified-main-tag-name #/list)
-            (make-sink-cexpr-struct s-trivial #/list))))
+            (sink-cexpr-construct qualified-main-tag-name #/list)
+            (make-sink-cexpr-construct s-trivial #/list))))
       
       ; We define a Cene struct function implementation containing
       ; the function's run time behavior.
@@ -1038,7 +1058,7 @@
         ; against that kind of mistake.
         ;
         #/macro-impl-specific-number-of-args n-projs #/fn proj-cexprs
-          (sink-cexpr-struct qualified-main-tag-name
+          (sink-cexpr-construct qualified-main-tag-name
           #/map list qualified-proj-names proj-cexprs)))
       
       ; We define a Cene struct function implementation which throws
@@ -1393,6 +1413,34 @@
       (cene-err "Expected projections to be an association list with mutually unique names as keys")
       projections))
   
+  (define/contract
+    (expand-struct-op unique-name qualify text-input-stream then)
+    (->
+      name?
+      sink?
+      sink-text-input-stream?
+      (->
+        name?
+        sink?
+        sink-text-input-stream?
+        (maybe/c #/list/c name? #/listof #/list/c name? cexpr?)
+        sink-effects?)
+      sink-effects?)
+    
+    (sink-effects-read-maybe-struct-metadata qualify text-input-stream
+    #/fn text-input-stream maybe-metadata
+    #/expect maybe-metadata (just metadata)
+      (then unique-name qualify text-input-stream #/nothing)
+    #/dissect (struct-metadata-tags metadata)
+      (cons main-tag-name proj-names)
+    
+    #/sink-effects-read-bounded-specific-number-of-cexprs
+      unique-name qualify text-input-stream (length proj-names)
+    #/fn unique-name qualify text-input-stream proj-exprs
+    
+    #/then unique-name qualify text-input-stream
+    #/just #/list main-tag-name #/map list proj-names proj-exprs))
+  
   ; NOTE: The JavaScript version of Cene makes this functionality
   ; possible using a combination of `cexpr-cline-struct`,
   ; `cline-by-dex`, and `dex-by-cline`. We will probably be offering
@@ -1404,38 +1452,76 @@
       (verify-cexpr-struct-args! main-tag-name projections)
     #/sink-cexpr #/cexpr-dex-struct main-tag-name projections))
   
-  ; TODO: Implement a `dex-struct` macro that compiles to a
-  ; `cexpr-dex-struct` expression. Perhaps this can be defined on the
-  ; Cene side (in a prelude) rather than implemented in Racket, but
-  ; there's no harm in implementing it in Racket at first.
+  (def-macro! "dex-struct" #/fn
+    unique-name qualify text-input-stream then
+    
+    (expand-struct-op unique-name qualify text-input-stream
+    #/fn unique-name qualify text-input-stream maybe-pieces
+    #/expect maybe-pieces (just #/list main-tag-name projections)
+      (cene-err "Expected a dex-struct form to designate a struct metadata name")
+    #/then unique-name qualify text-input-stream
+    #/sink-cexpr #/cexpr-dex-struct main-tag-name projections))
   
   (def-func! "cexpr-cline-struct" main-tag-name projections
     (w- projections
       (verify-cexpr-struct-args! main-tag-name projections)
     #/sink-cexpr #/cexpr-cline-struct main-tag-name projections))
   
-  ; TODO: Implement `cline-struct`.
+  (def-macro! "cline-struct" #/fn
+    unique-name qualify text-input-stream then
+    
+    (expand-struct-op unique-name qualify text-input-stream
+    #/fn unique-name qualify text-input-stream maybe-pieces
+    #/expect maybe-pieces (just #/list main-tag-name projections)
+      (cene-err "Expected a cline-struct form to designate a struct metadata name")
+    #/then unique-name qualify text-input-stream
+    #/sink-cexpr #/cexpr-cline-struct main-tag-name projections))
   
   (def-func! "cexpr-merge-struct" main-tag-name projections
     (w- projections
       (verify-cexpr-struct-args! main-tag-name projections)
     #/sink-cexpr #/cexpr-merge-struct main-tag-name projections))
   
-  ; TODO: Implement `merge-struct`.
+  (def-macro! "merge-struct" #/fn
+    unique-name qualify text-input-stream then
+    
+    (expand-struct-op unique-name qualify text-input-stream
+    #/fn unique-name qualify text-input-stream maybe-pieces
+    #/expect maybe-pieces (just #/list main-tag-name projections)
+      (cene-err "Expected a merge-struct form to designate a struct metadata name")
+    #/then unique-name qualify text-input-stream
+    #/sink-cexpr #/cexpr-merge-struct main-tag-name projections))
   
   (def-func! "cexpr-fuse-struct" main-tag-name projections
     (w- projections
       (verify-cexpr-struct-args! main-tag-name projections)
     #/sink-cexpr #/cexpr-fuse-struct main-tag-name projections))
   
-  ; TODO: Implement `fuse-struct`.
+  (def-macro! "fuse-struct" #/fn
+    unique-name qualify text-input-stream then
+    
+    (expand-struct-op unique-name qualify text-input-stream
+    #/fn unique-name qualify text-input-stream maybe-pieces
+    #/expect maybe-pieces (just #/list main-tag-name projections)
+      (cene-err "Expected a fuse-struct form to designate a struct metadata name")
+    #/then unique-name qualify text-input-stream
+    #/sink-cexpr #/cexpr-fuse-struct main-tag-name projections))
   
-  ; TODO: The JavaScript version called this `cexpr-construct`. See
-  ; which name we prefer.
-  (def-func! "cexpr-struct" main-tag-name projections
+  (def-func! "cexpr-construct" main-tag-name projections
     (w- projections
       (verify-cexpr-struct-args! main-tag-name projections)
-    #/sink-cexpr #/cexpr-struct main-tag-name projections))
+    #/sink-cexpr #/cexpr-construct main-tag-name projections))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-macro! "construct" #/fn
+    unique-name qualify text-input-stream then
+    
+    (expand-struct-op unique-name qualify text-input-stream
+    #/fn unique-name qualify text-input-stream maybe-pieces
+    #/expect maybe-pieces (just #/list main-tag-name projections)
+      (cene-err "Expected a construct form to designate a struct metadata name")
+    #/then unique-name qualify text-input-stream
+    #/sink-cexpr #/cexpr-construct main-tag-name projections))
   
   (def-func! "cexpr-case"
     subject-expr main-tag-name projections then-expr else-expr
@@ -1485,14 +1571,11 @@
     #/fn unique-name qualify text-input-stream args-subject
     #/dissect args-subject (list subject-expr)
     
-    #/sink-effects-read-maybe-identifier
-      qualify text-input-stream sink-name-for-struct-metadata
-    #/fn text-input-stream maybe-metadata-name
-    #/expect maybe-metadata-name
-      (just #/list located-string metadata-name)
+    #/sink-effects-read-maybe-struct-metadata
+      qualify text-input-stream
+    #/fn text-input-stream maybe-metadata
+    #/expect maybe-metadata (just metadata)
       (cene-err "Expected a case form to designate a struct metadata name")
-    #/sink-effects-get metadata-name #/fn metadata
-    #/w- metadata (verify-sink-struct-metadata! metadata)
     #/w- tags (struct-metadata-tags metadata)
     #/w- n-projs (struct-metadata-n-projs metadata)
     
@@ -1509,6 +1592,7 @@
     #/fn unique-name qualify text-input-stream args-branches
     #/dissect args-branches (list then-expr else-expr)
     
+    #/then unique-name qualify text-input-stream
     #/sink-cexpr-case subject-expr tags vars then-expr else-expr))
   
   (def-func! "cexpr-call" func-expr arg-expr
