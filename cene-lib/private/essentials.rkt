@@ -66,6 +66,7 @@
 (require #/only-in cene/private/reader-utils
   id-or-expr->cexpr
   id-or-expr-id
+  sink-effects-read-bounded-cexprs
   sink-effects-read-bounded-ids-and-exprs
   sink-effects-read-bounded-specific-number-of-cexprs
   sink-effects-read-leading-specific-number-of-cexprs
@@ -1564,18 +1565,19 @@
       then-expr
       else-expr))
   
-  (def-macro! "case" #/fn unique-name qualify text-input-stream then
+  (define/contract
+    (sink-effects-read-case-pattern qualify text-input-stream then)
+    (->
+      sink?
+      sink-text-input-stream?
+      (-> sink-text-input-stream? list? list? sink-effects?)
+      sink-effects?)
     
-    (sink-effects-read-leading-specific-number-of-cexprs
-      unique-name qualify text-input-stream 1
-    #/fn unique-name qualify text-input-stream args-subject
-    #/dissect args-subject (list subject-expr)
-    
-    #/sink-effects-read-maybe-struct-metadata
-      qualify text-input-stream
+    (sink-effects-read-maybe-struct-metadata qualify text-input-stream
     #/fn text-input-stream maybe-metadata
     #/expect maybe-metadata (just metadata)
-      (cene-err "Expected a case form to designate a struct metadata name")
+      (cene-err "Expected the first part of a case pattern to designate a struct metadata name")
+    #/maybe-bind maybe-metadata #/fn metadata
     #/w- tags (struct-metadata-tags metadata)
     #/w- n-projs (struct-metadata-n-projs metadata)
     
@@ -1585,7 +1587,19 @@
     #/w- vars
       (list-map vars #/dissectfn (list located-string var) var)
     #/expect (sink-names-mutually-unique? vars) #t
-      (cene-err "Expected the variables of a case form to be mutually unique")
+      (cene-err "Expected the variables of a case pattern to be mutually unique")
+    
+    #/then text-input-stream tags vars))
+  
+  (def-macro! "case" #/fn unique-name qualify text-input-stream then
+    
+    (sink-effects-read-leading-specific-number-of-cexprs
+      unique-name qualify text-input-stream 1
+    #/fn unique-name qualify text-input-stream args-subject
+    #/dissect args-subject (list subject-expr)
+    
+    #/sink-effects-read-case-pattern qualify text-input-stream
+    #/fn text-input-stream tags vars
     
     #/sink-effects-read-bounded-specific-number-of-cexprs
       unique-name qualify text-input-stream 2
@@ -1595,6 +1609,51 @@
     #/then unique-name qualify text-input-stream
     #/sink-cexpr-case subject-expr tags vars then-expr else-expr))
   
+  (def-macro! "cast" #/fn unique-name qualify text-input-stream then
+    
+    (sink-effects-read-leading-specific-number-of-cexprs
+      unique-name qualify text-input-stream 1
+    #/fn unique-name qualify text-input-stream args-subject
+    #/dissect args-subject (list subject-expr)
+    
+    #/sink-effects-read-case-pattern qualify text-input-stream
+    #/fn text-input-stream tags vars
+    
+    #/sink-effects-read-bounded-specific-number-of-cexprs
+      unique-name qualify text-input-stream 2
+    #/fn unique-name qualify text-input-stream args-branches
+    #/dissect args-branches (list else-expr then-expr)
+    
+    #/then unique-name qualify text-input-stream
+    #/sink-cexpr-case subject-expr tags vars then-expr else-expr))
+  
+  (def-macro! "caselet" #/fn
+    unique-name qualify text-input-stream then
+    
+    (sink-effects-read-leading-specific-number-of-identifiers
+      qualify text-input-stream 1 sink-name-for-local-variable
+    #/fn text-input-stream args-subject-var
+    #/dissect args-subject-var (list #/list _ subject-var)
+    
+    #/sink-effects-read-leading-specific-number-of-cexprs
+      unique-name qualify text-input-stream 1
+    #/fn unique-name qualify text-input-stream args-subject-expr
+    #/dissect args-subject-expr (list subject-expr)
+    
+    #/sink-effects-read-case-pattern qualify text-input-stream
+    #/fn text-input-stream tags vars
+    
+    #/sink-effects-read-bounded-specific-number-of-cexprs
+      unique-name qualify text-input-stream 2
+    #/fn unique-name qualify text-input-stream args-branches
+    #/dissect args-branches (list then-expr else-expr)
+    
+    #/then unique-name qualify text-input-stream
+    #/sink-cexpr-let (list #/list subject-var subject-expr)
+    #/sink-cexpr-case (sink-cexpr-var subject-var) tags vars
+      then-expr
+      else-expr))
+  
   (def-func! "cexpr-call" func-expr arg-expr
     (expect func-expr (sink-cexpr func-expr)
       (cene-err "Expected func-expr to be an expression")
@@ -1602,9 +1661,23 @@
       (cene-err "Expected arg-expr to be an expression")
     #/sink-cexpr #/cexpr-call func-expr arg-expr))
   
+  (def-macro! "c" #/fn unique-name qualify text-input-stream then
+    
+    (sink-effects-read-leading-specific-number-of-cexprs
+      unique-name qualify text-input-stream 1
+    #/fn unique-name qualify text-input-stream args-func
+    #/dissect args-func (list func-expr)
+    
+    #/sink-effects-read-bounded-cexprs
+      unique-name qualify text-input-stream
+    #/fn unique-name qualify text-input-stream args-args
+    
+    #/then unique-name qualify text-input-stream
+    #/sink-cexpr #/list-foldl func-expr args-args #/fn func arg
+      (cexpr-call func arg)))
+  
   ; TODO: Consider implementing the following.
   ;
-  ;   c
   ;   constructor-tag
   ;   function-implementation-from-cexpr
   ;   constructor-glossary
@@ -1614,8 +1687,6 @@
   ;   procure-function-definer
   ;   def-struct
   ;   defn
-  ;   caselet
-  ;   cast
   
   (def-macro! "fn" #/fn unique-name qualify text-input-stream then
     (sink-effects-read-bounded-ids-and-exprs

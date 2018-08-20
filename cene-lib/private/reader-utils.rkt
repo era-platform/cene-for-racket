@@ -40,6 +40,7 @@
   id-or-expr-expr
   id-or-expr->cexpr
   sink-effects-read-bounded-ids-and-exprs
+  sink-effects-read-bounded-cexprs
   sink-effects-read-bounded-specific-number-of-cexprs
   sink-effects-read-leading-specific-number-of-cexprs
   sink-effects-read-leading-specific-number-of-identifiers)
@@ -283,5 +284,5 @@
       qualify text-input-stream pre-qualify
     #/fn text-input-stream maybe-id
     #/expect maybe-id (just id)
-      (cene-err "Expected another identifier")
+      (cene-err "Expected an identifier")
     #/next text-input-stream n #/cons id rev-results)))

@@ -622,7 +622,10 @@
   #/dissect body (sink-cexpr body)
   #/sink-cexpr #/cexpr-opaque-fn param body))
 
-; TODO: Use this.
+; TODO: This is only used in `cene/private/essentials`. See if this
+; should be moved over there. It seems like it should be so core to
+; the language semantics that this file, `cene/private`, is the place
+; for it, but maybe not.
 (define/contract (sink-cexpr-let bindings body)
   (-> (listof #/list/c sink-name? sink-cexpr?) sink-cexpr?
     sink-cexpr?)
