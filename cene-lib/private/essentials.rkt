@@ -1381,7 +1381,7 @@
   
   (define/contract
     (verify-cexpr-struct-args! main-tag-name projections)
-    (-> sink? sink? void?)
+    (-> sink? sink? #/listof #/list/c name? cexpr?)
     
     (expect main-tag-name (sink-name main-tag-name)
       (cene-err "Expected main-tag-name to be a name")
