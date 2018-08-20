@@ -1989,6 +1989,12 @@
   ; something similar for interacting with Racket.
   
   
+  ; TODO: Figure out what section of operations to put these in.
+  
+  (def-func! "directive" directive
+    (sink-directive directive))
+  
+  
   
   (cene-runtime
     (sink-table defined-dexes)

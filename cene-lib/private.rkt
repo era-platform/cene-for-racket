@@ -127,6 +127,8 @@
       (cons (hash-ref proj-hash proj-tag) rev-projs))))
 
 
+(struct-easy (sink-directive directive)
+  #:other #:methods gen:sink [])
 (struct-easy (sink-dex dex)
   #:other #:methods gen:sink [])
 (struct-easy (sink-name name)
@@ -1355,13 +1357,13 @@
         #/expect (cexpr-has-free-vars? cexpr #/table-empty) #f
           (cene-err "Encountered a top-level expression with at least one free variable")
         #/sink-effects-merge (then unique-name-rest)
-        #/sink-effects-cexpr-eval cexpr #/fn cexpr-result
+        #/sink-effects-cexpr-eval cexpr #/fn directive
+        #/expect directive (sink-directive directive)
+          (cene-err "Expected every top-level expression to evaluate to a directive")
         #/w- effects
-          (sink-call cexpr-result
-            (sink-name unique-name-first)
-            qualify)
+          (sink-call directive (sink-name unique-name-first) qualify)
         #/expect (sink-effects? effects) #t
-          (cene-err "Expected every top-level expression to evaluate to a callable value that takes two arguments and returns side effects")
+          (cene-err "Expected every top-level expression to evaluate to a directive made from a callable value that takes two arguments and returns side effects")
           effects)))
   #/sink-effects-read-cexprs
     unique-name-main qualify text-input-stream output-stream
