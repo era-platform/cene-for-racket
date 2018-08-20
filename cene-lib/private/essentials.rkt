@@ -41,8 +41,9 @@
 (require #/only-in lathe-comforts/struct struct-easy)
 
 (require #/only-in effection/order
-  cline-exact-rational dex-exact-rational dex-immutable-string
-  fuse-exact-rational-by-plus fuse-exact-rational-by-times)
+  assocs->table-if-mutually-unique cline-exact-rational
+  dex-exact-rational dex-immutable-string fuse-exact-rational-by-plus
+  fuse-exact-rational-by-times)
 (require #/only-in effection/order/base
   call-fuse call-merge cline-by-dex cline-default cline-give-up
   cline-result? cline-struct compare-by-cline compare-by-dex dex?
@@ -52,7 +53,7 @@
   make-ordering-private-gt make-ordering-private-lt merge-by-dex
   merge-struct merge-table name? name-of ordering-eq ordering-gt
   ordering-lt ordering-private? table? table-empty table-get
-  table-shadow)
+  table-map-fuse table-shadow table-sort)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe
   autoname-cline autoname-dex autoname-fuse autoname-merge cline
   cline-by-own-method-unchecked cline-fix-unchecked dex
@@ -111,14 +112,6 @@
     (just #/ordering-eq)
   #/maybe-ordering-or (maybe-compare-elems a b)
   #/maybe-compare-aligned-lists as bs maybe-compare-elems))
-
-; TODO: See if this should be an export of Effection.
-(define/contract (assocs->table-if-mutually-unique assocs)
-  (-> (listof #/cons/c name? any/c) #/maybe/c table?)
-  (w-loop next assocs assocs result (table-empty)
-    (expect assocs (cons (cons k v) assocs) (just result)
-    #/expect (table-get k result) (nothing) (nothing)
-    #/next assocs #/table-shadow k (just v) result)))
 
 ; TODO: See if this should be an export of Effection.
 (define/contract (names-mutually-unique? names)
@@ -1739,12 +1732,22 @@
     #/racket-maybe->sink #/sink-table-get-maybe table key))
   
   (def-func! "table-map-fuse" table fuse key-to-operand
-    ; TODO: Implement this.
-    'TODO)
+    (expect table (sink-table table)
+      (cene-err "Expected table to be a table")
+    #/expect fuse (sink-fuse fuse)
+      (cene-err "Expected fuse to be a fuse")
+    #/table-map-fuse table fuse #/fn k
+      (sink-call key-to-operand #/sink-name k)))
   
   (def-func! "table-sort" cline table
-    ; TODO: Implement this.
-    'TODO)
+    (expect cline (sink-cline cline)
+      (cene-err "Expected cline to be a cline")
+    #/expect table (sink-table table)
+      (cene-err "Expected table to be a table")
+    #/racket-maybe->sink
+    #/maybe-map (table-sort cline table) #/fn ranks
+      (racket-list->sink #/list-map ranks #/fn rank
+        (sink-table rank))))
   
   
   ; Effects
