@@ -183,7 +183,7 @@
 (struct-easy
   (cene-struct-metadata tags proj-string-to-name proj-name-to-string))
 
-(define/contract (sink-struct-metadata-parse-force sink-metadata)
+(define/contract (verify-sink-struct-metadata! sink-metadata)
   (-> sink? cene-struct-metadata?)
         (sink-dex-struct s-struct-metadata #/list
           (sink-dex-name)
@@ -1391,7 +1391,7 @@
       #/list-map projections #/dissectfn (list k v) k)
       #t
       (cene-err "Expected projections to be an association list with mutually unique names as keys")
-    #/void))
+      projections))
   
   ; NOTE: The JavaScript version of Cene makes this functionality
   ; possible using a combination of `cexpr-cline-struct`,
@@ -1400,7 +1400,8 @@
   ; `dex-by-cline`, but the same circuitous combination would work.
   ; Nevertheless, we provide this operation directly.
   (def-func! "cexpr-dex-struct" main-tag-name projections
-    (begin (verify-cexpr-struct-args! main-tag-name projections)
+    (w- projections
+      (verify-cexpr-struct-args! main-tag-name projections)
     #/sink-cexpr #/cexpr-dex-struct main-tag-name projections))
   
   ; TODO: Implement a `dex-struct` macro that compiles to a
@@ -1409,19 +1410,22 @@
   ; there's no harm in implementing it in Racket at first.
   
   (def-func! "cexpr-cline-struct" main-tag-name projections
-    (begin (verify-cexpr-struct-args! main-tag-name projections)
+    (w- projections
+      (verify-cexpr-struct-args! main-tag-name projections)
     #/sink-cexpr #/cexpr-cline-struct main-tag-name projections))
   
   ; TODO: Implement `cline-struct`.
   
   (def-func! "cexpr-merge-struct" main-tag-name projections
-    (begin (verify-cexpr-struct-args! main-tag-name projections)
+    (w- projections
+      (verify-cexpr-struct-args! main-tag-name projections)
     #/sink-cexpr #/cexpr-merge-struct main-tag-name projections))
   
   ; TODO: Implement `merge-struct`.
   
   (def-func! "cexpr-fuse-struct" main-tag-name projections
-    (begin (verify-cexpr-struct-args! main-tag-name projections)
+    (w- projections
+      (verify-cexpr-struct-args! main-tag-name projections)
     #/sink-cexpr #/cexpr-fuse-struct main-tag-name projections))
   
   ; TODO: Implement `fuse-struct`.
@@ -1429,7 +1433,8 @@
   ; TODO: The JavaScript version called this `cexpr-construct`. See
   ; which name we prefer.
   (def-func! "cexpr-struct" main-tag-name projections
-    (begin (verify-cexpr-struct-args! main-tag-name projections)
+    (w- projections
+      (verify-cexpr-struct-args! main-tag-name projections)
     #/sink-cexpr #/cexpr-struct main-tag-name projections))
   
   (def-func! "cexpr-case"
@@ -1487,7 +1492,7 @@
       (just #/list located-string metadata-name)
       (cene-err "Expected a case form to designate a struct metadata name")
     #/sink-effects-get metadata-name #/fn metadata
-    #/w- metadata (sink-struct-metadata-parse-force metadata)
+    #/w- metadata (verify-sink-struct-metadata! metadata)
     #/w- tags (struct-metadata-tags metadata)
     #/w- n-projs (struct-metadata-n-projs metadata)
     
