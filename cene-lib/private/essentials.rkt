@@ -233,6 +233,11 @@
     #/list-map projs #/dissectfn (list string string-name name) name)
     proj-string-to-name proj-name-to-string))
 
+(define/contract (sink-name-for-struct-metadata inner-name)
+  (-> sink-name? sink-name?)
+  (sink-name-rep-map inner-name #/fn n
+    (list 'name:struct-metadata n)))
+
 (define/contract
   (sink-effects-read-maybe-struct-metadata
     qualify text-input-stream then)
@@ -786,12 +791,10 @@
   (-> sink-dex?)
   (sink-dex #/dex-struct sink-string #/dex-immutable-string))
 
-
-; TODO BUILTINS: Add this as a Cene built-in.
-(define/contract (sink-name-for-struct-metadata inner-name)
-  (-> sink-name? sink-name?)
-  (sink-name-rep-map inner-name #/fn n
-    (list 'name:struct-metadata n)))
+(define/contract (sink-dex-table dex-val)
+  (-> sink-dex? sink-dex?)
+  (dissect dex-val (sink-dex dex-val)
+  #/sink-dex #/dex-struct sink-table #/dex-table dex-val))
 
 
 (define-syntax-rule
@@ -1843,7 +1846,7 @@
   (def-func! "dex-table" dex-val
     (expect dex-val (sink-dex dex-val)
       (cene-err "Expected dex-val to be a dex")
-    #/sink-dex #/dex-struct sink-table #/dex-table dex-val))
+    #/sink-dex-table dex-val))
   
   (def-func! "merge-table" merge-val
     (expect merge-val (sink-merge merge-val)
@@ -2133,9 +2136,92 @@
   ; Other
   ;
   ; TODO: Figure out what section of operations to put these in.
+  ;
+  ; NOTE: These have not been designed based on the JavaScript version
+  ; of Cene, so it may or may not have operations similar to these.
   
   (def-func! "directive" directive
     (sink-directive directive))
+  
+  (def-func! "name-for-claim" name
+    (expect (sink-name? name) #t
+      (cene-err "Expected name to be a name")
+    #/sink-name-for-claim name))
+  
+  (def-func! "name-for-function-implementation-code"
+    main-tag-name proj-tag-names
+    
+    (expect (sink-name? main-tag-name) #t
+      (cene-err "Expected main-tag-name to be a name")
+    #/expect
+      (in-dex? (sink-dex-table #/sink-dex-struct s-trivial #/list)
+        proj-tag-names)
+      #t
+      (cene-err "Expected proj-tag-names to be a table of trivial values")
+    #/sink-name-for-function-implementation-code
+      main-tag-name proj-tag-names))
+  
+  (def-func! "name-for-function-implementation-value"
+    main-tag-name proj-tag-names
+    
+    (expect (sink-name? main-tag-name) #t
+      (cene-err "Expected main-tag-name to be a name")
+    #/expect
+      (in-dex? (sink-dex-table #/sink-dex-struct s-trivial #/list)
+        proj-tag-names)
+      #t
+      (cene-err "Expected proj-tag-names to be a table of trivial values")
+    #/sink-name-for-function-implementation-value
+      main-tag-name proj-tag-names))
+  
+  (def-func! "name-for-freestanding-cexpr-op" name
+    (expect (sink-name? name) #t
+      (cene-err "Expected name to be a name")
+    #/sink-name-for-freestanding-cexpr-op name))
+  
+  (def-func! "name-for-bounded-cexpr-op" name
+    (expect (sink-name? name) #t
+      (cene-err "Expected name to be a name")
+    #/sink-name-for-bounded-cexpr-op name))
+  
+  (def-func! "name-for-nameless-bounded-cexpr-op" name
+    (expect (sink-name? name) #t
+      (cene-err "Expected name to be a name")
+    #/sink-name-for-nameless-bounded-cexpr-op name))
+  
+  (def-func! "name-for-struct-main-tag" name
+    (expect (sink-name? name) #t
+      (cene-err "Expected name to be a name")
+    #/sink-name-for-struct-main-tag name))
+  
+  (def-func! "name-for-struct-proj" qualified-main-tag-name proj-name
+    (expect (sink-name? qualified-main-tag-name) #t
+      (cene-err "Expected qualified-main-tag-name to be a name")
+    #/expect (sink-name? proj-name) #t
+      (cene-err "Expected proj-name to be a name")
+    #/sink-name-for-struct-proj qualified-main-tag-name proj-name))
+  
+  (def-func! "name-for-local-variable" name
+    (expect (sink-name? name) #t
+      (cene-err "Expected name to be a name")
+    #/sink-name-for-local-variable name))
+  
+  (def-func! "name-for-struct-metadata" name
+    (expect (sink-name? name) #t
+      (cene-err "Expected name to be a name")
+    #/sink-name-for-struct-metadata name))
+  
+  ; TODO: See if Cene code should be able to make the kinds of names
+  ; it gets from `name-of` without having a value on hand -- only
+  ; having a collection of the names of the values that value would
+  ; contain. For instance, see if there should be an operation that
+  ; produces the value of
+  ; `(name-of (dex-struct yep /dex-struct my-struct) (yep/my-struct))`
+  ; based only on the value of
+  ; `(name-of (dex-struct my-struct) (my-struct))`, not the actual
+  ; `(my-struct)` value itself. If so, this will be a lot of
+  ; name-making operations, including one for each dex constructor,
+  ; one for each cline constructor, etc.
   
   
   

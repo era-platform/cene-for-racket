@@ -182,10 +182,9 @@
   (sink-name-rep-map unqualified-name #/fn n
     (list 'name:qualified n)))
 
-; TODO BUILTINS: Add this as a Cene built-in.
-(define/contract (sink-name-claimed inner-name)
+(define/contract (sink-name-for-claim inner-name)
   (-> sink-name? sink-name?)
-  (sink-name-rep-map inner-name #/fn n #/list 'name:claimed n))
+  (sink-name-rep-map inner-name #/fn n #/list 'name:claim n))
 
 (struct-easy (cene-process-error message))
 (struct-easy (cene-process-get name then))
@@ -679,7 +678,6 @@
   #/sink-name #/unsafe:name
   #/list result-tag main-tag proj-table-name))
 
-; TODO BUILTINS: Add this as a Cene built-in.
 (define/contract
   (sink-name-for-function-implementation-code
     main-tag-name proj-tag-names)
@@ -689,7 +687,6 @@
     main-tag-name
     proj-tag-names))
 
-; TODO BUILTINS: Add this as a Cene built-in.
 (define/contract
   (sink-name-for-function-implementation-value
     main-tag-name proj-tag-names)
@@ -783,36 +780,31 @@
   (-> sink-string? sink-name?)
   (sink-name #/name-for-sink-string string))
 
-; TODO BUILTINS: Add this as a Cene built-in.
 (define/contract (sink-name-for-freestanding-cexpr-op inner-name)
   (-> sink-name? sink-name?)
   (sink-name-rep-map inner-name #/fn n
     (list 'name:freestanding-cexpr-op n)))
 
-; TODO BUILTINS: Add this as a Cene built-in.
 (define/contract (sink-name-for-bounded-cexpr-op inner-name)
   (-> sink-name? sink-name?)
   (sink-name-rep-map inner-name #/fn n
     (list 'name:bounded-cexpr-op n)))
 
-; TODO BUILTINS: Add this as a Cene built-in.
 (define/contract (sink-name-for-nameless-bounded-cexpr-op)
   (-> sink-name?)
   (sink-name #/unsafe:name #/list 'name:nameless-bounded-cexpr-op))
 
-; TODO BUILTINS: Add this as a Cene built-in.
 (define/contract (sink-name-for-struct-main-tag inner-name)
   (-> sink-name? sink-name?)
   (sink-name-rep-map inner-name #/fn n
     (list 'name:struct-main-tag n)))
 
-; TODO BUILTINS: Add this as a Cene built-in.
 (define/contract
-  (sink-name-for-struct-proj qualified-main-tag-name inner-name)
+  (sink-name-for-struct-proj qualified-main-tag-name proj-name)
   (-> sink-name? sink-name? sink-name?)
   (dissect qualified-main-tag-name
     (sink-name #/unsafe:name qualified-main-tag-name)
-  #/sink-name-rep-map inner-name #/fn n
+  #/sink-name-rep-map proj-name #/fn n
     (list 'name:struct-proj qualified-main-tag-name n)))
 
 (define/contract (sink-cexpr-sequence-output-stream-spend! stream)
@@ -1329,7 +1321,7 @@
 (define/contract (sink-effects-claim name)
   (-> sink-name? sink-effects?)
   (sink-effects-put
-    (sink-name-claimed name)
+    (sink-name-for-claim name)
     (sink-dex #/dex-give-up)
     (make-sink-struct s-trivial #/list)))
 
@@ -1341,6 +1333,11 @@
   #/expect (nat->maybe n) (just n) (then #/list)
   #/w-loop next n n next-name unique-name names (list)
     (expect (nat->maybe n) (just n) (then #/cons next-name names)
+    ; TODO: See if we should derive these names in a way that Cene
+    ; code can reliably replicate. For instance, we could expose
+    ; `name-for-first` and `name-for-rest` operations to Cene, but
+    ; more simply, we could make these names coincide with the names
+    ; of sink structs.
     #/w- first
       (sink-name-rep-map unique-name #/fn n #/list 'name:first n)
     #/w- rest
@@ -1427,6 +1424,9 @@
   #/cene-process-run rt #/with-gets-from-as-process defined-values
     (fn
       (sink-effects-run! #/sink-effects-read-top-level
+        ; NOTE: We do not need to allow Cene code to recreate this
+        ; name. A metacircular Cene implementation can just use any
+        ; name here.
         (sink-name #/unsafe:name #/list 'name:unique-name-root)
         (sink-fn-curried 1 #/fn name
           (expect (sink-name? name) #t
