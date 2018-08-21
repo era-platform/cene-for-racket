@@ -981,13 +981,13 @@
       #/then unique-name qualify text-input-stream output-stream)))
   
   (define/contract
-    (def-func-impl-native!
+    (def-func-impl-reified!
       qualified-main-tag-name qualified-proj-tag-names impl)
     (-> sink-name? sink-table? sink? void?)
     (def-value!
       (sink-name-for-function-implementation-code
         qualified-main-tag-name qualified-proj-tag-names)
-      (sink-cexpr-native impl))
+      (sink-cexpr-reified impl))
     (def-value!
       (sink-name-for-function-implementation-value
         qualified-main-tag-name qualified-proj-tag-names)
@@ -1030,7 +1030,7 @@
       
       ; We define a Cene struct function implementation containing
       ; the function's run time behavior.
-      (def-func-impl-native!
+      (def-func-impl-reified!
         qualified-main-tag-name
         (sink-table #/table-empty)
         (sink-opaque-fn #/fn struct-value
@@ -1075,7 +1075,7 @@
       
       ; We define a Cene struct function implementation containing
       ; the function's run time behavior.
-      (def-func-impl-native!
+      (def-func-impl-reified!
         qualified-main-tag-name
         (sink-table #/table-empty)
         (sink-fn-curried 2 #/fn struct-value arg
@@ -1141,7 +1141,7 @@
       ; an error. We do this so that we do in fact have a function
       ; implementation for every struct we use, which might be an
       ; invariant that comes in handy. (TODO: See if it does.)
-      (def-func-impl-native!
+      (def-func-impl-reified!
         qualified-main-tag-name
         (sink-table qualified-proj-names-table)
         (sink-opaque-fn #/fn struct-value

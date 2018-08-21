@@ -408,20 +408,20 @@
         value))
   ])
 
-(struct-easy (cexpr-native result)
+(struct-easy (cexpr-reified result)
   
   #:other
   
   #:methods gen:cexpr
   [
     (define (cexpr-has-free-vars? this env)
-      (expect this (cexpr-native result)
-        (error "Expected this to be a cexpr-native")
+      (expect this (cexpr-reified result)
+        (error "Expected this to be a cexpr-reified")
         #f))
     
     (define (cexpr-eval this env)
-      (expect this (cexpr-native result)
-        (error "Expected this to be a cexpr-native")
+      (expect this (cexpr-reified result)
+        (error "Expected this to be a cexpr-reified")
         result))
   ])
 
@@ -581,9 +581,9 @@
   (dissect name (sink-name name)
   #/sink-cexpr #/cexpr-var name))
 
-(define/contract (sink-cexpr-native result)
+(define/contract (sink-cexpr-reified result)
   (-> sink? sink-cexpr?)
-  (sink-cexpr #/cexpr-native result))
+  (sink-cexpr #/cexpr-reified result))
 
 ; TODO: See if this should be an export of Effection.
 (define/contract (names-have-duplicate? names)
