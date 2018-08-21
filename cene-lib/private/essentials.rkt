@@ -704,6 +704,28 @@
   ])
 
 
+(struct-easy (fuse-internals-effects)
+  #:other
+  
+  #:methods unsafe:gen:furge-internals
+  [
+    
+    (define (furge-internals-tag this)
+      'tag:fuse-effects)
+    
+    (define (furge-internals-autoname this)
+      'tag:fuse-effects)
+    
+    (define (furge-internals-autodex this other)
+      (just #/ordering-eq))
+    
+    (define (furge-internals-call this a b)
+      (expect (sink-effects? a) #t (nothing)
+      #/expect (sink-effects? b) #t (nothing)
+      #/just #/sink-effects-fuse a b))
+  ])
+
+
 (struct-easy (cexpr-case subject-expr tags vars then-expr else-expr)
   
   #:other
@@ -1896,9 +1918,11 @@
   ;
   (def-nullary-func! "effects-noop" (sink-effects-noop))
   
+  (def-nullary-func! "fuse-effects"
+    (sink-fuse #/unsafe:fuse #/fuse-internals-effects))
+  
   ; TODO BUILTINS: Consider implementing the following.
   ;
-  ;   fuse-effects
   ;   get-mode
   ;   assert-current-mode
   ;   later
