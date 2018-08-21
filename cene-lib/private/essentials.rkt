@@ -58,15 +58,27 @@
   table-shadow table-sort)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe
   autoname-cline autoname-dex autoname-fuse autoname-merge cline
-  cline-by-own-method-unchecked cline-fix-unchecked dex
-  dexableof-unchecked dex-by-own-method-unchecked dex-fix-unchecked
-  fuse fuse-by-own-method-unchecked fuse-fix-unchecked
-  fuse-fusable-function-thorough-unchecked
+  cline-by-own-method-thorough-unchecked
+  cline-by-own-method::get-method
+  cline-by-own-method::raise-different-methods-error
+  cline-fix-unchecked dex dexableof-unchecked
+  dex-by-own-method-thorough-unchecked dex-by-own-method::get-method
+  dex-by-own-method::raise-different-methods-error dex-fix-unchecked
+  fuse fuse-by-own-method-thorough-unchecked
+  fuse-by-own-method::get-method
+  fuse-by-own-method::raise-cannot-get-output-method-error
+  fuse-by-own-method::raise-different-input-methods-error
+  fuse-by-own-method::raise-different-output-method-error
+  fuse-fix-unchecked fuse-fusable-function-thorough-unchecked
   fuse-fusable-function::raise-cannot-combine-results-error
   fuse-fusable-function::arg-to-method gen:cline-internals
   gen:dex-internals gen:furge-internals merge
-  merge-by-own-method-unchecked merge-fix-unchecked name
-  table->sorted-list)
+  merge-by-own-method-thorough-unchecked
+  merge-by-own-method::get-method
+  merge-by-own-method::raise-different-input-methods-error
+  merge-by-own-method::raise-different-output-method-error
+  merge-by-own-method::raise-cannot-get-output-method-error
+  merge-fix-unchecked name table->sorted-list)
 
 (require cene/private)
 (require #/only-in cene/private/reader-utils
@@ -131,6 +143,12 @@
 (define/contract (sink-names-mutually-unique? ns)
   (-> (listof sink-name?) boolean?)
   (names-mutually-unique? #/list-map ns #/dissectfn (sink-name n) n))
+
+; TODO: See if we should put something like this in Effection.
+(define-syntax-rule (dexable-struct tag dexable-field ...)
+  (dexable
+    (dex-struct tag (dissect dexable-field (dexable dex val) dex) ...)
+    (tag (dissect dexable-field (dexable dex val) val) ...)))
 
 (define/contract (racket-boolean->sink racket-boolean)
   (-> boolean? sink?)
@@ -749,9 +767,8 @@
 (define/contract (sink-dex-list dex-elem)
   (-> sink-dex? sink-dex?)
   (dissect dex-elem (sink-dex dex-elem)
-  #/sink-dex #/dex-fix #/dexable
-    (dex-struct fix-for-sink-dex-list #/dex-dex)
-    (fix-for-sink-dex-list dex-elem)))
+  #/sink-dex #/dex-fix #/dexable-struct fix-for-sink-dex-list
+  #/dexable (dex-dex) dex-elem))
 
 (define/contract (sink-dex-name)
   (-> sink-dex?)
@@ -770,85 +787,101 @@
 
 
 (define-syntax-rule
-  (define-by-own-method-converter
-    converter make-converter constructor error-message)
-  (begin
+  (define-fix-converter converter constructor error-message)
+  (struct-easy (converter unwrap)
+    #:other
     
-    (struct-easy (converter get-method)
-      #:other
-      
-      #:property prop:procedure
-      (fn this x
-        (dissect this (converter get-method)
-        #/expect (sink-maybe->maybe-racket #/sink-call get-method x)
-          (just maybe-result)
-          (cene-err error-message)
-        #/maybe-map maybe-result #/expectfn (constructor result)
-          (cene-err error-message)
-          result)))
-    
-    (define (make-converter dexable-get-method)
-      (dissect dexable-get-method (dexable dex-get-method get-method)
-      #/dexable
-        (dex-struct converter dex-get-method)
-        (converter get-method)))
-  ))
+    #:property prop:procedure
+    (fn this x
+      (dissect this (converter unwrap)
+      #/expect (sink-call unwrap x) (constructor result)
+        (cene-err error-message)
+        result))))
 
-(define-syntax-rule
-  (define-fix-converter
-    converter make-converter constructor error-message)
-  (begin
-    
-    (struct-easy (converter unwrap)
-      #:other
-      
-      #:property prop:procedure
-      (fn this x
-        (dissect this (converter unwrap)
-        #/expect (sink-call unwrap x) (constructor result)
-          (cene-err error-message)
-          result)))
-    
-    (define (make-converter dexable-unwrap)
-      (dissect dexable-unwrap (dexable dex-unwrap unwrap)
-      #/dexable
-        (dex-struct converter dex-unwrap)
-        (converter unwrap)))
-  ))
+(define-fix-converter converter-for-dex-fix sink-dex
+  "Expected the result of a dex-fix body to be a dex")
+(define-fix-converter converter-for-cline-fix sink-cline
+  "Expected the result of a cline-fix body to be a cline")
+(define-fix-converter converter-for-merge-fix sink-merge
+  "Expected the result of a merge-fix body to be a merge")
+(define-fix-converter converter-for-fuse-fix sink-fuse
+  "Expected the result of a fuse-fix body to be a fuse")
 
-(define-by-own-method-converter
-  converter-for-dex-by-own-method
-  make-converter-for-dex-by-own-method
-  sink-dex
-  "Expected the result of a dex-by-own-method method to be a maybe of a dex")
-(define-by-own-method-converter
-  converter-for-cline-by-own-method
-  make-converter-for-cline-by-own-method
-  sink-cline
-  "Expected the result of a cline-by-own-method method to be a maybe of a cline")
-(define-by-own-method-converter
-  converter-for-merge-by-own-method
-  make-converter-for-merge-by-own-method
-  sink-merge
-  "Expected the result of a merge-by-own-method method to be a maybe of a merge")
-(define-by-own-method-converter
-  converter-for-fuse-by-own-method
-  make-converter-for-fuse-by-own-method
-  sink-fuse
-  "Expected the result of a fuse-by-own-method method to be a maybe of a fuse")
+(struct-easy (sink-dex-by-own-method-unthorough get-method)
+  #:other
+  
+  #:property prop:procedure
+  (fn this command
+    (dissect this (sink-dex-by-own-method-unthorough get-method)
+    #/mat command
+      (unsafe:dex-by-own-method::raise-different-methods-error
+        a b a-method b-method)
+      (cene-err "Obtained two different methods from the two values being compared")
+    #/dissect command (unsafe:dex-by-own-method::get-method source)
+    #/expect (sink-call get-method source) (sink-dex method)
+      (cene-err "Expected the result of a dex-by-own-method body to be a dex")
+      method)))
 
-(define-fix-converter
-  converter-for-dex-fix make-converter-for-dex-fix sink-dex
-  "Expected the result of a dex-fix method to be a dex")
-(define-fix-converter
-  converter-for-cline-fix make-converter-for-cline-fix sink-cline
-  "Expected the result of a cline-fix method to be a cline")
-(define-fix-converter
-  converter-for-merge-fix make-converter-for-merge-fix sink-merge
-  "Expected the result of a merge-fix method to be a merge")
-(define-fix-converter
-  converter-for-fuse-fix make-converter-for-fuse-fix sink-fuse
-  "Expected the result of a fuse-fix method to be a fuse")
+(struct-easy (sink-cline-by-own-method-unthorough get-method)
+  #:other
+  
+  #:property prop:procedure
+  (fn this command
+    (dissect this (sink-cline-by-own-method-unthorough get-method)
+    #/mat command
+      (unsafe:cline-by-own-method::raise-different-methods-error
+        a b a-method b-method)
+      (cene-err "Obtained two different methods from the two values being compared")
+    #/dissect command (unsafe:cline-by-own-method::get-method source)
+    #/expect (sink-call get-method source) (sink-cline method)
+      (cene-err "Expected the result of a cline-by-own-method body to be a cline")
+      method)))
+
+(struct-easy (sink-merge-by-own-method-unthorough get-method)
+  #:other
+  
+  #:property prop:procedure
+  (fn this command
+    (dissect this (sink-merge-by-own-method-unthorough get-method)
+    #/mat command
+      (unsafe:merge-by-own-method::raise-different-input-methods-error
+        a b a-method b-method)
+      (cene-err "Obtained two different methods from the two input values")
+    #/mat command
+      (unsafe:merge-by-own-method::raise-cannot-get-output-method-error
+        a b result input-method)
+      (cene-err "Could not obtain a method from the result value")
+    #/mat command
+      (unsafe:merge-by-own-method::raise-different-output-method-error
+        a b result input-method output-method)
+      (cene-err "Obtained two different methods from the input and the output")
+    #/dissect command (unsafe:merge-by-own-method::get-method source)
+    #/expect (sink-call get-method source) (sink-merge method)
+      (cene-err "Expected the result of a merge-by-own-method body to be a merge")
+      method)))
+
+(struct-easy (sink-fuse-by-own-method-unthorough get-method)
+  #:other
+  
+  #:property prop:procedure
+  (fn this command
+    (dissect this (sink-fuse-by-own-method-unthorough get-method)
+    #/mat command
+      (unsafe:fuse-by-own-method::raise-different-input-methods-error
+        a b a-method b-method)
+      (cene-err "Obtained two different methods from the two input values")
+    #/mat command
+      (unsafe:fuse-by-own-method::raise-cannot-get-output-method-error
+        a b result input-method)
+      (cene-err "Could not obtain a method from the result value")
+    #/mat command
+      (unsafe:fuse-by-own-method::raise-different-output-method-error
+        a b result input-method output-method)
+      (cene-err "Obtained two different methods from the input and the output")
+    #/dissect command (unsafe:fuse-by-own-method::get-method source)
+    #/expect (sink-call get-method source) (sink-fuse method)
+      (cene-err "Expected the result of a fuse-by-own-method body to be a fuse")
+      method)))
 
 (struct-easy (sink-fuse-fusable-fn-unthorough arg-to-method)
   #:other
@@ -862,7 +895,9 @@
       (cene-err "Could not combine the result values")
     #/dissect command
       (unsafe:fuse-fusable-function::arg-to-method arg)
-    #/sink-call arg-to-method arg)))
+    #/expect (sink-call arg-to-method arg) (sink-fuse method)
+      (cene-err "Expected the result of a fuse-fusable-fn body to be a fuse")
+      method)))
 
 
 ; TODO: Use this in some kind of CLI entrypoint or something.
@@ -1287,15 +1322,16 @@
     (expect (sink-valid-dexable->maybe-racket dexable-get-method)
       (just dexable-get-method)
       (cene-err "Expected dexable-get-method to be a valid dexable")
-    #/sink-dex #/unsafe:dex-by-own-method-unchecked
-    #/make-converter-for-dex-by-own-method dexable-get-method))
+    #/sink-dex #/unsafe:dex-by-own-method-thorough-unchecked
+    #/dexable-struct sink-dex-by-own-method-unthorough
+      dexable-get-method))
   
   (def-func! "dex-fix" dexable-unwrap
     (expect (sink-valid-dexable->maybe-racket dexable-unwrap)
       (just dexable-unwrap)
       (cene-err "Expected dexable-unwrap to be a valid dexable")
     #/sink-dex #/unsafe:dex-fix-unchecked
-    #/make-converter-for-dex-fix dexable-unwrap))
+    #/dexable-struct converter-for-dex-fix dexable-unwrap))
   
   ; NOTE: In the JavaScript version of Cene, there was a similar
   ; operation called `dex-by-cline`.
@@ -1357,15 +1393,16 @@
     (expect (sink-valid-dexable->maybe-racket dexable-get-method)
       (just dexable-get-method)
       (cene-err "Expected dexable-get-method to be a valid dexable")
-    #/sink-cline #/unsafe:cline-by-own-method-unchecked
-    #/make-converter-for-cline-by-own-method dexable-get-method))
+    #/sink-cline #/unsafe:cline-by-own-method-thorough-unchecked
+    #/dexable-struct sink-cline-by-own-method-unthorough
+      dexable-get-method))
   
   (def-func! "cline-fix" dexable-unwrap
     (expect (sink-valid-dexable->maybe-racket dexable-unwrap)
       (just dexable-unwrap)
       (cene-err "Expected dexable-unwrap to be a valid dexable")
     #/sink-cline #/unsafe:cline-fix-unchecked
-    #/make-converter-for-cline-fix dexable-unwrap))
+    #/dexable-struct converter-for-cline-fix dexable-unwrap))
   
   (def-func! "call-merge" merge a b
     (expect merge (sink-merge merge)
@@ -1417,29 +1454,31 @@
     (expect (sink-valid-dexable->maybe-racket dexable-get-method)
       (just dexable-get-method)
       (cene-err "Expected dexable-get-method to be a valid dexable")
-    #/sink-merge #/unsafe:merge-by-own-method-unchecked
-    #/make-converter-for-merge-by-own-method dexable-get-method))
+    #/sink-merge #/unsafe:merge-by-own-method-thorough-unchecked
+    #/dexable-struct sink-merge-by-own-method-unthorough
+      dexable-get-method))
   
   (def-func! "fuse-by-own-method" dexable-get-method
     (expect (sink-valid-dexable->maybe-racket dexable-get-method)
       (just dexable-get-method)
       (cene-err "Expected dexable-get-method to be a valid dexable")
-    #/sink-fuse #/unsafe:fuse-by-own-method-unchecked
-    #/make-converter-for-fuse-by-own-method dexable-get-method))
+    #/sink-fuse #/unsafe:fuse-by-own-method-thorough-unchecked
+    #/dexable-struct sink-fuse-by-own-method-unthorough
+      dexable-get-method))
   
   (def-func! "merge-fix" dexable-unwrap
     (expect (sink-valid-dexable->maybe-racket dexable-unwrap)
       (just dexable-unwrap)
       (cene-err "Expected dexable-unwrap to be a valid dexable")
     #/sink-merge #/unsafe:merge-fix-unchecked
-    #/make-converter-for-merge-fix dexable-unwrap))
+    #/dexable-struct converter-for-merge-fix dexable-unwrap))
   
   (def-func! "fuse-fix" dexable-unwrap
     (expect (sink-valid-dexable->maybe-racket dexable-unwrap)
       (just dexable-unwrap)
       (cene-err "Expected dexable-unwrap to be a valid dexable")
     #/sink-fuse #/unsafe:fuse-fix-unchecked
-    #/make-converter-for-fuse-fix dexable-unwrap))
+    #/dexable-struct converter-for-fuse-fix dexable-unwrap))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func! "is-fusable-fn" v
@@ -1455,12 +1494,12 @@
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func! "fuse-fusable-fn" dexable-arg-to-method
     (expect (sink-valid-dexable->maybe-racket dexable-arg-to-method)
-      (just #/dexable dex arg-to-method)
+      (just dexable-arg-to-method)
       (cene-err "Expected dexable-arg-to-method to be a valid dexable")
     #/sink-fuse #/fuse-struct sink-opaque-fn
-    #/unsafe:fuse-fusable-function-thorough-unchecked #/dexable
-      (dex-struct sink-fuse-fusable-fn-unthorough dex)
-      (sink-fuse-fusable-fn-unthorough arg-to-method)))
+    #/unsafe:fuse-fusable-function-thorough-unchecked
+    #/dexable-struct sink-fuse-fusable-fn-unthorough
+      dexable-arg-to-method))
   
   
   ; Structs and function calls
