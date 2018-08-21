@@ -195,7 +195,7 @@
 (struct-easy (cene-process-get name then))
 (struct-easy (cene-process-put name dex value))
 (struct-easy (cene-process-noop))
-(struct-easy (cene-process-merge a b))
+(struct-easy (cene-process-fuse a b))
 
 (define/contract (cene-process? v)
   (-> any/c boolean?)
@@ -204,7 +204,7 @@
     (cene-process-get? v)
     (cene-process-put? v)
     (cene-process-noop? v)
-    (cene-process-merge? v)))
+    (cene-process-fuse? v)))
 
 (struct-easy (cene-runtime defined-dexes defined-values))
 
@@ -332,7 +332,7 @@
     (next-with-error message)
   #/mat process (cene-process-noop)
     (next-simple rev-next-processes)
-  #/mat process (cene-process-merge a b)
+  #/mat process (cene-process-fuse a b)
     (next-simple #/list* b a rev-next-processes)
   #/mat process (cene-process-put name cene-dex value)
     ; If there has already been a definition installed at this name,
@@ -554,22 +554,20 @@
   (-> sink-effects?)
   (make-sink-effects #/fn #/cene-process-noop))
 
-; TODO: Rename `sink-effects-merge...` to `sink-effects-fuse...`.
-
-(define/contract (sink-effects-merge-binary a b)
+(define/contract (sink-effects-fuse-binary a b)
   (-> sink-effects? sink-effects? sink-effects?)
   (dissect a (sink-effects a-go!)
   #/dissect b (sink-effects b-go!)
-  #/make-sink-effects #/fn #/cene-process-merge (a-go!) (b-go!)))
+  #/make-sink-effects #/fn #/cene-process-fuse (a-go!) (b-go!)))
 
-(define/contract (sink-effects-merge-list effects)
+(define/contract (sink-effects-fuse-list effects)
   (-> (listof sink-effects?) sink-effects?)
   (list-foldl (sink-effects-noop) effects #/fn a b
-    (sink-effects-merge-binary a b)))
+    (sink-effects-fuse-binary a b)))
 
-(define/contract (sink-effects-merge . effects)
+(define/contract (sink-effects-fuse . effects)
   (->* () #:rest (listof sink-effects?) sink-effects?)
-  (sink-effects-merge-list effects))
+  (sink-effects-fuse-list effects))
 
 ; This performs some computation during the side effect runner, rather
 ; than performing it right away. The computation doesn't have to be
@@ -1342,7 +1340,7 @@
 (define/contract (sink-effects-claim-and-split unique-name n then)
   (-> name? natural? (-> (listof name?) sink-effects?) sink-effects?)
   (mat n 1 (then #/list unique-name)
-  #/sink-effects-merge (sink-effects-claim unique-name)
+  #/sink-effects-fuse (sink-effects-claim unique-name)
   #/expect (nat->maybe n) (just n) (then #/list)
   #/w-loop next n n next-name unique-name names (list)
     (expect (nat->maybe n) (just n) (then #/cons next-name names)
@@ -1404,7 +1402,7 @@
           (cene-err "Encountered a top-level expression that compiled to a non-expression value")
         #/expect (cexpr-has-free-vars? cexpr #/table-empty) #f
           (cene-err "Encountered a top-level expression with at least one free variable")
-        #/sink-effects-merge (then unique-name-rest)
+        #/sink-effects-fuse (then unique-name-rest)
         #/sink-effects-cexpr-eval cexpr #/fn directive
         #/expect directive (sink-directive directive)
           (cene-err "Expected every top-level expression to evaluate to a directive")
