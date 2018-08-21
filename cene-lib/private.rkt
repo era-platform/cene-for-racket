@@ -180,7 +180,11 @@
   (-> name? name?)
   (sink-name-rep-map unqualified-name #/fn n #/list 'name:qualified n))
 
-; TODO BUILTINS: Add this as a Cene built-in.
+; NOTE: We probably won't want to make this available as a Cene
+; built-in. It just represents the arbitrary `qualify` function that
+; all the built-ins look like they were defined under. In a
+; metacircular implementation of Cene, that can be any `qualify`
+; function that converts names to obscure enough names.
 (define/contract (sink-name-qualify unqualified-name)
   (-> sink-name? sink-name?)
   (sink-name-rep-map unqualified-name #/fn n
