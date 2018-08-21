@@ -36,7 +36,7 @@
 (require #/only-in lathe-comforts/list
   list-all list-any list-foldl list-foldr list-kv-map list-map)
 (require #/only-in lathe-comforts/maybe
-  just just? maybe-bind maybe/c maybe-map nothing)
+  just maybe-bind maybe/c maybe-map nothing)
 (require #/only-in lathe-comforts/string immutable-string?)
 (require #/only-in lathe-comforts/struct struct-easy)
 
@@ -129,20 +129,6 @@
     (just #/ordering-eq)
   #/maybe-ordering-or (maybe-compare-elems a b)
   #/maybe-compare-aligned-lists as bs maybe-compare-elems))
-
-; TODO: See if this should be an export of Effection.
-; TODO: Decide between this and `names-have-duplicate?` from
-; `effection/private`.
-(define/contract (names-mutually-unique? names)
-  (-> (listof name?) boolean?)
-  (just? #/assocs->table-if-mutually-unique #/list-map names #/fn name
-    (cons name #/trivial)))
-
-; TODO: Decide between this and `sink-names-have-duplicate?` from
-; `effection/private`.
-(define/contract (sink-names-mutually-unique? ns)
-  (-> (listof sink-name?) boolean?)
-  (names-mutually-unique? #/list-map ns #/dissectfn (sink-name n) n))
 
 ; TODO: See if we should put something like this in Effection.
 (define-syntax-rule (dexable-struct tag dexable-field ...)
@@ -950,10 +936,10 @@
   (define/contract (macro-impl body)
     (->
       (->
-        name? sink? sink-text-input-stream?
+        sink-name? sink? sink-text-input-stream?
         sink-cexpr-sequence-output-stream?
         (->
-          name? sink? sink-text-input-stream?
+          sink-name? sink? sink-text-input-stream?
           sink-cexpr-sequence-output-stream?
           sink-effects?)
         sink-effects?)
@@ -961,7 +947,7 @@
     (sink-fn-curried 5 #/fn
       unique-name qualify text-input-stream output-stream then
       
-      (expect unique-name (sink-name unique-name)
+      (expect (sink-name? unique-name) #t
         (cene-err "Expected unique-name to be a name")
       #/expect (sink-text-input-stream? text-input-stream) #t
         (cene-err "Expected text-input-stream to be a text input stream")
@@ -970,8 +956,8 @@
       #/body unique-name qualify text-input-stream output-stream
       #/fn unique-name qualify text-input-stream output-stream
       #/w- effects
-        (sink-call then (sink-name unique-name) qualify
-          text-input-stream output-stream)
+        (sink-call then
+          unique-name qualify text-input-stream output-stream)
       #/expect (sink-effects? effects) #t
         (cene-err "Expected the return value of a macro's callback to be an effectful computation")
         effects)))
@@ -1194,8 +1180,8 @@
     (->
       immutable-string?
       (->
-        name? sink? sink-text-input-stream?
-        (-> name? sink? sink-text-input-stream? sink-cexpr?
+        sink-name? sink? sink-text-input-stream?
+        (-> sink-name? sink? sink-text-input-stream? sink-cexpr?
           sink-effects?)
         sink-effects?)
       void?)
@@ -1547,10 +1533,9 @@
         #/expect v (sink-cexpr v)
           (cene-err "Expected projections to be an association list with expressions as values")
         #/list k v))
-    #/expect
-      (names-mutually-unique?
+    #/if
+      (names-have-duplicate?
       #/list-map projections #/dissectfn (list k v) k)
-      #t
       (cene-err "Expected projections to be an association list with mutually unique names as keys")
       projections))
   
@@ -1558,11 +1543,11 @@
     (sink-effects-expand-struct-op
       unique-name qualify text-input-stream then)
     (->
-      name?
+      sink-name?
       sink?
       sink-text-input-stream?
       (->
-        name?
+        sink-name?
         sink?
         sink-text-input-stream?
         (maybe/c #/list/c name? #/listof #/list/c name? cexpr?)
@@ -1688,15 +1673,13 @@
         #/expect v (sink-name v)
           (cene-err "Expected projections to be an association list with names as values")
         #/list k v))
-    #/expect
-      (names-mutually-unique?
+    #/if
+      (names-have-duplicate?
       #/list-map projections #/dissectfn (list k v) k)
-      #t
       (cene-err "Expected projections to be an association list with mutually unique names as keys")
-    #/expect
-      (names-mutually-unique?
+    #/if
+      (names-have-duplicate?
       #/list-map projections #/dissectfn (list k v) v)
-      #t
       (cene-err "Expected projections to be an association list with mutually unique names as values")
     #/expect then-expr (sink-cexpr then-expr)
       (cene-err "Expected then-expr to be an expression")
@@ -1738,7 +1721,7 @@
     #/fn text-input-stream vars
     #/w- vars
       (list-map vars #/dissectfn (list located-string var) var)
-    #/expect (sink-names-mutually-unique? vars) #t
+    #/if (sink-names-have-duplicate? vars)
       (cene-err "Expected the variables of a case pattern to be mutually unique")
     
     #/then text-input-stream tags vars))

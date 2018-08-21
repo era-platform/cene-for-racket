@@ -34,11 +34,12 @@
 (require #/only-in lathe-comforts/list
   list-any list-foldl list-foldr list-map list-zip-map nat->maybe)
 (require #/only-in lathe-comforts/maybe
-  just maybe/c maybe-map nothing)
+  just maybe/c maybe-map nothing nothing?)
 (require #/only-in lathe-comforts/string immutable-string?)
 (require #/only-in lathe-comforts/struct struct-easy)
 
-(require #/only-in effection/order dex-immutable-string)
+(require #/only-in effection/order
+  assocs->table-if-mutually-unique dex-immutable-string)
 (require #/only-in effection/order/base
   compare-by-dex dex? dex-give-up dex-dex dex-name dex-struct
   dex-table fuse-by-merge merge-by-dex merge-table name? name-of
@@ -166,11 +167,6 @@
 (struct-easy (sink-cexpr cexpr)
   #:other #:methods gen:sink [])
 
-(define/contract (name-rep-map name func)
-  (-> name? (-> any/c any/c) name?)
-  (dissect name (unsafe:name name)
-  #/unsafe:name #/func name))
-
 (define/contract (sink-name-rep-map name func)
   (-> sink-name? (-> any/c any/c) sink-name?)
   (dissect name (sink-name #/unsafe:name name)
@@ -187,9 +183,9 @@
     (list 'name:qualified n)))
 
 ; TODO BUILTINS: Add this as a Cene built-in.
-(define/contract (name-claimed name)
-  (-> name? name?)
-  (name-rep-map name #/fn n #/list 'name:claimed n))
+(define/contract (sink-name-claimed inner-name)
+  (-> sink-name? sink-name?)
+  (sink-name-rep-map inner-name #/fn n #/list 'name:claimed n))
 
 (struct-easy (cene-process-error message))
 (struct-easy (cene-process-get name then))
@@ -590,12 +586,12 @@
   (-> sink? sink-cexpr?)
   (sink-cexpr #/cexpr-native result))
 
+; TODO: See if this should be an export of Effection.
 (define/contract (names-have-duplicate? names)
   (-> (listof name?) boolean?)
-  (w-loop next so-far (table-empty) names names
-    (expect names (cons name names) #f
-    #/expect (table-get name so-far) (nothing) #t
-    #/next (table-shadow name (just #/trivial) so-far) names)))
+  (nothing?
+  #/assocs->table-if-mutually-unique #/list-map names #/fn name
+    (cons name #/trivial)))
 
 (define/contract (sink-names-have-duplicate? names)
   (-> (listof sink-name?) boolean?)
@@ -1081,20 +1077,20 @@
   (sink-effects-run-op
     op-impl unique-name qualify text-input-stream output-stream then)
   (->
-    sink? name? sink? sink-text-input-stream?
+    sink? sink-name? sink? sink-text-input-stream?
     sink-cexpr-sequence-output-stream?
     (->
-      name? sink? sink-text-input-stream?
+      sink-name? sink? sink-text-input-stream?
       sink-cexpr-sequence-output-stream?
       sink-effects?)
     sink-effects?)
   (begin (assert-can-get-cene-definitions!)
   #/w- result
-    (sink-call op-impl (sink-name unique-name) qualify
-      text-input-stream output-stream
+    (sink-call op-impl
+      unique-name qualify text-input-stream output-stream
     #/sink-fn-curried 4
     #/fn unique-name qualify text-input-stream output-stream
-    #/expect unique-name (sink-name unique-name)
+    #/expect (sink-name? unique-name) #t
       (cene-err "Expected the unique name of a macro's callback results to be a name")
     #/expect (sink-text-input-stream? text-input-stream) #t
       (cene-err "Expected the text input stream of a macro's callback results to be a text input stream")
@@ -1110,13 +1106,13 @@
     unique-name qualify text-input-stream output-stream pre-qualify
     then)
   (->
-    name?
+    sink-name?
     sink?
     sink-text-input-stream?
     sink-cexpr-sequence-output-stream?
     (-> sink-name? sink-name?)
     (->
-      name? sink? sink-text-input-stream?
+      sink-name? sink? sink-text-input-stream?
       sink-cexpr-sequence-output-stream?
       sink-effects?)
     sink-effects?)
@@ -1132,10 +1128,10 @@
   (sink-effects-read-and-run-freestanding-cexpr-op
     unique-name qualify text-input-stream output-stream then)
   (->
-    name? sink? sink-text-input-stream?
+    sink-name? sink? sink-text-input-stream?
     sink-cexpr-sequence-output-stream?
     (->
-      name? sink? sink-text-input-stream?
+      sink-name? sink? sink-text-input-stream?
       sink-cexpr-sequence-output-stream?
       sink-effects?)
     sink-effects?)
@@ -1149,10 +1145,10 @@
   (sink-effects-read-and-run-bounded-cexpr-op
     unique-name qualify text-input-stream output-stream then)
   (->
-    name? sink? sink-text-input-stream?
+    sink-name? sink? sink-text-input-stream?
     sink-cexpr-sequence-output-stream?
     (->
-      name? sink? sink-text-input-stream?
+      sink-name? sink? sink-text-input-stream?
       sink-cexpr-sequence-output-stream?
       sink-effects?)
     sink-effects?)
@@ -1166,10 +1162,10 @@
   (sink-effects-run-nameless-op
     unique-name qualify text-input-stream output-stream then)
   (->
-    name? sink? sink-text-input-stream?
+    sink-name? sink? sink-text-input-stream?
     sink-cexpr-sequence-output-stream?
     (->
-      name? sink? sink-text-input-stream?
+      sink-name? sink? sink-text-input-stream?
       sink-cexpr-sequence-output-stream?
       sink-effects?)
     sink-effects?)
@@ -1198,10 +1194,10 @@
   (sink-effects-read-cexprs
     unique-name qualify text-input-stream output-stream then)
   (->
-    name? sink? sink-text-input-stream?
+    sink-name? sink? sink-text-input-stream?
     sink-cexpr-sequence-output-stream?
     (->
-      name? sink? sink-text-input-stream?
+      sink-name? sink? sink-text-input-stream?
       sink-cexpr-sequence-output-stream?
       sink-effects?)
     sink-effects?)
@@ -1331,21 +1327,24 @@
 (define s-clamor-err (core-sink-struct "clamor-err" #/list "message"))
 
 (define/contract (sink-effects-claim name)
-  (-> name? sink-effects?)
+  (-> sink-name? sink-effects?)
   (sink-effects-put
-    (sink-name #/name-claimed name)
+    (sink-name-claimed name)
     (sink-dex #/dex-give-up)
     (make-sink-struct s-trivial #/list)))
 
 (define/contract (sink-effects-claim-and-split unique-name n then)
-  (-> name? natural? (-> (listof name?) sink-effects?) sink-effects?)
+  (-> sink-name? natural? (-> (listof sink-name?) sink-effects?)
+    sink-effects?)
   (mat n 1 (then #/list unique-name)
   #/sink-effects-fuse (sink-effects-claim unique-name)
   #/expect (nat->maybe n) (just n) (then #/list)
   #/w-loop next n n next-name unique-name names (list)
     (expect (nat->maybe n) (just n) (then #/cons next-name names)
-    #/w- first (name-rep-map unique-name #/fn n #/list 'name:first n)
-    #/w- rest (name-rep-map unique-name #/fn n #/list 'name:rest n)
+    #/w- first
+      (sink-name-rep-map unique-name #/fn n #/list 'name:first n)
+    #/w- rest
+      (sink-name-rep-map unique-name #/fn n #/list 'name:rest n)
     #/next n rest #/cons first names)))
 
 ; TODO BUILTINS: Add this as a Cene built-in, possibly as a side
@@ -1379,7 +1378,7 @@
 ;
 (define/contract
   (sink-effects-read-top-level unique-name qualify text-input-stream)
-  (-> name? sink? sink-text-input-stream? sink-effects?)
+  (-> sink-name? sink? sink-text-input-stream? sink-effects?)
   (begin (assert-can-get-cene-definitions!)
   #/sink-effects-read-eof text-input-stream
     ; If we're at the end of the file, we're done. We claim the
@@ -1406,8 +1405,7 @@
         #/sink-effects-cexpr-eval cexpr #/fn directive
         #/expect directive (sink-directive directive)
           (cene-err "Expected every top-level expression to evaluate to a directive")
-        #/w- effects
-          (sink-call directive (sink-name unique-name-first) qualify)
+        #/w- effects (sink-call directive unique-name-first qualify)
         #/expect (sink-effects? effects) #t
           (cene-err "Expected every top-level expression to evaluate to a directive made from a callable value that takes two arguments and returns side effects")
           effects)))
@@ -1429,7 +1427,7 @@
   #/cene-process-run rt #/with-gets-from-as-process defined-values
     (fn
       (sink-effects-run! #/sink-effects-read-top-level
-        (unsafe:name #/list 'name:unique-name-root)
+        (sink-name #/unsafe:name #/list 'name:unique-name-root)
         (sink-fn-curried 1 #/fn name
           (expect (sink-name? name) #t
             (cene-err "Expected the input to the root qualify function to be a name")
