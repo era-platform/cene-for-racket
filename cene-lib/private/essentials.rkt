@@ -642,7 +642,7 @@
       #/w- n (length fields)
       #/w-loop next as as bs bs fields fields rev-furged (list)
         (expect fields (cons furge-field fields)
-          (make-sink-struct tags #/reverse rev-furged)
+          (just #/make-sink-struct tags #/reverse rev-furged)
         #/dissect as (cons a as)
         #/dissect bs (cons b bs)
         #/next fields as bs
