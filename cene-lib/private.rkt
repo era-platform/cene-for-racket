@@ -176,10 +176,6 @@
   (dissect name (sink-name #/unsafe:name name)
   #/sink-name #/unsafe:name #/func name))
 
-(define/contract (name-qualify unqualified-name)
-  (-> name? name?)
-  (sink-name-rep-map unqualified-name #/fn n #/list 'name:qualified n))
-
 ; NOTE: We probably won't want to make this available as a Cene
 ; built-in. It just represents the arbitrary `qualify` function that
 ; all the built-ins look like they were defined under. In a
