@@ -46,20 +46,25 @@
   fuse-exact-rational-by-times)
 (require #/only-in effection/order/base
   call-fuse call-merge cline-by-dex cline-default cline-give-up
-  cline-result? cline-struct compare-by-cline compare-by-dex dex?
-  dexable dex-cline dex-default dex-dex dex-fix dex-fuse dex-give-up
-  dex-merge dex-name dex-struct dex-table fuse-by-merge fuse-struct
+  cline-opaque cline-result? cline-struct compare-by-cline
+  compare-by-dex dex? dexable dex-cline dex-default dex-dex dex-fix
+  dex-fuse dex-give-up dex-merge dex-name dex-opaque dex-struct
+  dex-table fusable-function? fuse-by-merge fuse-opaque fuse-struct
   fuse-table in-cline? in-dex? get-dex-from-cline
-  make-ordering-private-gt make-ordering-private-lt merge-by-dex
-  merge-struct merge-table name? name-of ordering-eq ordering-gt
-  ordering-lt ordering-private? table? table-empty table-get
-  table-map-fuse table-shadow table-sort)
+  make-fusable-function make-ordering-private-gt
+  make-ordering-private-lt merge-by-dex merge-opaque merge-struct
+  merge-table name? name-of ordering-eq ordering-gt ordering-lt
+  ordering-private? table? table-empty table-get table-map-fuse
+  table-shadow table-sort)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe
   autoname-cline autoname-dex autoname-fuse autoname-merge cline
   cline-by-own-method-unchecked cline-fix-unchecked dex
   dexableof-unchecked dex-by-own-method-unchecked dex-fix-unchecked
   fuse fuse-by-own-method-unchecked fuse-fix-unchecked
-  gen:cline-internals gen:dex-internals gen:furge-internals merge
+  fuse-fusable-function-thorough-unchecked
+  fuse-fusable-function::raise-cannot-combine-results-error
+  fuse-fusable-function::arg-to-method gen:cline-internals
+  gen:dex-internals gen:furge-internals merge
   merge-by-own-method-unchecked merge-fix-unchecked name
   table->sorted-list)
 
@@ -845,6 +850,20 @@
   converter-for-fuse-fix make-converter-for-fuse-fix sink-fuse
   "Expected the result of a fuse-fix method to be a fuse")
 
+(struct-easy (sink-fuse-fusable-fn-unthorough arg-to-method)
+  #:other
+  
+  #:property prop:procedure
+  (fn this command
+    (dissect this (sink-fuse-fusable-fn-unthorough arg-to-method)
+    #/mat command
+      (unsafe:fuse-fusable-function::raise-cannot-combine-results-error
+        method a b a-result b-result)
+      (cene-err "Could not combine the result values")
+    #/dissect command
+      (unsafe:fuse-fusable-function::arg-to-method arg)
+    #/sink-call arg-to-method arg)))
+
 
 ; TODO: Use this in some kind of CLI entrypoint or something.
 ;
@@ -1256,6 +1275,14 @@
     #/sink-dex
     #/dex-default dex-for-trying-first dex-for-trying-second))
   
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func! "dex-opaque" name dex
+    (expect name (sink-name name)
+      (cene-err "Expected name to be a name")
+    #/expect dex (sink-dex dex)
+      (cene-err "Expected dex to be a dex")
+    #/sink-dex #/dex-opaque name dex))
+  
   (def-func! "dex-by-own-method" dexable-get-method
     (expect (sink-valid-dexable->maybe-racket dexable-get-method)
       (just dexable-get-method)
@@ -1318,6 +1345,14 @@
     #/sink-cline
     #/cline-default cline-for-trying-first cline-for-trying-second))
   
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func! "cline-opaque" name cline
+    (expect name (sink-name name)
+      (cene-err "Expected name to be a name")
+    #/expect cline (sink-cline cline)
+      (cene-err "Expected cline to be a cline")
+    #/sink-cline #/cline-opaque name cline))
+  
   (def-func! "cline-by-own-method" dexable-get-method
     (expect (sink-valid-dexable->maybe-racket dexable-get-method)
       (just dexable-get-method)
@@ -1362,6 +1397,22 @@
       (cene-err "Expected merge to be a merge")
     #/sink-fuse #/fuse-by-merge merge))
   
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func! "merge-opaque" name merge
+    (expect name (sink-name name)
+      (cene-err "Expected name to be a name")
+    #/expect merge (sink-merge merge)
+      (cene-err "Expected merge to be a merge")
+    #/sink-merge #/merge-opaque name merge))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func! "fuse-opaque" name fuse
+    (expect name (sink-name name)
+      (cene-err "Expected name to be a name")
+    #/expect fuse (sink-fuse fuse)
+      (cene-err "Expected fuse to be a fuse")
+    #/sink-fuse #/fuse-opaque name fuse))
+  
   (def-func! "merge-by-own-method" dexable-get-method
     (expect (sink-valid-dexable->maybe-racket dexable-get-method)
       (just dexable-get-method)
@@ -1389,6 +1440,27 @@
       (cene-err "Expected dexable-unwrap to be a valid dexable")
     #/sink-fuse #/unsafe:fuse-fix-unchecked
     #/make-converter-for-fuse-fix dexable-unwrap))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func! "is-fusable-fn" v
+    (racket-boolean->sink
+    #/expect v (sink-opaque-fn v) #f
+    #/fusable-function? v))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func! "make-fusable-fn" func
+    (sink-opaque-fn #/make-fusable-function #/fn arg
+      (sink-call func arg)))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func! "fuse-fusable-fn" dexable-arg-to-method
+    (expect (sink-valid-dexable->maybe-racket dexable-arg-to-method)
+      (just #/dexable dex arg-to-method)
+      (cene-err "Expected dexable-arg-to-method to be a valid dexable")
+    #/sink-fuse #/fuse-struct sink-opaque-fn
+    #/unsafe:fuse-fusable-function-thorough-unchecked #/dexable
+      (dex-struct sink-fuse-fusable-fn-unthorough dex)
+      (sink-fuse-fusable-fn-unthorough arg-to-method)))
   
   
   ; Structs and function calls

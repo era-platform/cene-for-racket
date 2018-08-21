@@ -153,12 +153,8 @@
     (unless (immutable-string? racket-string)
       (error "Expected racket-string to be an immutable string")))
   #:other #:methods gen:sink [])
-; TODO BUILTINS: In Effection, add a `make-fusable-procedure`
-; procedure, a `fusable-procedure?` predicate, and a
-; `(fuse-fusable-procedure arg-to-fuse-result)` fuse constructor. Add
-; corresponding operations to Cene. We can represent
-; `(fuse-fusable-procedure ...)` as
-; `(fuse-struct sink-opaque-fn #/fuse-fusable-procedure ...)`.
+; NOTE: We use `sink-opaque-fn` to represent the values recognized by
+; Cene's `is-fusable-fn`, so they're not always fully opaque.
 (struct-easy (sink-opaque-fn racket-fn)
   #:other #:methods gen:sink [])
 (struct-easy (sink-table racket-table)
