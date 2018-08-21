@@ -34,7 +34,7 @@
 (require #/only-in lathe-comforts
   dissect dissectfn expect expectfn fn mat w- w-loop)
 (require #/only-in lathe-comforts/list
-  list-all list-any list-foldl list-foldr list-map)
+  list-all list-any list-foldl list-foldr list-kv-map list-map)
 (require #/only-in lathe-comforts/maybe
   just just? maybe-bind maybe/c maybe-map nothing)
 (require #/only-in lathe-comforts/string immutable-string?)
@@ -291,9 +291,25 @@
     (list proj-tags vals)
   #/list (cons main-tag proj-tags) vals))
 
-; TODO: Remove the question mark from this name.
 (define/contract
-  (sink-struct-op-autodex? a-tags a-fields b-tags b-fields dex-field)
+  (sink-struct-op-autoname tags fields name-tag autoname-field-method)
+  (->i
+    (
+      [tags (listof name?)]
+      [fields list?]
+      [name-tag symbol?]
+      [autoname-field-method (-> any/c any/c)])
+    #:pre (tags fields) (= (length tags) (add1 #/length fields))
+    [_ any/c])
+  (dissect
+    (normalize-tags-and-vals tags
+    #/list-kv-map fields #/fn i field-method
+      (list i #/autoname-field-method field-method))
+    (list tags fields)
+  #/list* name-tag tags fields))
+
+(define/contract
+  (sink-struct-op-autodex a-tags a-fields b-tags b-fields dex-field)
   (->i
     (
       [a-tags (listof name?)]
@@ -412,16 +428,13 @@
     
     (define (dex-internals-autoname this)
       (dissect this (dex-internals-sink-struct tags fields)
-      #/dissect (normalize-tags-and-vals tags fields)
-        (list tags fields)
-      #/list* 'tag:dex-sink-struct tags
-      #/list-map fields #/fn dex-field
-        (unsafe:autoname-dex dex-field)))
+      #/sink-struct-op-autoname
+        tags fields 'tag:dex-sink-struct unsafe:autoname-dex))
     
     (define (dex-internals-autodex this other)
       (dissect this (dex-internals-sink-struct a-tags a-fields)
       #/dissect other (dex-internals-sink-struct b-tags b-fields)
-      #/sink-struct-op-autodex? a-tags a-fields b-tags b-fields
+      #/sink-struct-op-autodex a-tags a-fields b-tags b-fields
         (dex-dex)))
     
     (define (dex-internals-in? this x)
@@ -521,16 +534,13 @@
     
     (define (cline-internals-autoname this)
       (dissect this (cline-internals-sink-struct tags fields)
-      #/dissect (normalize-tags-and-vals tags fields)
-        (list tags fields)
-      #/list* 'tag:cline-sink-struct tags
-      #/list-map fields #/fn cline-field
-        (unsafe:autoname-cline cline-field)))
+      #/sink-struct-op-autoname
+        tags fields 'tag:cline-sink-struct unsafe:autoname-cline))
     
     (define (cline-internals-autodex this other)
       (dissect this (cline-internals-sink-struct a-tags a-fields)
       #/dissect other (cline-internals-sink-struct b-tags b-fields)
-      #/sink-struct-op-autodex? a-tags a-fields b-tags b-fields
+      #/sink-struct-op-autodex a-tags a-fields b-tags b-fields
         (dex-cline)))
     
     (define (cline-internals-in? this x)
@@ -590,18 +600,15 @@
     (define (furge-internals-autoname this)
       (dissect this
         (furge-internals-sink-struct autoname-furge _ _ tags fields)
-      #/dissect (normalize-tags-and-vals tags fields)
-        (list tags fields)
-      #/list* 'tag:furge-sink-struct tags
-      #/list-map fields #/fn furge-field
-        (autoname-furge furge-field)))
+      #/sink-struct-op-autoname
+        tags fields 'tag:furge-sink-struct autoname-furge))
     
     (define (furge-internals-autodex this other)
       (dissect this
         (furge-internals-sink-struct _ dex-furge _ a-tags a-fields)
       #/dissect other
         (furge-internals-sink-struct _ _ _ b-tags b-fields)
-      #/sink-struct-op-autodex? a-tags a-fields b-tags b-fields
+      #/sink-struct-op-autodex a-tags a-fields b-tags b-fields
         dex-furge))
     
     (define (furge-internals-call this a b)
@@ -1576,7 +1583,13 @@
     (->
       sink?
       sink-text-input-stream?
-      (-> sink-text-input-stream? list? list? sink-effects?)
+      (->i
+        (
+          [text-input-stream sink-text-input-stream?]
+          [tags (listof name?)]
+          [vars (listof sink-name?)])
+        #:pre (tags vars) (= (length tags) (add1 #/length vars))
+        [_ sink-effects?])
       sink-effects?)
     
     (sink-effects-read-maybe-struct-metadata qualify text-input-stream
