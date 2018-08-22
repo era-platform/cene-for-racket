@@ -1155,12 +1155,6 @@
       ; TODO: We haven't even tried to store this in the same format
       ; as the JavaScript version of Cene does. See if we should.
       ;
-      ; TODO BUILTINS: Expose a `dex-list` operation to Cene so that
-      ; Cene code can install a definition with a dex that's the same
-      ; as this one's dex. Cene code would otherwise be able to make
-      ; something which *behaved the same* as `dex-list`, but with the
-      ; exception that it wouldn't count as the same dex.
-      ;
       (def-dexable-value!
         (sink-name-qualify
         #/sink-name-for-struct-metadata main-tag-name)
@@ -1515,6 +1509,11 @@
   
   ; Structs and function calls
   
+  ; NOTE: In the JavaScript version of Cene, this was called
+  ; `constructor-glossary` with projections `main-tag` and
+  ; `source-to-rep`. The representation was otherwise the same except
+  ; that the keys of the `source-to-rep`/`projections` assoc list were
+  ; names, and now we store them as strings.
   (def-data-struct! "struct-metadata"
     (list "main-tag-name" "projections"))
   
@@ -1577,7 +1576,7 @@
   ; `get-dex-by-cline` (as provided by Effection) instead of
   ; `dex-by-cline`, but the same circuitous combination would work.
   ; Nevertheless, we provide this operation directly.
-  (def-func! "cexpr-dex-struct" main-tag-name projections
+  (def-func! "expr-dex-struct" main-tag-name projections
     (w- projections
       (verify-cexpr-struct-args! main-tag-name projections)
     #/sink-cexpr #/cexpr-dex-struct main-tag-name projections))
@@ -1593,7 +1592,9 @@
     #/then unique-name qualify text-input-stream
     #/sink-cexpr #/cexpr-dex-struct main-tag-name projections))
   
-  (def-func! "cexpr-cline-struct" main-tag-name projections
+  ; NOTE: In the JavaScript version of Cene, this was known as
+  ; `cexpr-cline-struct`.
+  (def-func! "expr-cline-struct" main-tag-name projections
     (w- projections
       (verify-cexpr-struct-args! main-tag-name projections)
     #/sink-cexpr #/cexpr-cline-struct main-tag-name projections))
@@ -1609,7 +1610,9 @@
     #/then unique-name qualify text-input-stream
     #/sink-cexpr #/cexpr-cline-struct main-tag-name projections))
   
-  (def-func! "cexpr-merge-struct" main-tag-name projections
+  ; NOTE: In the JavaScript version of Cene, this was known as
+  ; `cexpr-merge-struct`.
+  (def-func! "expr-merge-struct" main-tag-name projections
     (w- projections
       (verify-cexpr-struct-args! main-tag-name projections)
     #/sink-cexpr #/cexpr-merge-struct main-tag-name projections))
@@ -1625,7 +1628,9 @@
     #/then unique-name qualify text-input-stream
     #/sink-cexpr #/cexpr-merge-struct main-tag-name projections))
   
-  (def-func! "cexpr-fuse-struct" main-tag-name projections
+  ; NOTE: In the JavaScript version of Cene, this was known as
+  ; `cexpr-fuse-struct`.
+  (def-func! "expr-fuse-struct" main-tag-name projections
     (w- projections
       (verify-cexpr-struct-args! main-tag-name projections)
     #/sink-cexpr #/cexpr-fuse-struct main-tag-name projections))
@@ -1641,7 +1646,9 @@
     #/then unique-name qualify text-input-stream
     #/sink-cexpr #/cexpr-fuse-struct main-tag-name projections))
   
-  (def-func! "cexpr-construct" main-tag-name projections
+  ; NOTE: In the JavaScript version of Cene, this was known as
+  ; `cexpr-struct`.
+  (def-func! "expr-construct" main-tag-name projections
     (w- projections
       (verify-cexpr-struct-args! main-tag-name projections)
     #/sink-cexpr #/cexpr-construct main-tag-name projections))
@@ -1658,7 +1665,9 @@
     #/then unique-name qualify text-input-stream
     #/sink-cexpr #/cexpr-construct main-tag-name projections))
   
-  (def-func! "cexpr-case"
+  ; NOTE: In the JavaScript version of Cene, this was known as
+  ; `cexpr-case`.
+  (def-func! "expr-case"
     subject-expr main-tag-name projections then-expr else-expr
     (expect subject-expr (sink-cexpr subject-expr)
       (cene-err "Expected subject-expr to be an expression")
@@ -1792,7 +1801,9 @@
       then-expr
       else-expr))
   
-  (def-func! "cexpr-call" func-expr arg-expr
+  ; NOTE: In the JavaScript version of Cene, this was known as
+  ; `cexpr-call`.
+  (def-func! "expr-call" func-expr arg-expr
     (expect func-expr (sink-cexpr func-expr)
       (cene-err "Expected func-expr to be an expression")
     #/expect arg-expr (sink-cexpr arg-expr)
@@ -1814,17 +1825,29 @@
     #/sink-cexpr #/list-foldl func-expr args-args #/fn func arg
       (cexpr-call func arg)))
   
-  ; TODO BUILTINS: Consider implementing the following.
+  ; NOTE BUILTINS: The following built-ins from the JavaScript version
+  ; of Cene seem like they're not relevant to the approach we've taken
+  ; here, since we're using a single global namespace instead of
+  ; first-class namespaces.
   ;
   ;   constructor-tag
   ;   function-implementation-from-cexpr
-  ;   constructor-glossary
   ;   procure-constructor-glossary-getdef
   ;   copy-function-implementations
   ;   committing-to-define-function-implementations
   ;   procure-function-definer
-  ;   def-struct
-  ;   defn
+  
+  ; TODO BUILTINS: Implement `def-struct`, probably in a Cene prelude.
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func! "expr-opaque-fn" param body
+    (expect (sink-name? param) #t
+      (cene-err "Expected param to be a name")
+    #/expect (sink-cexpr? body) #t
+      (cene-err "Expected body to be an expression")
+    #/sink-cexpr-opaque-fn param body))
+  
+  ; TODO BUILTINS: Implement `defn`, probably in a Cene prelude.
   
   (def-macro! "fn" #/fn unique-name qualify text-input-stream then
     (sink-effects-read-bounded-ids-and-exprs
@@ -1907,15 +1930,50 @@
   (def-nullary-func! "fuse-effects"
     (sink-fuse #/unsafe:fuse #/fuse-internals-effects))
   
-  ; TODO BUILTINS: Consider implementing the following.
+  ; NOTE BUILTINS: The following built-ins from the JavaScript version
+  ; of Cene seem like they're not relevant to the approach we've taken
+  ; here, since we're using a single global namespace instead of
+  ; first-class namespaces.
   ;
   ;   get-mode
   ;   assert-current-mode
-  ;   later
+  
+  (define/contract (verify-callback-effects! effects)
+    (-> sink? sink-effects?)
+    (expect (sink-effects? effects) #t
+      (cene-err "Expected the return value of the callback to be an effects value")
+      effects))
+  
+  ; NOTE: In the JavaScript version of Cene, this was known as
+  ; `later`, and it took an effects value rather than a function that
+  ; computed one. When we needed to do what this does, we used
+  ; `get-mode` and ignored the mode value.
+  (def-func! "effects-later" get-effects
+    (sink-effects-later #/fn
+    #/verify-callback-effects!
+    #/sink-call get-effects #/make-sink-struct s-trivial #/list))
+  
+  ; TODO BUILTINS: Consider implementing the following.
+  ;
   ;   make-promise-later
   ;   getdef
   ;   definer-define
   ;   committing-to-define
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func! "effects-get" name then
+    (expect (sink-name? name) #t
+      (cene-err "Expected name to be a name")
+    #/sink-effects-get name #/fn result
+    #/verify-callback-effects! #/sink-call then result))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func! "effects-put" name dex value
+    (expect (sink-name? name) #t
+      (cene-err "Expected name to be a name")
+    #/expect (sink-dex? dex) #t
+      (cene-err "Expected dex to be a dex")
+    #/sink-effects-put name dex value))
   
   
   ; Unit tests
@@ -1927,7 +1985,12 @@
   
   ; Namespaces
   
-  ; TODO BUILTINS: Consider implementing the following.
+  ; TODO BUILTINS: Consider implementing something like the following.
+  ; We're taking an approach where we're using a single global
+  ; namespace instead of first-class namespaces, but we'll still want
+  ; to do something like `contributing-only-to`, and we'll still want
+  ; to have an open-world assumption extensibility framework based on
+  ; defining contributed elements and contributed listeners.
   ;
   ;   procure-sub-ns-table
   ;   procure-name
@@ -1943,11 +2006,10 @@
   
   ; Macros
   
-  ; TODO BUILTINS: Consider implementing the following. This is the
-  ; list of macro-relevant operations from the JavaScript
-  ; implementation of Cene, which has an s-expression-based macro
-  ; system. Now that we're using a text-stream-based macro system
-  ; here, several of these will be unnecessary.
+  ; NOTE BUILTINS: The following built-ins from the JavaScript version
+  ; of Cene seem like they're not relevant to the approach we've taken
+  ; here, since we're using a text-based rather than
+  ; s-expression-based macro system.
   ;
   ;   istring-nil
   ;   istring-cons
@@ -1966,12 +2028,74 @@
   ;   stx-details-macro-call
   ;   procure-claim
   ;   procure-macro-implementation-getdef
-  ;   cexpr-var
-  ;   cexpr-reified
-  ;   cexpr-located
-  ;   cexpr-let
-  ;   let
-  ;   eval-cexpr
+  
+  ; NOTE: In the JavaScript version of Cene, this was known as
+  ; `cexpr-var`.
+  (def-func! "expr-var" var
+    (expect (sink-name? var) #t
+      (cene-err "Expected var to be a name")
+    #/sink-cexpr-var var))
+  
+  ; NOTE: In the JavaScript version of Cene, this was known as
+  ; `cexpr-reified`.
+  (def-func! "expr-reified" val
+    (sink-cexpr-reified val))
+  
+  ; TODO BUILTINS: Implement `cexpr-located`.
+  
+  ; NOTE: In the JavaScript version of Cene, this was known as
+  ; `cexpr-let`.
+  (def-func! "expr-let" bindings body
+    (expect (sink-list->maybe-racket bindings) (just bindings)
+      (cene-err "Expected bindings to be a list")
+    #/w- bindings
+      (list-map bindings #/fn binding
+        (expect (unmake-sink-struct-maybe binding s-assoc)
+          (just #/list var val)
+          (cene-err "Expected bindings to be an assoc list")
+        #/expect (sink-name? var) #t
+          (cene-err "Expected bindings to be an assoc list with names as the keys")
+        #/expect (sink-cexpr? val) #t
+          (cene-err "Expected bindings to be an assoc list with expressions as the values")
+        #/list var val))
+    #/expect (sink-cexpr? body) #t
+      (cene-err "Expected body to be an expression")
+    #/sink-cexpr-let bindings body))
+  
+  ; TODO BUILTINS: Implement `let`.
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func! "is-expr" v
+    (racket-boolean->sink #/sink-cexpr? v))
+  
+  ; TODO: See if this can be a pure function.
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func! "effects-expr-can-eval" expr then
+    (expect expr (sink-cexpr expr)
+      (cene-err "Expected expr to be an expression")
+    #/sink-effects-later #/fn
+    #/verify-callback-effects!
+    #/sink-call then #/racket-boolean->sink #/cexpr-can-eval? expr))
+  
+  ; TODO: See if this can be a pure function.
+  ;
+  ; NOTE: In the JavaScript version of Cene, this was known as
+  ; `eval-cexpr`, and it was a pure function that took a mode
+  ; parameter.
+  ;
+  (def-func! "effects-expr-eval" expr then
+    (expect expr (sink-cexpr expr)
+      (cene-err "Expected expr to be an expression")
+    #/sink-effects-later #/fn
+    #/expect (cexpr-can-eval? expr) #t
+      (cene-err "Expected expr to be an expression which had all the information it needed for evaluation")
+    #/sink-effects-cexpr-eval expr #/fn result
+    #/verify-callback-effects! #/sink-call then result))
+  
+  ; TODO BUILTINS: Consider implementing something like the following
+  ; built-ins from the JavaScript version of Cene. We can probably
+  ; implement these in a Cene prelude.
+  ;
   ;   compile-expression-later
   ;   read-all-force
   ;   def-macro
@@ -2039,7 +2163,9 @@
     #/sink-string #/string->immutable-string
     #/list->string #/list #/integer->char unicode-scalar))
   
-  (def-func! "string-append-later" a b then
+  ; NOTE: In the JavaScript version of Cene, this was known as
+  ; `string-append-later`.
+  (def-func! "effects-string-append" a b then
     (expect a (sink-string a)
       (cene-err "Expected a to be a string")
     #/expect b (sink-string b)
@@ -2087,7 +2213,12 @@
   
   ; Regexes
   
-  ; TODO BUILTINS: Consider implementing the following.
+  ; TODO BUILTINS: Implement the following built-ins from the
+  ; JavaScript version of Cene. We should probably rename them from
+  ; "regex" to "textpat" since they're not regexes, but they are still
+  ; text patterns. We'll probably want to write a Racket library
+  ; dedicated to these as well, so that people can encounter them and
+  ; learn about them outside the context of Cene's bizarre ecosystem.
   ;
   ;   regex-give-up
   ;   regex-empty
@@ -2174,17 +2305,17 @@
     #/sink-name-for-function-implementation-value
       main-tag-name proj-tag-names))
   
-  (def-func! "name-for-freestanding-cexpr-op" name
+  (def-func! "name-for-freestanding-expr-op" name
     (expect (sink-name? name) #t
       (cene-err "Expected name to be a name")
     #/sink-name-for-freestanding-cexpr-op name))
   
-  (def-func! "name-for-bounded-cexpr-op" name
+  (def-func! "name-for-bounded-expr-op" name
     (expect (sink-name? name) #t
       (cene-err "Expected name to be a name")
     #/sink-name-for-bounded-cexpr-op name))
   
-  (def-func! "name-for-nameless-bounded-cexpr-op" name
+  (def-func! "name-for-nameless-bounded-expr-op" name
     (expect (sink-name? name) #t
       (cene-err "Expected name to be a name")
     #/sink-name-for-nameless-bounded-cexpr-op name))
@@ -2222,6 +2353,87 @@
   ; `(my-struct)` value itself. If so, this will be a lot of
   ; name-making operations, including one for each dex constructor,
   ; one for each cline constructor, etc.
+  
+  (def-func! "is-located-string" v
+    (racket-boolean->sink #/sink-located-string? v))
+  
+  (def-func! "effects-string-from-located-string" located-string then
+    (expect (sink-located-string? located-string) #t
+      (cene-err "Expected located-string to be a located string")
+    #/sink-effects-string-from-located-string located-string
+    #/fn string
+    #/verify-callback-effects! #/sink-call then string))
+  
+  ; TODO BUILTINS: Make sure we have a sufficient set of operations
+  ; for manipulating `sink-located-string` values.
+  
+  (def-func! "is-expr-sequence-output-stream" v
+    (racket-boolean->sink #/sink-cexpr-sequence-output-stream? v))
+  
+  (def-func! "effects-expr-write" output-stream expr then
+    (expect (sink-cexpr-sequence-output-stream? output-stream) #t
+      (cene-err "Expected output-stream to be an expression sequence output stream")
+    #/expect (cexpr? expr) #t
+      (cene-err "Expected expr to be an expression")
+    #/sink-effects-cexpr-write output-stream expr #/fn output-stream
+    #/verify-callback-effects! #/sink-call then output-stream))
+  
+  ; TODO BUILTINS: Make sure we have a sufficient set of operations
+  ; for manipulating `sink-cexpr-sequence-output-stream` values. We
+  ; don't even have a single way to create them right now, aside from
+  ; getting them passed in from the macroexpander.
+  
+  (def-func! "is-text-input-stream" v
+    (racket-boolean->sink #/sink-text-input-stream? v))
+  
+  (def-func! "effects-read-eof" input-stream on-eof then
+    (expect (sink-text-input-stream? input-stream) #t
+      (cene-err "Expected input-stream to be a text input stream")
+    #/expect (sink-effects? on-eof) #t
+      (cene-err "Expected on-eof to be an effects value")
+    #/sink-effects-read-eof input-stream on-eof #/fn input-stream
+    #/verify-callback-effects! #/sink-call then input-stream))
+  
+  (def-func! "effects-peek-whether-eof" input-stream then
+    (expect (sink-text-input-stream? input-stream) #t
+      (cene-err "Expected input-stream to be a text input stream")
+    #/sink-effects-peek-whether-eof input-stream
+    #/fn input-stream is-eof
+    #/verify-callback-effects!
+    #/sink-call then input-stream #/racket-boolean->sink is-eof))
+  
+  ; TODO BUILTINS: Make sure we have a sufficient set of operations
+  ; for manipulating `sink-text-input-stream` values. We don't even
+  ; have a single way to create them right now, aside from getting
+  ; them passed in from the macroexpander. We also don't have much
+  ; ability to inspect the text we're getting.
+  
+  ; NOTE:
+  ;
+  ; We expose this operation to Cene so that Cene code can install a
+  ; definition with a dex that's the same as the dex we use for
+  ; built-in struct metadata definitions. Otherwise, Cene programmers
+  ; could use `dex-fix` to build their own dexes with functionality
+  ; nearly identical to `dex-list`, but `dex-dex` wouldn't consider
+  ; them equal. That means users couldn't write struct metadata
+  ; definitions that duplicate built-in ones without casing an error,
+  ; whereas they could still write duplicates among their own
+  ; definitions without a problem, and in this way we would have an
+  ; unnecessarily visible distinction between built-in and
+  ; user-supplied definitions.
+  ;
+  ; We could simply expose a `dex-struct-metadata` nullary operation.
+  ; However, the format of struct metadata is fully stabilized so
+  ; macros can parse it, so it wouldn't give us a future-proofing
+  ; path. If we ever have another kind of definition like the struct
+  ; metadata one, there's a good chance `dex-list` will come in handy
+  ; for that one too, at which point this choice we've made will fit
+  ; in better.
+  ;
+  (def-func! "dex-list" dex-elem
+    (expect (sink-dex? dex-elem) #t
+      (cene-err "Expected dex-elem to be a dex")
+    #/sink-dex-list dex-elem))
   
   
   
