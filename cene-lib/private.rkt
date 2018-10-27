@@ -134,6 +134,11 @@
   #:other #:methods gen:sink [])
 (struct-easy (sink-name name)
   #:other #:methods gen:sink [])
+; TODO BUILTINS: See if we need `sink-authorized-name` values to be
+; dexable. If so, expose a `dex-authorized-name` to Cene. If not,
+; expose an `is-authorized-name`.
+(struct-easy (sink-authorized-name name)
+  #:other #:methods gen:sink [])
 (struct-easy (sink-effects go!)
   #:other #:methods gen:sink [])
 (struct-easy
@@ -182,6 +187,12 @@
 (define/contract (sink-name-for-claim inner-name)
   (-> sink-name? sink-name?)
   (sink-name-rep-map inner-name #/fn n #/list 'name:claim n))
+
+; TODO BUILTINS: Expose this to Cene.
+(define/contract (sink-authorized-name-for-claim inner-name)
+  (-> sink-authorized-name? sink-authorized-name?)
+  (dissect inner-name (sink-authorized-name #/unsafe:name inner-name)
+  #/sink-authorized-name #/unsafe:name #/list 'name:claim inner-name))
 
 (struct-easy (cene-process-error message))
 (struct-easy (cene-process-get name then))
@@ -332,7 +343,8 @@
     ; that the proposed `value` matches the stored value according to
     ; that dex. Otherwise, it stores the proposed `dex` and `value`
     ; without question.
-    (mat (sink-table-get-maybe defined-dexes name)
+    (w- name (sink-authorized-name-get-name name)
+    #/mat (sink-table-get-maybe defined-dexes name)
       (just existing-cene-dex)
       (dissect cene-dex (sink-dex dex)
       #/dissect existing-cene-dex (sink-dex existing-dex)
@@ -536,7 +548,7 @@
   (make-sink-effects #/fn #/cene-process-get name then))
 
 (define/contract (sink-effects-put name dex value)
-  (-> sink-name? sink-dex? sink? sink-effects?)
+  (-> sink-authorized-name? sink-dex? sink? sink-effects?)
   (make-sink-effects #/fn #/cene-process-put name dex value))
 
 (define/contract (sink-effects-noop)
@@ -588,6 +600,7 @@
   (names-have-duplicate?
   #/list-map names #/dissectfn (sink-name name) name))
 
+; TODO AUTH TAGS: Make this take `sink-authorized-name?` values.
 (define/contract (sink-cexpr-construct main-tag-name projs)
   (-> sink-name? (listof #/list/c sink-name? sink-cexpr?) sink-cexpr?)
   (dissect main-tag-name (sink-name main-tag-name)
@@ -772,6 +785,27 @@
 (define/contract (sink-name-for-string string)
   (-> sink-string? sink-name?)
   (sink-name #/name-for-sink-string string))
+
+; TODO BUILTINS: Expose this to Cene.
+(define/contract (sink-authorized-name-get-name name)
+  (-> sink-authorized-name? sink-name?)
+  (dissect name (sink-authorized-name effection-name)
+  #/sink-name effection-name))
+
+; TODO BUILTINS: Expose this to Cene.
+(define/contract (sink-name-subname index-name inner-name)
+  (-> sink-name? sink-name? sink-name?)
+  (dissect index-name (sink-name #/unsafe:name index-name)
+  #/sink-name-rep-map inner-name #/fn n
+    (list 'name:subname index-name n)))
+
+; TODO BUILTINS: Expose this to Cene.
+(define/contract (sink-authorized-name-subname index-name inner-name)
+  (-> sink-name? sink-authorized-name? sink-authorized-name?)
+  (dissect index-name (sink-name #/unsafe:name index-name)
+  #/dissect inner-name (sink-authorized-name #/unsafe:name inner-name)
+  #/sink-authorized-name #/unsafe:name
+    (list 'name:subname index-name inner-name)))
 
 (define/contract (sink-name-for-freestanding-cexpr-op inner-name)
   (-> sink-name? sink-name?)
@@ -1062,10 +1096,10 @@
   (sink-effects-run-op
     op-impl unique-name qualify text-input-stream output-stream then)
   (->
-    sink? sink-name? sink? sink-text-input-stream?
+    sink? sink-authorized-name? sink? sink-text-input-stream?
     sink-cexpr-sequence-output-stream?
     (->
-      sink-name? sink? sink-text-input-stream?
+      sink-authorized-name? sink? sink-text-input-stream?
       sink-cexpr-sequence-output-stream?
       sink-effects?)
     sink-effects?)
@@ -1075,8 +1109,8 @@
       unique-name qualify text-input-stream output-stream
     #/sink-fn-curried 4
     #/fn unique-name qualify text-input-stream output-stream
-    #/expect (sink-name? unique-name) #t
-      (cene-err "Expected the unique name of a macro's callback results to be a name")
+    #/expect (sink-authorized-name? unique-name) #t
+      (cene-err "Expected the unique name of a macro's callback results to be an authorized name")
     #/expect (sink-text-input-stream? text-input-stream) #t
       (cene-err "Expected the text input stream of a macro's callback results to be a text input stream")
     #/expect (sink-cexpr-sequence-output-stream? output-stream) #t
@@ -1091,13 +1125,13 @@
     unique-name qualify text-input-stream output-stream pre-qualify
     then)
   (->
-    sink-name?
+    sink-authorized-name?
     sink?
     sink-text-input-stream?
     sink-cexpr-sequence-output-stream?
     (-> sink-name? sink-name?)
     (->
-      sink-name? sink? sink-text-input-stream?
+      sink-authorized-name? sink? sink-text-input-stream?
       sink-cexpr-sequence-output-stream?
       sink-effects?)
     sink-effects?)
@@ -1113,10 +1147,10 @@
   (sink-effects-read-and-run-freestanding-cexpr-op
     unique-name qualify text-input-stream output-stream then)
   (->
-    sink-name? sink? sink-text-input-stream?
+    sink-authorized-name? sink? sink-text-input-stream?
     sink-cexpr-sequence-output-stream?
     (->
-      sink-name? sink? sink-text-input-stream?
+      sink-authorized-name? sink? sink-text-input-stream?
       sink-cexpr-sequence-output-stream?
       sink-effects?)
     sink-effects?)
@@ -1130,10 +1164,10 @@
   (sink-effects-read-and-run-bounded-cexpr-op
     unique-name qualify text-input-stream output-stream then)
   (->
-    sink-name? sink? sink-text-input-stream?
+    sink-authorized-name? sink? sink-text-input-stream?
     sink-cexpr-sequence-output-stream?
     (->
-      sink-name? sink? sink-text-input-stream?
+      sink-authorized-name? sink? sink-text-input-stream?
       sink-cexpr-sequence-output-stream?
       sink-effects?)
     sink-effects?)
@@ -1147,10 +1181,10 @@
   (sink-effects-run-nameless-op
     unique-name qualify text-input-stream output-stream then)
   (->
-    sink-name? sink? sink-text-input-stream?
+    sink-authorized-name? sink? sink-text-input-stream?
     sink-cexpr-sequence-output-stream?
     (->
-      sink-name? sink? sink-text-input-stream?
+      sink-authorized-name? sink? sink-text-input-stream?
       sink-cexpr-sequence-output-stream?
       sink-effects?)
     sink-effects?)
@@ -1179,10 +1213,10 @@
   (sink-effects-read-cexprs
     unique-name qualify text-input-stream output-stream then)
   (->
-    sink-name? sink? sink-text-input-stream?
+    sink-authorized-name? sink? sink-text-input-stream?
     sink-cexpr-sequence-output-stream?
     (->
-      sink-name? sink? sink-text-input-stream?
+      sink-authorized-name? sink? sink-text-input-stream?
       sink-cexpr-sequence-output-stream?
       sink-effects?)
     sink-effects?)
@@ -1312,29 +1346,31 @@
 (define s-clamor-err (core-sink-struct "clamor-err" #/list "message"))
 
 (define/contract (sink-effects-claim name)
-  (-> sink-name? sink-effects?)
+  (-> sink-authorized-name? sink-effects?)
   (sink-effects-put
-    (sink-name-for-claim name)
+    (sink-authorized-name-for-claim name)
     (sink-dex #/dex-give-up)
     (make-sink-struct s-trivial #/list)))
 
 (define/contract (sink-effects-claim-and-split unique-name n then)
-  (-> sink-name? natural? (-> (listof sink-name?) sink-effects?)
+  (->
+    sink-authorized-name?
+    natural?
+    (-> (listof sink-authorized-name?) sink-effects?)
     sink-effects?)
   (mat n 1 (then #/list unique-name)
   #/sink-effects-fuse (sink-effects-claim unique-name)
   #/expect (nat->maybe n) (just n) (then #/list)
   #/w-loop next n n next-name unique-name names (list)
     (expect (nat->maybe n) (just n) (then #/cons next-name names)
-    ; TODO: See if we should derive these names in a way that Cene
-    ; code can reliably replicate. For instance, we could expose
-    ; `name-for-first` and `name-for-rest` operations to Cene, but
-    ; more simply, we could make these names coincide with the names
-    ; of sink structs.
     #/w- first
-      (sink-name-rep-map unique-name #/fn n #/list 'name:first n)
+      (sink-authorized-name-subname
+        (sink-name-for-string #/sink-string "first")
+        unique-name)
     #/w- rest
-      (sink-name-rep-map unique-name #/fn n #/list 'name:rest n)
+      (sink-authorized-name-subname
+        (sink-name-for-string #/sink-string "rest")
+        unique-name)
     #/next n rest #/cons first names)))
 
 (define/contract (cexpr-can-eval? cexpr)
@@ -1364,7 +1400,8 @@
 ;
 (define/contract
   (sink-effects-read-top-level unique-name qualify text-input-stream)
-  (-> sink-name? sink? sink-text-input-stream? sink-effects?)
+  (-> sink-authorized-name? sink? sink-text-input-stream?
+    sink-effects?)
   (begin (assert-can-get-cene-definitions!)
   #/sink-effects-read-eof text-input-stream
     ; If we're at the end of the file, we're done. We claim the
@@ -1414,9 +1451,10 @@
     (fn
       (sink-effects-run! #/sink-effects-read-top-level
         ; NOTE: We do not need to allow Cene code to recreate this
-        ; name. A metacircular Cene implementation can just use any
-        ; name here.
-        (sink-name #/unsafe:name #/list 'name:unique-name-root)
+        ; authorized name. A metacircular Cene implementation can just
+        ; use any authorized name here.
+        (sink-authorized-name
+        #/unsafe:name #/list 'name:unique-name-root)
         (sink-fn-curried 1 #/fn name
           (expect (sink-name? name) #t
             (cene-err "Expected the input to the root qualify function to be a name")

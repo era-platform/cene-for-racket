@@ -65,13 +65,13 @@
     unique-name qualify text-input-stream rev-results pre-qualify
     then)
   (->
-    sink-name?
+    sink-authorized-name?
     sink?
     sink-text-input-stream?
     (listof #/or/c id-or-expr-id? id-or-expr-expr?)
     (-> sink-name? sink-name?)
     (->
-      sink-name?
+      sink-authorized-name?
       sink?
       sink-text-input-stream?
       (listof #/or/c id-or-expr-id? id-or-expr-expr?)
@@ -103,12 +103,12 @@
   (sink-effects-read-bounded-ids-and-exprs
     unique-name qualify text-input-stream pre-qualify then)
   (->
-    sink-name?
+    sink-authorized-name?
     sink?
     sink-text-input-stream?
     (-> sink-name? sink-name?)
     (->
-      sink-name?
+      sink-authorized-name?
       sink?
       sink-text-input-stream?
       (listof #/or/c id-or-expr-id? id-or-expr-expr?)
@@ -142,10 +142,14 @@
   (sink-effects-read-bounded-cexprs
     unique-name qualify text-input-stream then)
   (->
-    sink-name?
+    sink-authorized-name?
     sink?
     sink-text-input-stream?
-    (-> sink-name? sink? sink-text-input-stream? (listof sink-cexpr?)
+    (->
+      sink-authorized-name?
+      sink?
+      sink-text-input-stream?
+      (listof sink-cexpr?)
       sink-effects?)
     sink-effects?)
   (begin (assert-can-get-cene-definitions!)
@@ -162,11 +166,15 @@
   (sink-effects-read-bounded-specific-number-of-cexprs
     unique-name qualify text-input-stream n then)
   (->
-    sink-name?
+    sink-authorized-name?
     sink?
     sink-text-input-stream?
     natural?
-    (-> sink-name? sink? sink-text-input-stream? (listof sink-cexpr?)
+    (->
+      sink-authorized-name?
+      sink?
+      sink-text-input-stream?
+      (listof sink-cexpr?)
       sink-effects?)
     sink-effects?)
   (begin (assert-can-get-cene-definitions!)
@@ -187,13 +195,13 @@
   (sink-effects-read-leading-specific-number-of-ids-and-exprs
     unique-name qualify text-input-stream n pre-qualify then)
   (->
-    sink-name?
+    sink-authorized-name?
     sink?
     sink-text-input-stream?
     natural?
     (-> sink-name? sink-name?)
     (->
-      sink-name?
+      sink-authorized-name?
       sink?
       sink-text-input-stream?
       (listof #/or/c id-or-expr-id? id-or-expr-expr?)
@@ -237,11 +245,15 @@
   (sink-effects-read-leading-specific-number-of-cexprs
     unique-name qualify text-input-stream n then)
   (->
-    sink-name?
+    sink-authorized-name?
     sink?
     sink-text-input-stream?
     natural?
-    (-> sink-name? sink? sink-text-input-stream? (listof sink-cexpr?)
+    (->
+      sink-authorized-name?
+      sink?
+      sink-text-input-stream?
+      (listof sink-cexpr?)
       sink-effects?)
     sink-effects?)
   (begin (assert-can-get-cene-definitions!)

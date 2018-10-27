@@ -939,10 +939,10 @@
   (define/contract (macro-impl body)
     (->
       (->
-        sink-name? sink? sink-text-input-stream?
+        sink-authorized-name? sink? sink-text-input-stream?
         sink-cexpr-sequence-output-stream?
         (->
-          sink-name? sink? sink-text-input-stream?
+          sink-authorized-name? sink? sink-text-input-stream?
           sink-cexpr-sequence-output-stream?
           sink-effects?)
         sink-effects?)
@@ -950,8 +950,8 @@
     (sink-fn-curried 5 #/fn
       unique-name qualify text-input-stream output-stream then
       
-      (expect (sink-name? unique-name) #t
-        (cene-err "Expected unique-name to be a name")
+      (expect (sink-authorized-name? unique-name) #t
+        (cene-err "Expected unique-name to be an authorized name")
       #/expect (sink-text-input-stream? text-input-stream) #t
         (cene-err "Expected text-input-stream to be a text input stream")
       #/expect (sink-cexpr-sequence-output-stream? output-stream) #t
@@ -984,6 +984,12 @@
     (def-func-impl-reified!
       qualified-main-tag-name qualified-proj-tag-names impl)
     (-> sink-name? sink-table? sink? void?)
+    ; TODO AUTH TAGS: Make these `def-value!` calls use authorized
+    ; names, or at least have Cene-side operations called
+    ; `authorized-name-for-function-implementation-{code,value}` which
+    ; Cene code could use together with `effects-put` to simulate
+    ; this. We should probably do corresponding things for all the
+    ; other places `def-value!` is used too.
     (def-value!
       (sink-name-for-function-implementation-code
         qualified-main-tag-name qualified-proj-tag-names)
@@ -1177,8 +1183,10 @@
     (->
       immutable-string?
       (->
-        sink-name? sink? sink-text-input-stream?
-        (-> sink-name? sink? sink-text-input-stream? sink-cexpr?
+        sink-authorized-name? sink? sink-text-input-stream?
+        (->
+          sink-authorized-name? sink? sink-text-input-stream?
+          sink-cexpr?
           sink-effects?)
         sink-effects?)
       void?)
@@ -1545,11 +1553,11 @@
     (sink-effects-expand-struct-op
       unique-name qualify text-input-stream then)
     (->
-      sink-name?
+      sink-authorized-name?
       sink?
       sink-text-input-stream?
       (->
-        sink-name?
+        sink-authorized-name?
         sink?
         sink-text-input-stream?
         (maybe/c #/list/c name? #/listof #/list/c name? cexpr?)
@@ -1576,6 +1584,9 @@
   ; `get-dex-by-cline` (as provided by Effection) instead of
   ; `dex-by-cline`, but the same circuitous combination would work.
   ; Nevertheless, we provide this operation directly.
+  ;
+  ; TODO AUTH TAGS: Make this take `sink-authorized-name?` values.
+  ;
   (def-func! "expr-dex-struct" main-tag-name projections
     (w- projections
       (verify-cexpr-struct-args! main-tag-name projections)
@@ -1594,6 +1605,9 @@
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-cline-struct`.
+  ;
+  ; TODO AUTH TAGS: Make this take `sink-authorized-name?` values.
+  ;
   (def-func! "expr-cline-struct" main-tag-name projections
     (w- projections
       (verify-cexpr-struct-args! main-tag-name projections)
@@ -1612,6 +1626,9 @@
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-merge-struct`.
+  ;
+  ; TODO AUTH TAGS: Make this take `sink-authorized-name?` values.
+  ;
   (def-func! "expr-merge-struct" main-tag-name projections
     (w- projections
       (verify-cexpr-struct-args! main-tag-name projections)
@@ -1630,6 +1647,9 @@
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-fuse-struct`.
+  ;
+  ; TODO AUTH TAGS: Make this take `sink-authorized-name?` values.
+  ;
   (def-func! "expr-fuse-struct" main-tag-name projections
     (w- projections
       (verify-cexpr-struct-args! main-tag-name projections)
@@ -1648,6 +1668,9 @@
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-struct`.
+  ;
+  ; TODO AUTH TAGS: Make this take `sink-authorized-name?` values.
+  ;
   (def-func! "expr-construct" main-tag-name projections
     (w- projections
       (verify-cexpr-struct-args! main-tag-name projections)
@@ -1969,8 +1992,8 @@
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func! "effects-put" name dex value
-    (expect (sink-name? name) #t
-      (cene-err "Expected name to be a name")
+    (expect (sink-authorized-name? name) #t
+      (cene-err "Expected name to be an authorized name")
     #/expect (sink-dex? dex) #t
       (cene-err "Expected dex to be a dex")
     #/sink-effects-put name dex value))
