@@ -32,11 +32,32 @@
 (require #/only-in lathe-comforts/string immutable-string?)
 (require #/only-in lathe-comforts/struct struct-easy)
 
+; TODO BUILTINS: Expose each of these as a Cene built-in.
+(provide
+  
+  (struct-out textpat-result-matched)
+  (struct-out textpat-result-failed)
+  (struct-out textpat-result-passed-end)
+  (rename-out
+    [-textpat? textpat?]
+    [-optimized-textpat? optimized-textpat?])
+  textpat-result?
+  
+  textpat-give-up
+  textpat-empty
+  textpat-from-string
+  textpat-one-in-string
+  textpat-one
+  textpat-if
+  textpat-while
+  textpat-until
+  textpat-one-in-range
+  
+  optimize-textpat
+  optimized-textpat-match)
 
-; TODO BUILTINS: Use these utilities as the implementation for some
-; Cene built-ins.
 
-; TODO: See if these utilities should be factored out into their own
+; TODO: See if this file should be factored out into its own Racket
 ; library.
 
 (struct-easy (textpat get-data))
@@ -52,6 +73,12 @@
 (define/contract (-textpat? v)
   (-> any/c boolean?)
   (textpat? v))
+
+; NOTE: This is a version of `optimized-textpat?` which doesn't
+; satisfy `struct-predicate-procedure?`.
+(define/contract (-optimized-textpat? v)
+  (-> any/c boolean?)
+  (optimized-textpat? v))
 
 (define/contract (textpat-result? v)
   (-> any/c boolean?)
