@@ -1525,10 +1525,11 @@
   
   (define/contract
     (verify-cexpr-struct-args! main-tag-name projections)
-    (-> sink? sink? #/listof #/list/c name? cexpr?)
+    (-> sink? sink?
+      (list/c sink-name? #/listof #/list/c name? cexpr?))
     
-    (expect main-tag-name (sink-name main-tag-name)
-      (cene-err "Expected main-tag-name to be a name")
+    (expect main-tag-name (sink-authorized-name main-tag-name)
+      (cene-err "Expected main-tag-name to be an authorized name")
     #/expect (sink-list->maybe-racket projections) (just projections)
       (cene-err "Expected projections to be a list made up of cons and nil values")
     #/w- projections
@@ -1536,8 +1537,8 @@
         (expect (unmake-sink-struct-maybe s-assoc projection)
           (just #/list k v)
           (cene-err "Expected projections to be a list of assoc values")
-        #/expect k (sink-name k)
-          (cene-err "Expected projections to be an association list with names as keys")
+        #/expect k (sink-authorized-name k)
+          (cene-err "Expected projections to be an association list with authorized names as keys")
         #/expect v (sink-cexpr v)
           (cene-err "Expected projections to be an association list with expressions as values")
         #/list k v))
@@ -1545,7 +1546,7 @@
       (names-have-duplicate?
       #/list-map projections #/dissectfn (list k v) k)
       (cene-err "Expected projections to be an association list with mutually unique names as keys")
-      projections))
+    #/list main-tag-name projections))
   
   (define/contract
     (sink-effects-expand-struct-op
@@ -1583,11 +1584,9 @@
   ; `dex-by-cline`, but the same circuitous combination would work.
   ; Nevertheless, we provide this operation directly.
   ;
-  ; TODO AUTH TAGS: Make this take `sink-authorized-name?` values.
-  ;
   (def-func! "expr-dex-struct" main-tag-name projections
-    (w- projections
-      (verify-cexpr-struct-args! main-tag-name projections)
+    (dissect (verify-cexpr-struct-args! main-tag-name projections)
+      (list main-tag-name projections)
     #/sink-cexpr #/cexpr-dex-struct main-tag-name projections))
   
   (def-macro! "dex-struct" #/fn
@@ -1603,12 +1602,9 @@
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-cline-struct`.
-  ;
-  ; TODO AUTH TAGS: Make this take `sink-authorized-name?` values.
-  ;
   (def-func! "expr-cline-struct" main-tag-name projections
-    (w- projections
-      (verify-cexpr-struct-args! main-tag-name projections)
+    (dissect (verify-cexpr-struct-args! main-tag-name projections)
+      (list main-tag-name projections)
     #/sink-cexpr #/cexpr-cline-struct main-tag-name projections))
   
   (def-macro! "cline-struct" #/fn
@@ -1624,12 +1620,9 @@
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-merge-struct`.
-  ;
-  ; TODO AUTH TAGS: Make this take `sink-authorized-name?` values.
-  ;
   (def-func! "expr-merge-struct" main-tag-name projections
-    (w- projections
-      (verify-cexpr-struct-args! main-tag-name projections)
+    (dissect (verify-cexpr-struct-args! main-tag-name projections)
+      (list main-tag-name projections)
     #/sink-cexpr #/cexpr-merge-struct main-tag-name projections))
   
   (def-macro! "merge-struct" #/fn
@@ -1645,12 +1638,9 @@
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-fuse-struct`.
-  ;
-  ; TODO AUTH TAGS: Make this take `sink-authorized-name?` values.
-  ;
   (def-func! "expr-fuse-struct" main-tag-name projections
-    (w- projections
-      (verify-cexpr-struct-args! main-tag-name projections)
+    (dissect (verify-cexpr-struct-args! main-tag-name projections)
+      (list main-tag-name projections)
     #/sink-cexpr #/cexpr-fuse-struct main-tag-name projections))
   
   (def-macro! "fuse-struct" #/fn
@@ -1666,12 +1656,9 @@
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-struct`.
-  ;
-  ; TODO AUTH TAGS: Make this take `sink-authorized-name?` values.
-  ;
   (def-func! "expr-construct" main-tag-name projections
-    (w- projections
-      (verify-cexpr-struct-args! main-tag-name projections)
+    (dissect (verify-cexpr-struct-args! main-tag-name projections)
+      (list main-tag-name projections)
     #/sink-cexpr #/cexpr-construct main-tag-name projections))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
@@ -1692,8 +1679,8 @@
     subject-expr main-tag-name projections then-expr else-expr
     (expect subject-expr (sink-cexpr subject-expr)
       (cene-err "Expected subject-expr to be an expression")
-    #/expect main-tag-name (sink-name main-tag-name)
-      (cene-err "Expected main-tag-name to be a name")
+    #/expect main-tag-name (sink-authorized-name main-tag-name)
+      (cene-err "Expected main-tag-name to be an authorized name")
     #/expect (sink-list->maybe-racket projections) (just projections)
       (cene-err "Expected projections to be a list made up of cons and nil values")
     #/w- projections
@@ -1701,15 +1688,15 @@
         (expect (unmake-sink-struct-maybe s-assoc projection)
           (just #/list k v)
           (cene-err "Expected projections to be a list of assoc values")
-        #/expect k (sink-name k)
-          (cene-err "Expected projections to be an association list with names as keys")
+        #/expect k (sink-authorized-name k)
+          (cene-err "Expected projections to be an association list with authorized names as keys")
         #/expect v (sink-name v)
           (cene-err "Expected projections to be an association list with names as values")
         #/list k v))
     #/if
       (names-have-duplicate?
       #/list-map projections #/dissectfn (list k v) k)
-      (cene-err "Expected projections to be an association list with mutually unique names as keys")
+      (cene-err "Expected projections to be an association list with mutually unique authorized names as keys")
     #/if
       (names-have-duplicate?
       #/list-map projections #/dissectfn (list k v) v)
