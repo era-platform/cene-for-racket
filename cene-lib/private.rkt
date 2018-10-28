@@ -37,6 +37,7 @@
   just maybe/c maybe-map nothing nothing?)
 (require #/only-in lathe-comforts/string immutable-string?)
 (require #/only-in lathe-comforts/struct struct-easy)
+(require #/only-in lathe-comforts/trivial trivial)
 
 (require #/only-in effection/order
   assocs->table-if-mutually-unique dex-immutable-string)
@@ -52,15 +53,32 @@
 
 
 
-; TODO: Put this into the Lathe Comforts library or something.
-(struct-easy (trivial))
-
 ; TODO: Put this in the Effection library or something.
 (define/contract (eq-by-dex? dex a b)
   (-> dex? any/c any/c boolean?)
   (expect (compare-by-dex dex a b) (just comparison)
     (error "Expected a and b to be members of the domain of dex")
   #/ordering-eq? comparison))
+
+; TODO: Put this into the `effection/order` module or something (maybe
+; even `effection/order/base`).
+(define/contract (table-kv-map table kv-to-v)
+  (-> table? (-> name? any/c any/c) table?)
+  (mat
+    (table-map-fuse table
+      (fuse-by-merge #/merge-table #/merge-by-dex #/dex-give-up)
+    #/fn k
+      (dissect (table-get k table) (just v)
+      #/table-shadow k (just #/kv-to-v k v) #/table-empty))
+    (just result)
+    result
+  #/table-empty))
+
+; TODO: Put this into the `effection/order` module or something (maybe
+; even `effection/order/base`).
+(define/contract (table-v-map table v-to-v)
+  (-> table? (-> any/c any/c) table?)
+  (table-kv-map table #/fn k v #/v-to-v v))
 
 
 (define-generics sink)
@@ -656,26 +674,6 @@
     #/dissectfn (list (sink-name var) (sink-cexpr val))
       (list var val))
     body))
-
-; TODO: Put this into the `effection/order` module or something (maybe
-; even `effection/order/base`).
-(define/contract (table-kv-map table kv-to-v)
-  (-> table? (-> name? any/c any/c) table?)
-  (mat
-    (table-map-fuse table
-      (fuse-by-merge #/merge-table #/merge-by-dex #/dex-give-up)
-    #/fn k
-      (dissect (table-get k table) (just v)
-      #/table-shadow k (just #/kv-to-v k v) #/table-empty))
-    (just result)
-    result
-  #/table-empty))
-
-; TODO: Put this into the `effection/order` module or something (maybe
-; even `effection/order/base`).
-(define/contract (table-v-map table v-to-v)
-  (-> table? (-> any/c any/c) table?)
-  (table-kv-map table #/fn k v #/v-to-v v))
 
 (define/contract
   (sink-name-for-function-implementation

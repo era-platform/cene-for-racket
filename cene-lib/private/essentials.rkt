@@ -39,6 +39,7 @@
   just maybe-bind maybe/c maybe-map nothing)
 (require #/only-in lathe-comforts/string immutable-string?)
 (require #/only-in lathe-comforts/struct struct-easy)
+(require #/only-in lathe-comforts/trivial trivial)
 
 (require #/only-in effection/order
   assocs->table-if-mutually-unique cline-exact-rational
