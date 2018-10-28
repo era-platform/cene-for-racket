@@ -60,7 +60,7 @@
 ; TODO: See if this file should be factored out into its own Racket
 ; library.
 
-(struct-easy (textpat get-data))
+(struct-easy (textpat has-empty get-data))
 (struct-easy
   (textpat-data maybe-optional maybe-necessary maybe-make-func))
 (struct-easy (optimized-textpat func))
@@ -87,17 +87,17 @@
   #/mat v (textpat-result-passed-end) #t
     #f))
 
-(define/contract (textpat-trivial necessary)
-  (-> immutable-string? textpat?)
-  (textpat #/fn #/textpat-data
+(define/contract (textpat-trivial has-empty necessary)
+  (-> boolean? immutable-string? textpat?)
+  (textpat has-empty #/fn #/textpat-data
     (just #/fn next
       (string->immutable-string #/string-append necessary next))
     (just necessary)
     (nothing)))
 
-(define/contract (textpat-optional-trivial necessary)
-  (-> immutable-string? textpat?)
-  (textpat #/fn #/textpat-data
+(define/contract (textpat-optional-trivial has-empty necessary)
+  (-> boolean? immutable-string? textpat?)
+  (textpat has-empty #/fn #/textpat-data
     (just #/fn next
       (string->immutable-string #/string-append
         "(?:" necessary next "|$)"))
@@ -106,15 +106,15 @@
 
 (define/contract (textpat-give-up)
   (-> textpat?)
-  (textpat-trivial ".^"))
+  (textpat-trivial #f ".^"))
 
 (define/contract (textpat-empty)
   (-> textpat?)
-  (textpat-trivial ""))
+  (textpat-trivial #t ""))
 
 (define/contract (textpat-from-string str)
   (-> immutable-string? textpat?)
-  (textpat #/fn #/textpat-data
+  (textpat (= 0 #/string-length str) #/fn #/textpat-data
     (just #/fn next
       (string->immutable-string #/string-append
         (regexp-replace #rx"." str #/fn scalar-string
@@ -126,19 +126,19 @@
 
 (define/contract (textpat-one-in-string str)
   (-> immutable-string? textpat?)
-  (textpat-optional-trivial #/string->immutable-string #/string-append
+  (textpat-optional-trivial #f
+  #/string->immutable-string #/string-append
     "(?:.^"
     (regexp-replace #rx"." str #/fn scalar-string
       (string-append "|" (regexp-quote scalar-string)))))
 
 (define/contract (textpat-one)
   (-> textpat?)
-  (textpat-optional-trivial "."))
+  (textpat-optional-trivial #f "."))
 
-(define/contract (compile-textpat t)
-  (-> textpat? textpat-data?)
-  (dissect t (textpat get-data)
-  #/dissect (get-data)
+(define/contract (compile-textpat-data data)
+  (-> textpat-data? textpat-data?)
+  (dissect data
     (textpat-data maybe-optional maybe-necessary maybe-make-func)
   #/textpat-data maybe-optional maybe-necessary #/just #/fn
     (w- delegate
@@ -162,12 +162,15 @@
 
 (define/contract (textpat-if condition then else)
   (-> textpat? textpat? textpat? textpat?)
-  (textpat #/fn
-    (dissect (compile-textpat condition)
+  (dissect condition (textpat c-has-empty c-get-data)
+  #/dissect then (textpat t-has-empty t-get-data)
+  #/dissect else (textpat e-has-empty e-get-data)
+  #/textpat (or (and c-has-empty t-has-empty) e-has-empty) #/fn
+    (dissect (compile-textpat-data #/c-get-data)
       (textpat-data c-opt c-nec #/just c-make-func)
-    #/dissect (compile-textpat then)
+    #/dissect (compile-textpat-data #/t-get-data)
       (textpat-data t-opt t-nec #/just t-make-func)
-    #/dissect (compile-textpat else)
+    #/dissect (compile-textpat-data #/e-get-data)
       (textpat-data e-opt e-nec #/just e-make-func)
     #/textpat-data
       (maybe-bind c-nec #/fn c-nec
@@ -211,15 +214,18 @@
 
 (define/contract (textpat-while condition body)
   (-> textpat? textpat? textpat?)
-  (textpat #/fn
-    (dissect (compile-textpat condition)
+  (dissect condition (textpat c-has-empty c-get-data)
+  #/dissect body (textpat b-has-empty b-get-data)
+  ; NOTE: When the concatenation of `c-nec` and `b-nec` can match the
+  ; empty string, Racket doesn't let us use the * operator on it. But
+  ; we don't allow that case.
+  #/if (and c-has-empty b-has-empty)
+    (error "Did not expect both condition and body to match the empty string")
+  #/textpat #t #/fn
+    (dissect (compile-textpat-data #/c-get-data)
       (textpat-data c-opt c-nec #/just c-make-func)
-    #/dissect (compile-textpat body)
+    #/dissect (compile-textpat-data #/b-get-data)
       (textpat-data b-opt b-nec #/just b-make-func)
-    ; TODO: When the concatenation of `c-nec` and `b-nec` can match
-    ; the empty string, Racket doesn't let us use the * operator on
-    ; it. We shouldn't let it happen either, but we should raise a
-    ; friendly error message about it.
     #/textpat-data
       (maybe-bind c-nec #/fn c-nec
       #/maybe-bind c-opt #/fn c-opt
@@ -245,31 +251,32 @@
         (w- c-func (c-make-func)
         #/w- b-func (b-make-func)
         #/fn str start stop
-          (w-loop next start start encountered-empty #f
+          (w-loop next start start
             (w- c-result (c-func str start stop)
             #/mat c-result (textpat-result-failed)
               (textpat-result-matched start)
             #/mat c-result (textpat-result-passed-end)
               (textpat-result-passed-end)
             #/dissect c-result (textpat-result-matched c-stop)
-            #/if encountered-empty
-              (textpat-result-failed)
             #/w- b-result (b-func str c-stop stop)
             #/expect b-result (textpat-result-matched b-stop) b-result
-            ; TODO: Stop maintaining an `encountered-empty` variable,
-            ; and just cause an error if it would ever be true.
-            #/next b-stop (= start b-stop))))))))
+            #/if (= start b-stop)
+              (error "Internal error: It turns out condition and body can both match the empty string after all")
+            #/next b-stop)))))))
 
 (define/contract (textpat-until body condition)
   (-> textpat? textpat? textpat?)
-  (textpat #/fn
-    (dissect (compile-textpat body)
+  (dissect condition (textpat c-has-empty c-get-data)
+  #/dissect body (textpat b-has-empty b-get-data)
+  ; NOTE: When `b-nec` can match the empty string, Racket doesn't let
+  ; us use the * operator on it. But we don't allow that case.
+  #/if b-has-empty
+    (error "Did not expect body to match the empty string")
+  #/textpat c-has-empty #/fn
+    (dissect (compile-textpat-data #/b-get-data)
       (textpat-data b-opt b-nec #/just b-make-func)
-    #/dissect (compile-textpat condition)
+    #/dissect (compile-textpat-data #/c-get-data)
       (textpat-data c-opt c-nec #/just c-make-func)
-    ; TODO: When `b-nec` can match the empty string, Racket doesn't
-    ; let us use the * operator on it. We shouldn't let it happen
-    ; either, but we should raise a friendly error message about it.
     #/textpat-data
       (maybe-bind b-nec #/fn b-nec
       #/maybe-bind b-opt #/fn b-opt
@@ -297,16 +304,14 @@
         (w- b-func (b-make-func)
         #/w- c-func (c-make-func)
         #/fn str start stop
-          (w-loop next start start encountered-empty #f
+          (w-loop next start start
             (w- c-result (c-func str start stop)
             #/expect c-result (textpat-result-failed) c-result
-            #/if encountered-empty
-              (textpat-result-failed)
             #/w- b-result (b-func str start stop)
             #/expect b-result (textpat-result-matched b-stop) b-result
-            ; TODO: Stop maintaining an `encountered-empty` variable,
-            ; and just cause an error if it would ever be true.
-            #/next b-stop (= start b-stop))))))))
+            #/if (= start b-stop)
+              (error "Internal error: It turns out body can match the empty string after all")
+            #/next b-stop)))))))
 
 (define/contract (textpat-or a b)
   (-> textpat? textpat? textpat?)
@@ -326,13 +331,15 @@
   #/if (string-contains? special-range-chars b-str)
     (textpat-or (textpat-one-in-string b-str)
     #/textpat-one-in-range (integer->char #/add1 an) b)
-  #/textpat-optional-trivial
+  #/textpat-optional-trivial #f
   #/string->immutable-string #/string-append
     "[" a-str "-" b-str "]"))
 
 (define/contract (optimize-textpat t)
   (-> textpat? optimized-textpat?)
-  (dissect (compile-textpat t) (textpat-data opt nec #/just make-func)
+  (dissect t (textpat has-empty get-data)
+  #/dissect (compile-textpat-data #/get-data)
+    (textpat-data opt nec #/just make-func)
   #/optimized-textpat #/make-func))
 
 (define/contract (optimized-textpat-match ot str start stop)
