@@ -255,7 +255,8 @@
   #/expect maybe-metadata-name
     (just #/list located-string metadata-name)
     (then #/nothing)
-  #/sink-effects-get metadata-name #/fn metadata
+  #/sink-effects-get (sink-authorized-name-get-name metadata-name)
+  #/fn metadata
   #/then #/just #/verify-sink-struct-metadata! metadata))
 
 (define/contract (struct-metadata-tags metadata)
@@ -923,8 +924,8 @@
   (define defined-values (table-empty))
   
   (define/contract (def-dexable-value! name dex value)
-    (-> sink-name? sink-dex? sink? void?)
-    (dissect name (sink-name name)
+    (-> sink-authorized-name? sink-dex? sink? void?)
+    (dissect name (sink-authorized-name name)
     #/begin
       (set! defined-dexes
         (table-shadow name (just dex) defined-dexes))
@@ -933,7 +934,7 @@
     #/void))
   
   (define/contract (def-value! name value)
-    (-> sink-name? sink? void?)
+    (-> sink-authorized-name? sink? void?)
     (def-dexable-value! name (sink-dex #/dex-give-up) value))
   
   (define/contract (macro-impl body)
@@ -983,19 +984,13 @@
   (define/contract
     (def-func-impl-reified!
       qualified-main-tag-name qualified-proj-tag-names impl)
-    (-> sink-name? sink-table? sink? void?)
-    ; TODO AUTH TAGS: Make these `def-value!` calls use authorized
-    ; names, or at least have Cene-side operations called
-    ; `authorized-name-for-function-implementation-{code,value}` which
-    ; Cene code could use together with `effects-put` to simulate
-    ; this. We should probably do corresponding things for all the
-    ; other places `def-value!` is used too.
+    (-> sink-authorized-name? sink-table? sink? void?)
     (def-value!
-      (sink-name-for-function-implementation-code
+      (sink-authorized-name-for-function-implementation-code
         qualified-main-tag-name qualified-proj-tag-names)
       (sink-cexpr-reified impl))
     (def-value!
-      (sink-name-for-function-implementation-value
+      (sink-authorized-name-for-function-implementation-value
         qualified-main-tag-name qualified-proj-tag-names)
       impl))
   
@@ -1099,11 +1094,13 @@
     #/w- qualified-main-tag-name
       (sink-name-qualify
       #/sink-name-for-struct-main-tag main-tag-name)
+    #/w- qualified-main-tag-unauthorized-name
+      (sink-authorized-name-get-name qualified-main-tag-name)
     #/w- qualified-proj-name-entries
       (list-map proj-strings #/fn proj-string
         (list proj-string
         #/sink-name-qualify #/sink-name-for-struct-proj
-          qualified-main-tag-name
+          qualified-main-tag-unauthorized-name
         #/sink-name-for-string #/sink-string proj-string))
     #/w- qualified-proj-names
       (list-map qualified-proj-name-entries
@@ -1112,8 +1109,8 @@
     #/expect
       (assocs->table-if-mutually-unique
       #/list-map qualified-proj-names
-      #/dissectfn (sink-name proj-name)
-        (cons proj-name #/make-sink-struct s-trivial #/list))
+      #/dissectfn (sink-authorized-name proj-name)
+        (cons proj-name #/sink-authorized-name proj-name))
       (just qualified-proj-names-table)
       (error "Expected the projection strings to be mutually unique")
     #/begin
@@ -1147,6 +1144,7 @@
       ; an error. We do this so that we do in fact have a function
       ; implementation for every struct we use, which might be an
       ; invariant that comes in handy. (TODO: See if it does.)
+      ;
       (def-func-impl-reified!
         qualified-main-tag-name
         (sink-table qualified-proj-names-table)
@@ -1170,12 +1168,12 @@
             (sink-dex-string)
             (sink-dex-name)))
         (make-sink-struct s-struct-metadata #/list
-          qualified-main-tag-name
+          qualified-main-tag-unauthorized-name
           (racket-list->sink #/list-map qualified-proj-name-entries
           #/dissectfn (list proj-string qualified-proj-name)
             (make-sink-struct s-assoc #/list
               (sink-string proj-string)
-              qualified-proj-name))))
+              (sink-authorized-name-get-name qualified-proj-name)))))
       
       ))
   
@@ -1755,7 +1753,8 @@
       qualify text-input-stream n-projs sink-name-for-local-variable
     #/fn text-input-stream vars
     #/w- vars
-      (list-map vars #/dissectfn (list located-string var) var)
+      (list-map vars #/dissectfn (list located-string var)
+        (sink-authorized-name-get-name var))
     #/if (sink-names-have-duplicate? vars)
       (cene-err "Expected the variables of a case pattern to be mutually unique")
     
@@ -1804,6 +1803,7 @@
       qualify text-input-stream 1 sink-name-for-local-variable
     #/fn text-input-stream args-subject-var
     #/dissect args-subject-var (list #/list _ subject-var)
+    #/w- subject-var (sink-authorized-name-get-name subject-var)
     
     #/sink-effects-read-leading-specific-number-of-cexprs
       unique-name qualify text-input-stream 1
@@ -1884,10 +1884,16 @@
       (expect param
         (id-or-expr-id param-located-string param-qualified-name)
         (cene-err "Expected every parameter of a fn form to be an identifier")
-      #/sink-cexpr-opaque-fn param-qualified-name body)))
+      #/sink-cexpr-opaque-fn
+        (sink-authorized-name-get-name param-qualified-name)
+        body)))
   
   
   ; Tables
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func! "is-table" v
+    (racket-boolean->sink #/sink-table? v))
   
   (def-func! "dex-table" dex-val
     (expect dex-val (sink-dex dex-val)
@@ -2326,6 +2332,36 @@
       #t
       (cene-err "Expected proj-tag-names to be a table of trivial values")
     #/sink-name-for-function-implementation-value
+      main-tag-name proj-tag-names))
+  
+  (define (verify-proj-tag-authorized-names! proj-tag-names)
+    (expect proj-tag-names (sink-table proj-tag-names)
+      (cene-err "Expected proj-tag-names to be a table")
+    #/begin
+      (table-kv-map proj-tag-names #/fn k v
+        (expect v (sink-authorized-name name)
+          (cene-err "Expected each value of proj-tag-names to be an authorized name")
+        #/expect (eq-by-dex? (dex-name) k name) #t
+          (cene-err "Expected each value of proj-tag-names to be an authorized name where the name authorized is the same as the name it's filed under")
+          v))
+    #/void))
+  
+  (def-func! "authorized-name-for-function-implementation-code"
+    main-tag-name proj-tag-names
+    
+    (expect (sink-authorized-name? main-tag-name) #t
+      (cene-err "Expected main-tag-name to be an authorized name")
+    #/begin (verify-proj-tag-authorized-names! proj-tag-names)
+    #/sink-authorized-name-for-function-implementation-code
+      main-tag-name proj-tag-names))
+  
+  (def-func! "authorized-name-for-function-implementation-value"
+    main-tag-name proj-tag-names
+    
+    (expect (sink-authorized-name? main-tag-name) #t
+      (cene-err "Expected main-tag-name to be an authorized name")
+    #/begin (verify-proj-tag-authorized-names! proj-tag-names)
+    #/sink-authorized-name-for-function-implementation-value
       main-tag-name proj-tag-names))
   
   (def-func! "name-for-freestanding-expr-op" name

@@ -43,7 +43,8 @@
 (require #/only-in effection/order/base
   compare-by-dex dex? dex-give-up dex-dex dex-name dex-struct
   dex-table fuse-by-merge merge-by-dex merge-table name? name-of
-  ordering-eq? table-empty table-get table-map-fuse table-shadow)
+  ordering-eq? table? table-empty table-get table-map-fuse
+  table-shadow)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe name)
 
 
@@ -178,11 +179,12 @@
 ; built-in. It just represents the arbitrary `qualify` function that
 ; all the built-ins look like they were defined under. In a
 ; metacircular implementation of Cene, that can be any `qualify`
-; function that converts names to obscure enough names.
+; function that converts names to obscure enough authorized names.
+;
 (define/contract (sink-name-qualify unqualified-name)
-  (-> sink-name? sink-name?)
-  (sink-name-rep-map unqualified-name #/fn n
-    (list 'name:qualified n)))
+  (-> sink-name? sink-authorized-name?)
+  (dissect unqualified-name (sink-name #/unsafe:name n)
+  #/sink-authorized-name #/unsafe:name #/list 'name:qualified n))
 
 (define/contract (sink-name-for-claim inner-name)
   (-> sink-name? sink-name?)
@@ -600,26 +602,34 @@
   (names-have-duplicate?
   #/list-map names #/dissectfn (sink-name name) name))
 
-; TODO AUTH TAGS: Make this take `sink-authorized-name?` values.
 (define/contract (sink-cexpr-construct main-tag-name projs)
-  (-> sink-name? (listof #/list/c sink-name? sink-cexpr?) sink-cexpr?)
-  (dissect main-tag-name (sink-name main-tag-name)
+  (->
+    sink-authorized-name?
+    (listof #/list/c sink-authorized-name? sink-cexpr?)
+    sink-cexpr?)
+  (dissect main-tag-name (sink-authorized-name main-tag-name)
   #/if
     (sink-names-have-duplicate? #/list-map projs
-    #/dissectfn (list proj-name proj-cexpr) proj-name)
+    #/dissectfn (list proj-name proj-cexpr)
+      (sink-authorized-name-get-name proj-name))
     (error "Encountered a duplicate projection name")
   #/sink-cexpr #/cexpr-construct main-tag-name #/list-map projs
-  #/dissectfn (list (sink-name proj-name) (sink-cexpr proj-cexpr))
+  #/dissectfn
+    (list (sink-authorized-name proj-name) (sink-cexpr proj-cexpr))
     (list proj-name proj-cexpr)))
 
+; NOTE: Since this creates authorized names out of unauthorized names,
+; we shouldn't expose it as a Cene built-in. We only use this for
+; convenient construction of built-in struct tags within this Cene
+; implementation.
 (define/contract (make-sink-cexpr-construct tags proj-cexprs)
   (-> (and/c pair? #/listof name?) (listof sink-cexpr?) sink-cexpr?)
   (dissect tags (cons main-tag-name proj-names)
   #/expect (= (length proj-names) (length proj-cexprs)) #t
     (error "Expected tags to have one more entry than proj-cexprs")
-  #/sink-cexpr-construct (sink-name main-tag-name)
+  #/sink-cexpr-construct (sink-authorized-name main-tag-name)
   #/list-zip-map proj-names proj-cexprs #/fn proj-name proj-cexpr
-    (list (sink-name proj-name) proj-cexpr)))
+    (list (sink-authorized-name proj-name) proj-cexpr)))
 
 (define/contract (sink-cexpr-call func arg)
   (-> sink-cexpr? sink-cexpr? sink-cexpr?)
@@ -651,33 +661,35 @@
       (list var val))
     body))
 
+; TODO: Put this into the `effection/order` module or something (maybe
+; even `effection/order/base`).
+(define/contract (table-kv-map table kv-to-v)
+  (-> table? (-> name? any/c any/c) table?)
+  (mat
+    (table-map-fuse table
+      (fuse-by-merge #/merge-table #/merge-by-dex #/dex-give-up)
+    #/fn k
+      (dissect (table-get k table) (just v)
+      #/table-shadow k (just #/kv-to-v k v) #/table-empty))
+    (just result)
+    result
+  #/table-empty))
+
+; TODO: Put this into the `effection/order` module or something (maybe
+; even `effection/order/base`).
+(define/contract (table-v-map table v-to-v)
+  (-> table? (-> any/c any/c) table?)
+  (table-kv-map table #/fn k v #/v-to-v v))
+
 (define/contract
   (sink-name-for-function-implementation
     result-tag main-tag-name proj-tag-names)
   (-> symbol? sink-name? sink-table? sink-name?)
   (dissect main-tag-name (sink-name #/unsafe:name main-tag)
   #/dissect proj-tag-names (sink-table proj-tag-names)
-  
-  ; TODO: Put these into the `effection/order` module or something
-  ; (maybe even `effection/order/base`).
-  #/w- table-kv-map
-    (fn table kv-to-v
-      (mat
-        (table-map-fuse table
-          (fuse-by-merge #/merge-table #/merge-by-dex #/dex-give-up)
-        #/fn k
-          (dissect (table-get k table) (just v)
-          #/table-shadow k (just #/kv-to-v k v) #/table-empty))
-        (just result)
-        result
-      #/table-empty))
-  #/w- table-v-map
-    (fn table v-to-v
-      (table-kv-map table #/fn k v #/v-to-v v))
-  
   #/dissect
     (name-of (dex-table #/dex-struct trivial)
-    #/table-v-map proj-tag-names #/fn ignored #/trivial)
+    #/table-v-map proj-tag-names #/dissectfn _ #/trivial)
     (just #/unsafe:name proj-table-name)
   #/sink-name #/unsafe:name
   #/list result-tag main-tag proj-table-name))
@@ -699,6 +711,38 @@
     'name:function-implementation-value
     main-tag-name
     proj-tag-names))
+
+(define/contract (sink-proj-tag-authorized-names->trivial proj-tag-names)
+  (-> sink-table? sink-table?)
+  (dissect proj-tag-names (sink-table proj-tag-names)
+  #/sink-table #/table-kv-map proj-tag-names #/fn k v
+    (expect v (sink-authorized-name name)
+      (error "Expected each value of proj-tag-names to be an authorized name")
+    #/expect (eq-by-dex? (dex-name) k name) #t
+      (error "Expected each value of proj-tag-names to be an authorized name where the name authorized is the same as the name it's filed under")
+    #/trivial)))
+
+(define/contract
+  (sink-authorized-name-for-function-implementation-code
+    main-tag-name proj-tag-names)
+  (-> sink-authorized-name? sink-table? sink-authorized-name?)
+  (dissect
+    (sink-name-for-function-implementation-code
+      (sink-authorized-name-get-name main-tag-name)
+      (sink-proj-tag-authorized-names->trivial proj-tag-names))
+    (sink-name name)
+  #/sink-authorized-name name))
+
+(define/contract
+  (sink-authorized-name-for-function-implementation-value
+    main-tag-name proj-tag-names)
+  (-> sink-authorized-name? sink-table? sink-authorized-name?)
+  (dissect
+    (sink-name-for-function-implementation-value
+      (sink-authorized-name-get-name main-tag-name)
+      (sink-proj-tag-authorized-names->trivial proj-tag-names))
+    (sink-name name)
+  #/sink-authorized-name name))
 
 (define/contract (sink-fn-curried n-args racket-func)
   (-> exact-positive-integer? procedure? sink-opaque-fn?)
@@ -963,7 +1007,7 @@
     (-> sink-name? sink-name?)
     (->
       sink-text-input-stream?
-      (maybe/c #/list/c sink-located-string? sink-name?)
+      (maybe/c #/list/c sink-located-string? sink-authorized-name?)
       sink-effects?)
     sink-effects?)
   ; TODO: Support a more Unicode-aware notion of identifier. Not only
@@ -1044,7 +1088,7 @@
     sink-text-input-stream?
     sink?
     (-> sink-name? sink-name?)
-    (-> sink-text-input-stream? sink-name? sink-effects?)
+    (-> sink-text-input-stream? sink-authorized-name? sink-effects?)
     sink-effects?)
   
   ; NOTE: These are the cases we should handle here.
@@ -1138,7 +1182,8 @@
   (begin (assert-can-get-cene-definitions!)
   #/sink-effects-read-op text-input-stream qualify pre-qualify
   #/fn text-input-stream op-name
-  #/sink-effects-get op-name #/fn op-impl
+  #/sink-effects-get (sink-authorized-name-get-name op-name)
+  #/fn op-impl
   #/sink-effects-run-op
     op-impl unique-name qualify text-input-stream output-stream
     then))
@@ -1190,7 +1235,8 @@
     sink-effects?)
   (begin (assert-can-get-cene-definitions!)
   #/sink-effects-get
-    (sink-call qualify #/sink-name-for-nameless-bounded-cexpr-op)
+    (sink-authorized-name-get-name
+    #/sink-call qualify #/sink-name-for-nameless-bounded-cexpr-op)
   #/fn op-impl
   #/sink-effects-run-op
     op-impl unique-name qualify text-input-stream output-stream
@@ -1326,14 +1372,17 @@
 (define/contract (core-sink-struct main-tag-string proj-strings)
   (-> immutable-string? (listof immutable-string?)
     (and/c pair? #/listof name?))
-  (w- main-tag-name
+  (w- main-tag-authorized-name
     (sink-name-qualify #/sink-name-for-struct-main-tag
     #/sink-name-for-string #/sink-string main-tag-string)
+  #/w- main-tag-name
+    (sink-authorized-name-get-name main-tag-authorized-name)
   #/list-map
-    (cons main-tag-name #/list-map proj-strings #/fn proj-string
+    (cons main-tag-authorized-name
+    #/list-map proj-strings #/fn proj-string
       (sink-name-qualify #/sink-name-for-struct-proj main-tag-name
       #/sink-name-for-string #/sink-string proj-string))
-  #/dissectfn (sink-name name)
+  #/dissectfn (sink-authorized-name name)
     name))
 
 (define s-trivial (core-sink-struct "trivial" #/list))

@@ -56,7 +56,7 @@
   (-> (or/c id-or-expr-id? id-or-expr-expr?) sink-cexpr?)
   (mat id-or-expr (id-or-expr-id located-string qualified-name)
     ; TODO: Wrap this in a located cexpr.
-    (sink-cexpr-var qualified-name)
+    (sink-cexpr-var #/sink-authorized-name-get-name qualified-name)
   #/dissect id-or-expr (id-or-expr-expr cexpr)
     cexpr))
 
@@ -277,7 +277,7 @@
     (-> sink-name? sink-name?)
     (->
       sink-text-input-stream?
-      (listof #/list/c sink-located-string? sink-name?)
+      (listof #/list/c sink-located-string? sink-authorized-name?)
       sink-effects?)
     sink-effects?)
   (begin (assert-can-get-cene-definitions!)
