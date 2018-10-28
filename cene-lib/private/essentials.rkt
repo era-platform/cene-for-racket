@@ -1513,6 +1513,31 @@
       dexable-arg-to-method))
   
   
+  ; Authorized names
+  ;
+  ; NOTE: The JavaScript version of Cene doesn't have any of these.
+  
+  ; TODO: See if we need authorized names to be dexable. If we do,
+  ; expose a `dex-authorized-name` to Cene instead of this.
+  (def-func! "is-authorized-name" v
+    (racket-boolean->sink #/sink-authorized-name? v))
+  
+  (def-func! "authorized-name-get-name" name
+    (expect (sink-authorized-name? name) #t
+      (cene-err "Expected name to be an authorized name")
+    #/sink-authorized-name-get-name name))
+  
+  (def-func! "name-subname" name
+    (expect (sink-name? name) #t
+      (cene-err "Expected name to be a name")
+    #/sink-name-subname name))
+  
+  (def-func! "authorized-name-subname" name
+    (expect (sink-authorized-name? name) #t
+      (cene-err "Expected name to be an authorized name")
+    #/sink-authorized-name-subname name))
+  
+  
   ; Structs and function calls
   
   ; NOTE: In the JavaScript version of Cene, this was called
@@ -2005,7 +2030,7 @@
   ; We're taking an approach where we're using a single global
   ; namespace instead of first-class namespaces, but we'll still want
   ; to do something like `contributing-only-to`, and we'll still want
-  ; to have an open-world assumption extensibility framework based on
+  ; to have an open-world-assumption extensibility framework based on
   ; defining contributed elements and contributed listeners.
   ;
   ;   procure-sub-ns-table
@@ -2231,8 +2256,8 @@
   
   ; TODO BUILTINS: Implement the following built-ins from the
   ; JavaScript version of Cene. We should probably rename them from
-  ; "regex" to "textpat" since they're not regexes, but they are still
-  ; text patterns. We'll probably want to write a Racket library
+  ; "regex" to "textpat"; they are text patterns, but they're not
+  ; quite regexes. We'll probably want to write a Racket library
   ; dedicated to these as well, so that people can encounter them and
   ; learn about them outside the context of Cene's bizarre ecosystem.
   ;
@@ -2294,6 +2319,11 @@
     (expect (sink-name? name) #t
       (cene-err "Expected name to be a name")
     #/sink-name-for-claim name))
+  
+  (def-func! "authorized-name-for-claim" name
+    (expect (sink-authorized-name? name) #t
+      (cene-err "Expected name to be an authorized name")
+    #/sink-authorized-name-for-claim name))
   
   (def-func! "name-for-function-implementation-code"
     main-tag-name proj-tag-names

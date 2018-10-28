@@ -135,9 +135,6 @@
   #:other #:methods gen:sink [])
 (struct-easy (sink-name name)
   #:other #:methods gen:sink [])
-; TODO BUILTINS: See if we need `sink-authorized-name` values to be
-; dexable. If so, expose a `dex-authorized-name` to Cene. If not,
-; expose an `is-authorized-name`.
 (struct-easy (sink-authorized-name name)
   #:other #:methods gen:sink [])
 (struct-easy (sink-effects go!)
@@ -190,7 +187,6 @@
   (-> sink-name? sink-name?)
   (sink-name-rep-map inner-name #/fn n #/list 'name:claim n))
 
-; TODO BUILTINS: Expose this to Cene.
 (define/contract (sink-authorized-name-for-claim inner-name)
   (-> sink-authorized-name? sink-authorized-name?)
   (dissect inner-name (sink-authorized-name #/unsafe:name inner-name)
@@ -830,20 +826,17 @@
   (-> sink-string? sink-name?)
   (sink-name #/name-for-sink-string string))
 
-; TODO BUILTINS: Expose this to Cene.
 (define/contract (sink-authorized-name-get-name name)
   (-> sink-authorized-name? sink-name?)
   (dissect name (sink-authorized-name effection-name)
   #/sink-name effection-name))
 
-; TODO BUILTINS: Expose this to Cene.
 (define/contract (sink-name-subname index-name inner-name)
   (-> sink-name? sink-name? sink-name?)
   (dissect index-name (sink-name #/unsafe:name index-name)
   #/sink-name-rep-map inner-name #/fn n
     (list 'name:subname index-name n)))
 
-; TODO BUILTINS: Expose this to Cene.
 (define/contract (sink-authorized-name-subname index-name inner-name)
   (-> sink-name? sink-authorized-name? sink-authorized-name?)
   (dissect index-name (sink-name #/unsafe:name index-name)
