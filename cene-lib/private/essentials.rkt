@@ -192,11 +192,6 @@
 
 (define/contract (verify-sink-struct-metadata! sink-metadata)
   (-> sink? cene-struct-metadata?)
-        (sink-dex-struct s-struct-metadata #/list
-          (sink-dex-name)
-          (sink-dex-list #/sink-dex-struct s-assoc #/list
-            (sink-dex-string)
-            (sink-dex-name)))
   (expect (unmake-sink-struct-maybe s-struct-metadata sink-metadata)
     (just #/list main-tag-name projs)
     (cene-err "Expected a defined struct metadata entry to be a struct-metadata")
