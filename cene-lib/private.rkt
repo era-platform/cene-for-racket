@@ -168,8 +168,24 @@
   #:other #:methods gen:sink [])
 (struct-easy (sink-text-input-stream box-of-maybe-input)
   #:other #:methods gen:sink [])
+
+; The `parts` representation of a `sink-located-string` is a list of
+; entries. Each entry is a three-element list where the first element
+; is a starting position, the second element is a nonempty Racket
+; string, and the third element is a stopping position.
+;
+; Each position is a three-element list of a line number (or `#f`), a
+; column number (or `#f`), and an overall position number (or `#f`),
+; exactly as returned by `port-next-location`.
+;
+; By ensuring that each part of `parts` contains a nonempty string, we
+; can pretend the position information is actually attached to each
+; character individually, which makes it clear which information will
+; be retained in a substring and which information will not.
+;
 (struct-easy (sink-located-string parts)
   #:other #:methods gen:sink [])
+
 (struct-easy (sink-string racket-string)
   (#:guard-easy
     ; Racket's basic string operations make it easy to end up with a
@@ -959,11 +975,14 @@
         (stop-line stop-column stop-position)
         (port-next-location in)])
   #/then (sink-text-input-stream #/box #/just in)
-    (just #/sink-located-string #/list
-      (list
-        (list start-line start-column start-position)
-        text
-        (list stop-line stop-column stop-position)))))
+    (just
+    #/mat (string-length text) 0
+      (sink-located-string #/list)
+      (sink-located-string #/list
+        (list
+          (list start-line start-column start-position)
+          text
+          (list stop-line stop-column stop-position))))))
 
 (define sink-effects-read-whitespace-pat
   ; TODO: Support a more Unicode-aware notion of whitespace.
