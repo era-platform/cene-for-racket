@@ -22,17 +22,19 @@
 ;   language governing permissions and limitations under the License.
 
 
-(require #/only-in racket/contract/base -> any/c)
+(require #/only-in racket/contract/base -> ->* any/c listof)
 (require #/only-in racket/contract/region define/contract)
 (require #/only-in racket/math natural?)
 (require #/only-in racket/string string-contains?)
 
 (require #/only-in lathe-comforts dissect expect fn mat w- w-loop)
+(require #/only-in lathe-comforts/list list-foldl)
 (require #/only-in lathe-comforts/maybe
   just maybe-bind maybe/c maybe-map nothing)
 (require #/only-in lathe-comforts/string immutable-string?)
 (require #/only-in lathe-comforts/struct struct-easy)
 
+; Essential operations
 (provide
   
   (struct-out textpat-result-matched)
@@ -58,10 +60,22 @@
   optimized-textpat-match
   optimized-textpat-read!)
 
+; Derived operations
+(provide
+  textpat-or-list textpat-or
+  textpat-append-list textpat-append
+  textpat-not
+  textpat-lookahead
+  textpat-one-not
+  textpat-one-not-in-string
+  textpat-star
+  textpat-once-or-more)
 
 ; TODO: See if this file should be factored out into its own Racket
 ; library.
 
+
+; ===== Essential operations =========================================
 
 (struct-easy (textpat has-empty get-data))
 (struct-easy
@@ -133,7 +147,8 @@
   #/string->immutable-string #/string-append
     "(?:.^"
     (regexp-replace #rx"." str #/fn scalar-string
-      (string-append "|" (regexp-quote scalar-string)))))
+      (string-append "|" (regexp-quote scalar-string)))
+    ")"))
 
 (define/contract (textpat-one)
   (-> textpat?)
@@ -266,7 +281,7 @@
               next
             ")|"
             ; We may run out of room matching the body.
-            c-nec "(?!" + b-nec ")" (b-opt "") ""
+            c-nec "(?!" b-nec ")" (b-opt "") ""
           ")"))
       (maybe-bind c-nec #/fn c-nec
       #/maybe-bind b-nec #/fn b-nec
@@ -369,7 +384,7 @@
                 (error "Internal error: It turns out body can match the empty string after all")
               #/next #/string-append so-far b-result))))))))
 
-(define/contract (textpat-or a b)
+(define/contract (textpat-or-binary a b)
   (-> textpat? textpat? textpat?)
   (textpat-if a (textpat-empty) b))
 
@@ -381,11 +396,11 @@
   #/expect (< an bn) #t (textpat-give-up)
   #/w- a-str (string->immutable-string #/string a)
   #/if (string-contains? special-range-chars a-str)
-    (textpat-or (textpat-one-in-string a-str)
+    (textpat-or-binary (textpat-one-in-string a-str)
     #/textpat-one-in-range (integer->char #/add1 an) b)
   #/w- b-str (string->immutable-string #/string b)
   #/if (string-contains? special-range-chars b-str)
-    (textpat-or (textpat-one-in-string b-str)
+    (textpat-or-binary (textpat-one-in-string b-str)
     #/textpat-one-in-range (integer->char #/add1 an) b)
   #/textpat-optional-trivial #f
   #/string->immutable-string #/string-append
@@ -421,3 +436,51 @@
   (-> optimized-textpat? input-port? #/maybe/c string?)
   (dissect ot (optimized-textpat match-string read-stream!)
   #/read-stream! in))
+
+
+; ===== Derived operations ===========================================
+
+(define/contract (textpat-or-list ts)
+  (-> (listof textpat?) textpat?)
+  (list-foldl (textpat-give-up) ts #/fn a b #/textpat-or-binary a b))
+
+(define/contract (textpat-or . ts)
+  (->* () #:rest (listof textpat?) textpat?)
+  (textpat-or-list ts))
+
+(define/contract (textpat-append-binary a b)
+  (-> textpat? textpat? textpat?)
+  (textpat-if a b #/textpat-give-up))
+
+(define/contract (textpat-append-list ts)
+  (-> (listof textpat?) textpat?)
+  (list-foldl (textpat-empty) ts #/fn a b
+    (textpat-append-binary a b)))
+
+(define/contract (textpat-append . ts)
+  (->* () #:rest (listof textpat?) textpat?)
+  (textpat-append-list ts))
+
+(define/contract (textpat-not t)
+  (-> textpat? textpat?)
+  (textpat-if t (textpat-give-up) (textpat-empty)))
+
+(define/contract (textpat-lookahead t)
+  (-> textpat? textpat?)
+  (textpat-not #/textpat-not t))
+
+(define/contract (textpat-one-not t)
+  (-> textpat? textpat?)
+  (textpat-append (textpat-not t) (textpat-one)))
+
+(define/contract (textpat-one-not-in-string str)
+  (-> immutable-string? textpat?)
+  (textpat-one-not #/textpat-one-in-string str))
+
+(define/contract (textpat-star t)
+  (-> textpat? textpat?)
+  (textpat-while t #/textpat-empty))
+
+(define/contract (textpat-once-or-more t)
+  (-> textpat? textpat?)
+  (textpat-append t #/textpat-star t))
