@@ -2099,7 +2099,13 @@
   (def-func! "expr-reified" val
     (sink-cexpr-reified val))
   
-  ; TODO BUILTINS: Implement `cexpr-located`.
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func! "expr-located" location-definition-name body
+    (expect (sink-name? location-definition-name) #t
+      (cene-err "Expected location-definition-name to be a name")
+    #/expect body (sink-cexpr body)
+      (cene-err "Expected body to be an expression")
+    #/sink-cexpr #/cexpr-located location-definition-name body))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-let`.

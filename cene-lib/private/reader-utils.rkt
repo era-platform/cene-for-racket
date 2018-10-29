@@ -55,7 +55,7 @@
 (define/contract (id-or-expr->cexpr id-or-expr)
   (-> (or/c id-or-expr-id? id-or-expr-expr?) sink-cexpr?)
   (mat id-or-expr (id-or-expr-id located-string qualified-name)
-    ; TODO: Wrap this in a located cexpr.
+    ; TODO CEXPR-LOCATED: Wrap this in a located cexpr.
     (sink-cexpr-var #/sink-authorized-name-get-name qualified-name)
   #/dissect id-or-expr (id-or-expr-expr cexpr)
     cexpr))

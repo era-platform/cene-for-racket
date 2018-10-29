@@ -572,7 +572,28 @@
         #/table-shadow var (just val) env)))
   ])
 
-; TODO BUILTINS: Add and use a `located` cexpr instance.
+(struct-easy (cexpr-located location-definition-name body)
+  
+  #:other
+  
+  #:methods gen:cexpr
+  [
+    (define/generic -has-free-vars? cexpr-has-free-vars?)
+    (define/generic -eval cexpr-eval)
+    
+    (define (cexpr-has-free-vars? this env)
+      (expect this (cexpr-located location-definition-name body)
+        (error "Expected this to be a cexpr-located")
+      #/-has-free-vars? body))
+    
+    (define (cexpr-eval this env)
+      (expect this (cexpr-located location-definition-name body)
+        (error "Expected this to be a cexpr-located")
+      ; TODO CEXPR-LOCATED: Add `location-definition-name` or
+      ; `(cene-definition-get location-definition-name)` to some kind
+      ; of call stack.
+      #/-eval body))
+  ])
 
 ; NOTE: The only purpose of this is to help track down a common kind
 ; of error where the result of `go!` is mistakenly a `sink-effects?`
@@ -1272,8 +1293,8 @@
   #/dissect (unbox b) (just in)
   #/peek-string 1000 0 in))
 
-; TODO: For every cexpr read this way, wrap that cexpr in a located
-; cexpr.
+; TODO CEXPR-LOCATED: For every cexpr read this way, wrap that cexpr
+; in a `cexpr-located`.
 (define/contract
   (sink-effects-read-cexprs
     unique-name qualify text-input-stream output-stream then)
