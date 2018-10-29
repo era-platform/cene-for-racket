@@ -1597,13 +1597,23 @@
   #/sink-effects-read-top-level
     unique-name-main qualify text-input-stream))
 
-(define/contract (cene-init-package rt qualify)
-  (-> cene-runtime? (-> sink-name? sink-authorized-name?)
-    cene-runtime?)
+(define/contract (cene-runtime-effects-run rt get-effects)
+  (-> cene-runtime? (-> sink-effects?)
+    (list/c cene-runtime? #/listof string?))
   (begin (assert-cannot-get-cene-definitions!)
   #/dissect rt
     (cene-runtime defined-dexes defined-values init-package)
-  #/init-package rt qualify))
+  #/cene-process-run rt #/with-gets-from-as-process defined-values
+    (fn #/sink-effects-run! #/get-effects)
+    (fn process process)))
+
+(define/contract (cene-init-package rt qualify)
+  (-> cene-runtime? (-> sink-name? sink-authorized-name?)
+    (list/c cene-runtime? #/listof string?))
+  (begin (assert-cannot-get-cene-definitions!)
+  #/dissect rt
+    (cene-runtime defined-dexes defined-values init-package)
+  #/cene-runtime-effects-run rt #/fn #/init-package qualify))
 
 (define/contract (cene-run-string rt unique-name qualify string)
   (->
@@ -1613,19 +1623,15 @@
     string?
     (list/c cene-runtime? #/listof string?))
   (begin (assert-cannot-get-cene-definitions!)
-  #/dissect rt
-    (cene-runtime defined-dexes defined-values init-package)
-  #/cene-process-run rt #/with-gets-from-as-process defined-values
-    (fn
-      (sink-effects-run! #/sink-effects-read-top-level
-        unique-name
-        (sink-fn-curried 1 #/fn name
-          (expect (sink-name? name) #t
-            (cene-err "Expected the input to the root qualify function to be a name")
-          #/qualify name))
-        (sink-text-input-stream #/box #/just
-        #/open-input-string string)))
-    (fn process process)))
+  #/cene-runtime-effects-run rt #/fn
+    (sink-effects-read-top-level
+      unique-name
+      (sink-fn-curried 1 #/fn name
+        (expect (sink-name? name) #t
+          (cene-err "Expected the input to the root qualify function to be a name")
+        #/qualify name))
+      (sink-text-input-stream #/box #/just
+      #/open-input-string string))))
 
 (define/contract (sink-sample-unique-name-root)
   (-> sink-authorized-name?)

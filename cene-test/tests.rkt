@@ -29,12 +29,18 @@
 
 
 (define (cene-run-string-sample code-string)
-  (cene-run-string
+  (dissect
     (cene-init-package (cene-runtime-essentials)
       sink-sample-qualify-root)
-    (sink-sample-unique-name-root)
-    sink-sample-qualify-root
-    code-string))
+    (list rt errors-a)
+  #/dissect
+    (cene-run-string
+      rt
+      (sink-sample-unique-name-root)
+      sink-sample-qualify-root
+      code-string)
+    (list rt errors-b)
+  #/list rt #/append errors-a errors-b))
 
 (define (cene-code-works code-string)
   (expect (cene-run-string-sample code-string)

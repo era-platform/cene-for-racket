@@ -961,12 +961,8 @@
     (-> sink-name? sink-dex? sink? void?)
     (set! init-package-steps
       (cons
-        (fn qualify-for-package defined-dexes defined-values
-          (dissect (qualify-for-package name)
-            (sink-authorized-name name)
-          #/list
-            (table-shadow name (just dex) defined-dexes)
-            (table-shadow name (just value) defined-values)))
+        (fn qualify-for-package
+          (sink-effects-put (qualify-for-package name) dex value))
         init-package-steps)))
   
   (define/contract (def-value-for-lang-impl! name value)
@@ -2730,20 +2726,6 @@
   (cene-runtime
     (sink-table defined-dexes)
     (sink-table defined-values)
-    (fn rt qualify-for-package
-      (dissect rt
-        (cene-runtime defined-dexes defined-values init-package)
-      #/dissect defined-dexes (sink-table defined-dexes)
-      #/dissect defined-values (sink-table defined-values)
-      #/dissect
-        (list-foldl
-          (list defined-dexes defined-values)
-          init-package-steps
-        #/fn defined step
-          (dissect defined (list defined-dexes defined-values)
-          #/step qualify-for-package defined-dexes defined-values))
-        (list defined-dexes defined-values)
-      #/cene-runtime
-        (sink-table defined-dexes)
-        (sink-table defined-values)
-        init-package))))
+    (fn qualify-for-package
+      (sink-effects-fuse-list #/list-map init-package-steps #/fn step
+        (step qualify-for-package)))))
