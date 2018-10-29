@@ -93,14 +93,15 @@
   sink-name-for-local-variable)
 ; NOTE: This is all the "essential operations" from
 ; `cene/private/textpat` except for the struct predicates and
-; accessors.
+; accessors. This also includes `textpat-one-not-in-string` and
+; `textpat-star`.
 (require #/only-in cene/private/textpat
   textpat? textpat-empty textpat-from-string textpat-give-up
   textpat-has-empty? textpat-if textpat-one textpat-one-in-range
-  textpat-one-in-string textpat-result? textpat-result-failed
-  textpat-result-matched textpat-result-passed-end textpat-until
-  textpat-while optimized-textpat? optimized-textpat-match
-  optimize-textpat)
+  textpat-one-in-string textpat-one-not-in-string textpat-result?
+  textpat-result-failed textpat-result-matched
+  textpat-result-passed-end textpat-star textpat-until textpat-while
+  optimized-textpat? optimized-textpat-match optimize-textpat)
 
 
 (provide cene-runtime-essentials)
@@ -929,6 +930,11 @@
       method)))
 
 
+(define str-prim-pat
+  (optimize-textpat
+  #/textpat-star #/textpat-one-not-in-string "[]()"))
+
+
 ; TODO: Use this in some kind of CLI entrypoint or something.
 ;
 ; TODO BUILTINS: See if we should add something like this as a Cene
@@ -1280,7 +1286,10 @@
   
   (def-data-struct! "clamor-err" #/list "message")
   
-  ; TODO BUILTINS: Implement the macro `err`.
+  ; TODO BUILTINS: Implement the macro `err`, probably in a Cene
+  ; prelude. In the prelude, before we define `err`, we can still
+  ; report errors using using
+  ; `[follow-heart/clamor-err/str-prim ...]`.
   
   
   ; Order
@@ -2262,7 +2271,27 @@
     #/verify-callback-effects! #/sink-call then
     #/sink-string #/string->immutable-string #/string-append a b))
   
-  ; TODO BUILTINS: Implement the macro `str`.
+  ; This is an extremely basic string syntax. It doesn't have any
+  ; support for escape sequences. It reads a body that must have zero
+  ; occurrences of [ ] ( ) and it treats that body verbatim as the
+  ; contents of the string.
+  ;
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  ;
+  (def-macro! "str-prim" #/fn
+    unique-name qualify text-input-stream then
+    
+    (sink-effects-claim-freshen unique-name #/fn unique-name
+    #/sink-effects-optimized-textpat-read-located
+      str-prim-pat text-input-stream
+    #/fn text-input-stream maybe-contents
+    #/dissect maybe-contents (just contents)
+    #/sink-effects-string-from-located-string contents #/fn contents
+    #/then unique-name qualify text-input-stream
+    #/sink-cexpr-reified contents))
+  
+  ; TODO BUILTINS: Implement the macro `str`, probably in a Cene
+  ; prelude.
   
   (def-func! "string-length" string
     (expect string (sink-string string)
