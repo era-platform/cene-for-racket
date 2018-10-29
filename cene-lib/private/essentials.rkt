@@ -2128,7 +2128,29 @@
       (cene-err "Expected body to be an expression")
     #/sink-cexpr-let bindings body))
   
-  ; TODO BUILTINS: Implement `let`.
+  (def-macro! "let" #/fn unique-name qualify text-input-stream then
+    (sink-effects-read-bounded-ids-and-exprs
+      unique-name qualify text-input-stream
+      sink-name-for-local-variable
+    #/fn unique-name qualify text-input-stream args
+    #/expect (reverse args) (cons body rev-bindings)
+      (cene-err "Expected a let form to have a body expression")
+    #/w- bindings
+      (w-loop next rest rev-bindings so-far (list)
+        (mat rest (list) so-far
+        #/expect rest (list* val var rest)
+          (cene-err "Expected a let form to have an odd number of subforms")
+        #/next rest (cons (list var val) so-far)))
+    #/then unique-name qualify text-input-stream
+    #/sink-cexpr-let
+      (list-map bindings #/dissectfn (list var val)
+        (expect var
+          (id-or-expr-id var-located-string var-qualified-name)
+          (cene-err "Expected every bound variable of a let form to be an identifier")
+        #/list
+          (sink-authorized-name-get-name var-qualified-name)
+          (id-or-expr->cexpr val)))
+      (id-or-expr->cexpr body)))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func! "is-expr" v
