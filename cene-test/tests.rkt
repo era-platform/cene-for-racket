@@ -28,14 +28,22 @@
 ; (We provide nothing from this module.)
 
 
+(define (cene-run-string-sample code-string)
+  (cene-run-string
+    (cene-init-package (cene-runtime-essentials)
+      sink-sample-qualify-root)
+    (sink-sample-unique-name-root)
+    sink-sample-qualify-root
+    code-string))
+
 (define (cene-code-works code-string)
-  (expect (cene-run-string (cene-runtime-essentials) code-string)
+  (expect (cene-run-string-sample code-string)
     (list cene-runtime #/list)
     #f
   #/cene-runtime? cene-runtime))
 
 (define (cene-code-get-errors code-string)
-  (dissect (cene-run-string (cene-runtime-essentials) code-string)
+  (dissect (cene-run-string-sample code-string)
     (list cene-runtime errors)
     errors))
 

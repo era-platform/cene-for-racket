@@ -214,16 +214,18 @@
   (dissect name (sink-name #/unsafe:name name)
   #/sink-name #/unsafe:name #/func name))
 
-; NOTE: We probably won't want to make this available as a Cene
-; built-in. It just represents the arbitrary `qualify` function that
-; all the built-ins look like they were defined under. In a
-; metacircular implementation of Cene, that can be any `qualify`
-; function that converts names to obscure enough authorized names.
+; NOTE: Once we have the ability to import names, we should make sure
+; this produces an authorized name whose name is importable from a
+; UUID-identified import. Modules identified by UUID can only be
+; implemented by the language implementation. And since that's the
+; case, there should be no way for Cene code to obtain these
+; authorized names; just the unauthorized equivalents.
 ;
-(define/contract (sink-name-qualify unqualified-name)
+(define/contract (sink-name-qualify-for-lang-impl unqualified-name)
   (-> sink-name? sink-authorized-name?)
   (dissect unqualified-name (sink-name #/unsafe:name n)
-  #/sink-authorized-name #/unsafe:name #/list 'name:qualified n))
+  #/sink-authorized-name #/unsafe:name
+    (list 'name:qualified-for-lang-impl n)))
 
 (define/contract (sink-name-for-claim inner-name)
   (-> sink-name? sink-name?)
@@ -249,7 +251,7 @@
     (cene-process-noop? v)
     (cene-process-fuse? v)))
 
-(struct-easy (cene-runtime defined-dexes defined-values))
+(struct-easy (cene-runtime defined-dexes defined-values init-package))
 
 ; A version of `cene-runtime?` that does not satisfy
 ; `struct-predicate-procedure?`.
@@ -334,7 +336,8 @@
   (-> cene-runtime? cene-process?
     (list/c cene-runtime? #/listof string?))
   (begin (assert-cannot-get-cene-definitions!)
-  #/dissect rt (cene-runtime defined-dexes defined-values)
+  #/dissect rt
+    (cene-runtime defined-dexes defined-values init-package)
   #/w-loop next-full
     processes (list process)
     rev-next-processes (list)
@@ -347,7 +350,7 @@
       ; If there are no processes left, we're done. We return the
       ; updated Cene runtime and the list of errors.
       (list
-        (cene-runtime defined-dexes defined-values)
+        (cene-runtime defined-dexes defined-values init-package)
         (reverse rev-errors))
     #/if (not did-something)
       ; The processes are stalled. We log errors corresponding to all
@@ -1465,14 +1468,15 @@
   (-> immutable-string? (listof immutable-string?)
     (and/c pair? #/listof name?))
   (w- main-tag-authorized-name
-    (sink-name-qualify #/sink-name-for-struct-main-tag
+    (sink-name-qualify-for-lang-impl #/sink-name-for-struct-main-tag
     #/sink-name-for-string #/sink-string main-tag-string)
   #/w- main-tag-name
     (sink-authorized-name-get-name main-tag-authorized-name)
   #/list-map
     (cons main-tag-authorized-name
     #/list-map proj-strings #/fn proj-string
-      (sink-name-qualify #/sink-name-for-struct-proj main-tag-name
+      (sink-name-qualify-for-lang-impl
+      #/sink-name-for-struct-proj main-tag-name
       #/sink-name-for-string #/sink-string proj-string))
   #/dissectfn (sink-authorized-name name)
     name))
@@ -1593,25 +1597,45 @@
   #/sink-effects-read-top-level
     unique-name-main qualify text-input-stream))
 
-(define/contract (cene-run-string rt string)
-  (-> cene-runtime? string? #/list/c cene-runtime? #/listof string?)
+(define/contract (cene-init-package rt qualify)
+  (-> cene-runtime? (-> sink-name? sink-authorized-name?)
+    cene-runtime?)
   (begin (assert-cannot-get-cene-definitions!)
-  #/dissect rt (cene-runtime defined-dexes defined-values)
+  #/dissect rt
+    (cene-runtime defined-dexes defined-values init-package)
+  #/init-package rt qualify))
+
+(define/contract (cene-run-string rt unique-name qualify string)
+  (->
+    cene-runtime?
+    sink-authorized-name?
+    (-> sink-name? sink-authorized-name?)
+    string?
+    (list/c cene-runtime? #/listof string?))
+  (begin (assert-cannot-get-cene-definitions!)
+  #/dissect rt
+    (cene-runtime defined-dexes defined-values init-package)
   #/cene-process-run rt #/with-gets-from-as-process defined-values
     (fn
       (sink-effects-run! #/sink-effects-read-top-level
-        ; NOTE: We do not need to allow Cene code to recreate this
-        ; authorized name. A metacircular Cene implementation can just
-        ; use any authorized name here.
-        (sink-authorized-name
-        #/unsafe:name #/list 'name:unique-name-root)
+        unique-name
         (sink-fn-curried 1 #/fn name
           (expect (sink-name? name) #t
             (cene-err "Expected the input to the root qualify function to be a name")
-          #/sink-name-qualify name))
+          #/qualify name))
         (sink-text-input-stream #/box #/just
         #/open-input-string string)))
     (fn process process)))
+
+(define/contract (sink-sample-unique-name-root)
+  (-> sink-authorized-name?)
+  (sink-authorized-name #/unsafe:name 'name:sample-unique-name-root))
+
+(define/contract (sink-sample-qualify-root name)
+  (-> sink-name? sink-authorized-name?)
+  (dissect name (sink-name #/unsafe:name name)
+  #/sink-authorized-name #/unsafe:name
+    (list 'name:sample-qualify-root name)))
 
 ; TODO: See if we'll use this.
 (define/contract (cene-runtime-empty)

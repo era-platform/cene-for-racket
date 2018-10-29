@@ -945,8 +945,9 @@
   
   (define defined-dexes (table-empty))
   (define defined-values (table-empty))
+  (define init-package-steps (list))
   
-  (define/contract (def-dexable-value! name dex value)
+  (define/contract (def-dexable-value-for-lang-impl! name dex value)
     (-> sink-authorized-name? sink-dex? sink? void?)
     (dissect name (sink-authorized-name name)
     #/begin
@@ -956,9 +957,27 @@
         (table-shadow name (just value) defined-values))
     #/void))
   
-  (define/contract (def-value! name value)
+  (define/contract (def-dexable-value-for-package! name dex value)
+    (-> sink-name? sink-dex? sink? void?)
+    (set! init-package-steps
+      (cons
+        (fn qualify-for-package defined-dexes defined-values
+          (dissect (qualify-for-package name)
+            (sink-authorized-name name)
+          #/list
+            (table-shadow name (just dex) defined-dexes)
+            (table-shadow name (just value) defined-values)))
+        init-package-steps)))
+  
+  (define/contract (def-value-for-lang-impl! name value)
     (-> sink-authorized-name? sink? void?)
-    (def-dexable-value! name (sink-dex #/dex-give-up) value))
+    (def-dexable-value-for-lang-impl!
+      name (sink-dex #/dex-give-up) value))
+  
+  (define/contract (def-value-for-package! name value)
+    (-> sink-name? sink? void?)
+    (def-dexable-value-for-package!
+      name (sink-dex #/dex-give-up) value))
   
   (define/contract (macro-impl body)
     (->
@@ -1008,11 +1027,11 @@
     (def-func-impl-reified!
       qualified-main-tag-name qualified-proj-tag-names impl)
     (-> sink-authorized-name? sink-table? sink? void?)
-    (def-value!
+    (def-value-for-lang-impl!
       (sink-authorized-name-for-function-implementation-code
         qualified-main-tag-name qualified-proj-tag-names)
       (sink-cexpr-reified impl))
-    (def-value!
+    (def-value-for-lang-impl!
       (sink-authorized-name-for-function-implementation-value
         qualified-main-tag-name qualified-proj-tag-names)
       impl))
@@ -1024,14 +1043,13 @@
     (w- main-tag-name
       (sink-name-for-string #/sink-string main-tag-string)
     #/w- qualified-main-tag-name
-      (sink-name-qualify
+      (sink-name-qualify-for-lang-impl
       #/sink-name-for-struct-main-tag main-tag-name)
       
       ; We define a reader macro so that the user can write code that
       ; compiles into a call to this function.
-      (def-value!
-        (sink-name-qualify
-        #/sink-name-for-bounded-cexpr-op main-tag-name)
+      (def-value-for-package!
+        (sink-name-for-bounded-cexpr-op main-tag-name)
         
         ; Given precisely `n-args` cexprs, we construct a cexpr that
         ; first constructs a nullary struct with tag
@@ -1075,14 +1093,13 @@
     (w- main-tag-name
       (sink-name-for-string #/sink-string main-tag-string)
     #/w- qualified-main-tag-name
-      (sink-name-qualify
+      (sink-name-qualify-for-lang-impl
       #/sink-name-for-struct-main-tag main-tag-name)
       
       ; We define a reader macro so that the user can write code that
       ; compiles into a call to this function.
-      (def-value!
-        (sink-name-qualify
-        #/sink-name-for-bounded-cexpr-op main-tag-name)
+      (def-value-for-package!
+        (sink-name-for-bounded-cexpr-op main-tag-name)
         
         ; Given precisely zero cexprs, we construct a cexpr that first
         ; constructs a nullary struct with tag `name` and then calls
@@ -1115,14 +1132,15 @@
     (w- main-tag-name
       (sink-name-for-string #/sink-string main-tag-string)
     #/w- qualified-main-tag-name
-      (sink-name-qualify
+      (sink-name-qualify-for-lang-impl
       #/sink-name-for-struct-main-tag main-tag-name)
     #/w- qualified-main-tag-unauthorized-name
       (sink-authorized-name-get-name qualified-main-tag-name)
     #/w- qualified-proj-name-entries
       (list-map proj-strings #/fn proj-string
         (list proj-string
-        #/sink-name-qualify #/sink-name-for-struct-proj
+        #/sink-name-qualify-for-lang-impl
+        #/sink-name-for-struct-proj
           qualified-main-tag-unauthorized-name
         #/sink-name-for-string #/sink-string proj-string))
     #/w- qualified-proj-names
@@ -1141,9 +1159,8 @@
       ; We define a reader macro so that the user can write code that
       ; compiles into an expression that constructs a struct with this
       ; tag.
-      (def-value!
-        (sink-name-qualify
-        #/sink-name-for-bounded-cexpr-op main-tag-name)
+      (def-value-for-package!
+        (sink-name-for-bounded-cexpr-op main-tag-name)
         
         (w- n-projs (length qualified-proj-names)
         
@@ -1182,9 +1199,8 @@
       ; TODO: We haven't even tried to store this in the same format
       ; as the JavaScript version of Cene does. See if we should.
       ;
-      (def-dexable-value!
-        (sink-name-qualify
-        #/sink-name-for-struct-metadata main-tag-name)
+      (def-dexable-value-for-package!
+        (sink-name-for-struct-metadata main-tag-name)
         (sink-dex-struct s-struct-metadata #/list
           (sink-dex-name)
           (sink-dex-list #/sink-dex-struct s-assoc #/list
@@ -1211,8 +1227,8 @@
           sink-effects?)
         sink-effects?)
       void?)
-    (def-value!
-      (sink-name-qualify #/sink-name-for-bounded-cexpr-op
+    (def-value-for-package!
+      (sink-name-for-bounded-cexpr-op
       #/sink-name-for-string #/sink-string name-string)
       (macro-impl #/fn
         unique-name qualify text-input-stream output-stream then
@@ -1235,8 +1251,7 @@
   ; behavior is that it consumes "foo", looks up an expression reader
   ; macro based on qualifying the string "foo", and runs it.
   ;
-  (def-value!
-    (sink-name-qualify #/sink-name-for-nameless-bounded-cexpr-op)
+  (def-value-for-package! (sink-name-for-nameless-bounded-cexpr-op)
     (macro-impl #/fn
       unique-name qualify text-input-stream output-stream then
       
@@ -1250,8 +1265,8 @@
   ;
   ;   \= This is an example comment.
   ;
-  (def-value!
-    (sink-name-qualify #/sink-name-for-freestanding-cexpr-op
+  (def-value-for-package!
+    (sink-name-for-freestanding-cexpr-op
     #/sink-name-for-string #/sink-string "=")
     (macro-impl #/fn
       unique-name qualify text-input-stream output-stream then
@@ -2714,4 +2729,21 @@
   
   (cene-runtime
     (sink-table defined-dexes)
-    (sink-table defined-values)))
+    (sink-table defined-values)
+    (fn rt qualify-for-package
+      (dissect rt
+        (cene-runtime defined-dexes defined-values init-package)
+      #/dissect defined-dexes (sink-table defined-dexes)
+      #/dissect defined-values (sink-table defined-values)
+      #/dissect
+        (list-foldl
+          (list defined-dexes defined-values)
+          init-package-steps
+        #/fn defined step
+          (dissect defined (list defined-dexes defined-values)
+          #/step qualify-for-package defined-dexes defined-values))
+        (list defined-dexes defined-values)
+      #/cene-runtime
+        (sink-table defined-dexes)
+        (sink-table defined-values)
+        init-package))))
