@@ -2581,6 +2581,30 @@
   (def-func! "is-expr-sequence-output-stream" v
     (racket-boolean->sink #/sink-cexpr-sequence-output-stream? v))
   
+  (def-func! "effects-make-expr-sequence-output-stream"
+    unique-name state on-expr then
+    
+    ; TODO: See if we should differentiate the error messages for
+    ; these three occurrences of `verify-callback-effects!`.
+    (expect (sink-authorized-name? unique-name) #t
+      (cene-err "Expected unique-name to be an authorized name")
+    #/sink-effects-make-cexpr-sequence-output-stream
+      unique-name
+      state
+      (fn state cexpr then
+        (verify-callback-effects! #/sink-call on-expr
+          state
+          cexpr
+          (sink-fn-curried 1 #/fn state #/then state)))
+    #/fn output-stream unwrap
+    #/verify-callback-effects! #/sink-call then
+      output-stream
+      (sink-fn-curried 2 #/fn output-stream then
+      #/expect (sink-cexpr-sequence-output-stream? output-stream) #t
+        (cene-err "Expected output-stream to be an expression sequence output stream")
+      #/unwrap output-stream #/fn state
+      #/verify-callback-effects! #/sink-call then state)))
+  
   (def-func! "effects-expr-write" output-stream expr then
     (expect (sink-cexpr-sequence-output-stream? output-stream) #t
       (cene-err "Expected output-stream to be an expression sequence output stream")
@@ -2588,11 +2612,6 @@
       (cene-err "Expected expr to be an expression")
     #/sink-effects-cexpr-write output-stream expr #/fn output-stream
     #/verify-callback-effects! #/sink-call then output-stream))
-  
-  ; TODO BUILTINS: Make sure we have a sufficient set of operations
-  ; for manipulating `sink-cexpr-sequence-output-stream` values. We
-  ; don't even have a single way to create them right now, aside from
-  ; getting them passed in from the macroexpander.
   
   (def-func! "is-text-input-stream" v
     (racket-boolean->sink #/sink-text-input-stream? v))

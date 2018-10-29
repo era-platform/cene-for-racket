@@ -24,7 +24,8 @@
 (require #/only-in racket/contract/region define/contract)
 (require #/only-in racket/math natural?)
 
-(require #/only-in lathe-comforts dissect expect fn mat w- w-loop)
+(require #/only-in lathe-comforts
+  dissect dissectfn expect fn mat w- w-loop)
 (require #/only-in lathe-comforts/list list-map nat->maybe)
 (require #/only-in lathe-comforts/maybe just)
 (require #/only-in lathe-comforts/struct struct-easy)
@@ -85,16 +86,17 @@
     (then unique-name qualify text-input-stream
       (cons (id-or-expr-id located-string qualified-name)
         rev-results))
-  #/w- output-stream
-    (sink-cexpr-sequence-output-stream #/box #/just #/list
-      rev-results
-      (fn rev-results cexpr then
-        (then #/cons (id-or-expr-expr cexpr) rev-results)))
+  #/sink-effects-claim-and-split unique-name 2
+  #/dissectfn (list unique-name-stream unique-name)
+  #/sink-effects-make-cexpr-sequence-output-stream unique-name-stream
+    rev-results
+    (fn rev-results cexpr then
+      (then #/cons (id-or-expr-expr cexpr) rev-results))
+  #/fn output-stream unwrap
   #/sink-effects-read-cexprs
     unique-name qualify text-input-stream output-stream
   #/fn unique-name qualify text-input-stream output-stream
-  #/dissect (sink-cexpr-sequence-output-stream-spend! output-stream)
-    (list rev-results on-cexpr)
+  #/unwrap output-stream #/fn rev-results
   #/then unique-name qualify text-input-stream rev-results))
 
 ; This reads identifiers and cexprs until it gets to a closing

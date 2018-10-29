@@ -164,7 +164,8 @@
 (struct-easy (sink-effects go!)
   #:other #:methods gen:sink [])
 (struct-easy
-  (sink-cexpr-sequence-output-stream box-of-maybe-state-and-handler)
+  (sink-cexpr-sequence-output-stream
+    id box-of-maybe-state-and-handler)
   #:other #:methods gen:sink [])
 (struct-easy (sink-text-input-stream box-of-maybe-input)
   #:other #:methods gen:sink [])
@@ -917,7 +918,7 @@
     (list/c
       any/c
       (-> any/c sink-cexpr? (-> any/c sink-effects?) sink-effects?)))
-  (dissect stream (sink-cexpr-sequence-output-stream b)
+  (dissect stream (sink-cexpr-sequence-output-stream id b)
   ; TODO: See if this should be more thread-safe in some way.
   #/expect (unbox b) (just state-and-handler)
     (cene-err "Tried to spend an expression output stream that was already spent")
@@ -925,16 +926,53 @@
     (set-box! b (nothing))
     state-and-handler))
 
+(define/contract
+  (sink-effects-make-cexpr-sequence-output-stream
+    unique-name state on-cexpr then)
+  (->
+    sink-authorized-name?
+    any/c
+    (-> any/c sink-cexpr (-> any/c sink-effects?) sink-effects?)
+    (-> sink-cexpr-sequence-output-stream?
+      (-> sink-cexpr-sequence-output-stream?
+        (-> any/c sink-effects?)
+        sink-effects?)
+      sink-effects?)
+    sink-effects?)
+  (sink-effects-later #/fn
+  #/w- identity (box #/trivial)
+  #/sink-effects-claim-and-split unique-name 0 #/dissectfn (list)
+  #/then
+    (sink-cexpr-sequence-output-stream identity #/box #/just
+    #/list state on-cexpr)
+    (fn output-stream then
+      (dissect output-stream
+        (sink-cexpr-sequence-output-stream found-id _)
+      #/expect (eq? identity found-id) #t
+        ; TODO: See if we can tweak the design of
+        ; `sink-effects-make-cexpr-sequence-output-stream` in such a
+        ; way that its clients can specify their own error messages to
+        ; take the place of this one. Since we don't currently support
+        ; that, we're reporting this error message in such a way that
+        ; it makes sense for Cene's
+        ; `effects-make-expr-sequence-output-stream` built-in.
+        (cene-err "Expected the expression sequence output stream given to an effects-make-expr-sequence-output-stream unwrapper to be a descendant of the same one created by that call")
+      #/dissect
+        (sink-cexpr-sequence-output-stream-spend! output-stream)
+        (list state on-cexpr)
+      #/then state))))
+
 (define/contract (sink-effects-cexpr-write output-stream cexpr then)
   (->
     sink-cexpr-sequence-output-stream? sink-cexpr?
     (-> sink-cexpr-sequence-output-stream? sink-effects?)
     sink-effects?)
   (sink-effects-later #/fn
+  #/dissect output-stream (sink-cexpr-sequence-output-stream id _)
   #/dissect (sink-cexpr-sequence-output-stream-spend! output-stream)
     (list state on-cexpr)
   #/on-cexpr state cexpr #/fn state
-  #/then #/sink-cexpr-sequence-output-stream #/box #/just #/list
+  #/then #/sink-cexpr-sequence-output-stream id #/box #/just #/list
     state on-cexpr))
 
 (define/contract (sink-text-input-stream-spend! text-input-stream)
@@ -1466,11 +1504,11 @@
     #/w- first
       (sink-authorized-name-subname
         (sink-name-for-string #/sink-string "first")
-        unique-name)
+        next-name)
     #/w- rest
       (sink-authorized-name-subname
         (sink-name-for-string #/sink-string "rest")
-        unique-name)
+        next-name)
     #/next n rest #/cons first names)))
 
 (define/contract (cexpr-can-eval? cexpr)
@@ -1493,11 +1531,6 @@
 ; text input stream and runs the reader macros it encounters. Unlike
 ; typical Lisp readers, this does not read first-class values; it only
 ; reads and performs side effects.
-;
-; TODO BUILTINS: Add this as a Cene built-in. It would be even better
-; if we could just add the boxing/spending part as a built-in and
-; write the rest in Cene code.
-;
 (define/contract
   (sink-effects-read-top-level unique-name qualify text-input-stream)
   (-> sink-authorized-name? sink? sink-text-input-stream?
@@ -1508,35 +1541,35 @@
     ; `unique-name` to be sure no one else is using it.
     (sink-effects-claim unique-name)
   #/fn text-input-stream
-  #/sink-effects-claim-and-split unique-name 2
-  #/dissectfn (list unique-name-writer unique-name-main)
-  #/w- output-stream
-    (sink-cexpr-sequence-output-stream #/box #/just #/list
-      unique-name-writer
-      (fn unique-name-writer cexpr then
-        ; If we encounter an expression, we evaluate it and call the
-        ; result, passing in the current scope information.
-        (sink-effects-claim-and-split unique-name-writer 2
-        #/dissectfn (list unique-name-first unique-name-rest)
-        #/expect cexpr (sink-cexpr cexpr)
-          ; TODO: Test that we can actually get this error. We might
-          ; already be checking for this condition elsewhere.
-          (cene-err "Encountered a top-level expression that compiled to a non-expression value")
-        #/expect (cexpr-has-free-vars? cexpr #/table-empty) #f
-          (cene-err "Encountered a top-level expression with at least one free variable")
-        #/sink-effects-fuse (then unique-name-rest)
-        #/sink-effects-cexpr-eval cexpr #/fn directive
-        #/expect directive (sink-directive directive)
-          (cene-err "Expected every top-level expression to evaluate to a directive")
-        #/w- effects (sink-call directive unique-name-first qualify)
-        #/expect (sink-effects? effects) #t
-          (cene-err "Expected every top-level expression to evaluate to a directive made from a callable value that takes two arguments and returns side effects")
-          effects)))
+  #/sink-effects-claim-and-split unique-name 3
+  #/dissectfn
+    (list unique-name-stream unique-name-writer unique-name-main)
+  #/sink-effects-make-cexpr-sequence-output-stream unique-name-stream
+    unique-name-writer
+    (fn unique-name-writer cexpr then
+      ; If we encounter an expression, we evaluate it and call the
+      ; result, passing in the current scope information.
+      (sink-effects-claim-and-split unique-name-writer 2
+      #/dissectfn (list unique-name-first unique-name-rest)
+      #/expect cexpr (sink-cexpr cexpr)
+        ; TODO: Test that we can actually get this error. We might
+        ; already be checking for this condition elsewhere.
+        (cene-err "Encountered a top-level expression that compiled to a non-expression value")
+      #/expect (cexpr-has-free-vars? cexpr #/table-empty) #f
+        (cene-err "Encountered a top-level expression with at least one free variable")
+      #/sink-effects-fuse (then unique-name-rest)
+      #/sink-effects-cexpr-eval cexpr #/fn directive
+      #/expect directive (sink-directive directive)
+        (cene-err "Expected every top-level expression to evaluate to a directive")
+      #/w- effects (sink-call directive unique-name-first qualify)
+      #/expect (sink-effects? effects) #t
+        (cene-err "Expected every top-level expression to evaluate to a directive made from a callable value that takes two arguments and returns side effects")
+        effects))
+  #/fn output-stream unwrap
   #/sink-effects-read-cexprs
     unique-name-main qualify text-input-stream output-stream
   #/fn unique-name-main qualify text-input-stream output-stream
-  #/dissect (sink-cexpr-sequence-output-stream-spend! output-stream)
-    (list unique-name-writer on-cexpr)
+  #/unwrap output-stream #/fn unique-name-writer
   #/sink-effects-claim-and-split unique-name-writer 0
   #/dissectfn (list)
   #/sink-effects-read-top-level
@@ -1544,7 +1577,6 @@
 
 (define/contract (cene-run-string rt string)
   (-> cene-runtime? string? #/list/c cene-runtime? #/listof string?)
-  
   (begin (assert-cannot-get-cene-definitions!)
   #/dissect rt (cene-runtime defined-dexes defined-values)
   #/cene-process-run rt #/with-gets-from-as-process defined-values
