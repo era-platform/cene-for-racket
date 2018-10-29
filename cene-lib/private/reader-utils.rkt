@@ -78,7 +78,7 @@
       (listof #/or/c id-or-expr-id? id-or-expr-expr?)
       sink-effects?)
     sink-effects?)
-  (begin (assert-can-get-cene-definitions!)
+  (sink-effects-claim-freshen unique-name #/fn unique-name
   #/sink-effects-read-maybe-identifier
     qualify text-input-stream pre-qualify
   #/fn text-input-stream maybe-id
@@ -116,7 +116,7 @@
       (listof #/or/c id-or-expr-id? id-or-expr-expr?)
       sink-effects?)
     sink-effects?)
-  (begin (assert-can-get-cene-definitions!)
+  (sink-effects-claim-freshen unique-name #/fn unique-name
   #/w-loop next
     unique-name unique-name
     qualify qualify
@@ -154,8 +154,7 @@
       (listof sink-cexpr?)
       sink-effects?)
     sink-effects?)
-  (begin (assert-can-get-cene-definitions!)
-  #/sink-effects-read-bounded-ids-and-exprs
+  (sink-effects-read-bounded-ids-and-exprs
     unique-name qualify text-input-stream sink-name-for-local-variable
   #/fn unique-name qualify text-input-stream ids-and-exprs
   #/then unique-name qualify text-input-stream
@@ -179,8 +178,7 @@
       (listof sink-cexpr?)
       sink-effects?)
     sink-effects?)
-  (begin (assert-can-get-cene-definitions!)
-  #/sink-effects-read-bounded-cexprs
+  (sink-effects-read-bounded-cexprs
     unique-name qualify text-input-stream
   #/fn unique-name qualify text-input-stream cexprs
   #/w- actual-n (length cexprs)
@@ -209,7 +207,7 @@
       (listof #/or/c id-or-expr-id? id-or-expr-expr?)
       sink-effects?)
     sink-effects?)
-  (begin (assert-can-get-cene-definitions!)
+  (sink-effects-claim-freshen unique-name #/fn unique-name
   #/w-loop next
     unique-name unique-name
     qualify qualify
@@ -258,8 +256,7 @@
       (listof sink-cexpr?)
       sink-effects?)
     sink-effects?)
-  (begin (assert-can-get-cene-definitions!)
-  #/sink-effects-read-leading-specific-number-of-ids-and-exprs
+  (sink-effects-read-leading-specific-number-of-ids-and-exprs
     unique-name qualify text-input-stream n
     sink-name-for-local-variable
   #/fn unique-name qualify text-input-stream ids-and-exprs
@@ -282,7 +279,7 @@
       (listof #/list/c sink-located-string? sink-authorized-name?)
       sink-effects?)
     sink-effects?)
-  (begin (assert-can-get-cene-definitions!)
+  (sink-effects-later #/fn
   #/w-loop next
     text-input-stream text-input-stream
     n n

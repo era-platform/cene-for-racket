@@ -1250,7 +1250,8 @@
     (macro-impl #/fn
       unique-name qualify text-input-stream output-stream then
       
-      (sink-effects-read-non-line-breaks text-input-stream
+      (sink-effects-claim-freshen unique-name #/fn unique-name
+      #/sink-effects-read-non-line-breaks text-input-stream
       #/fn text-input-stream non-line-breaks
       #/then unique-name qualify text-input-stream output-stream)))
   
@@ -1605,7 +1606,8 @@
         sink-effects?)
       sink-effects?)
     
-    (sink-effects-read-maybe-struct-metadata qualify text-input-stream
+    (sink-effects-claim-freshen unique-name #/fn unique-name
+    #/sink-effects-read-maybe-struct-metadata qualify text-input-stream
     #/fn text-input-stream maybe-metadata
     #/expect maybe-metadata (just metadata)
       (then unique-name qualify text-input-stream #/nothing)

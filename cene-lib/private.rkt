@@ -939,9 +939,8 @@
         sink-effects?)
       sink-effects?)
     sink-effects?)
-  (sink-effects-later #/fn
+  (sink-effects-claim-and-split unique-name 0 #/dissectfn (list)
   #/w- identity (box #/trivial)
-  #/sink-effects-claim-and-split unique-name 0 #/dissectfn (list)
   #/then
     (sink-cexpr-sequence-output-stream identity #/box #/just
     #/list state on-cexpr)
@@ -1179,8 +1178,7 @@
   ;   [markup]:
   ;   [markup]
   
-  (begin (assert-can-get-cene-definitions!)
-  #/sink-effects-read-maybe-op-character text-input-stream
+  (sink-effects-read-maybe-op-character text-input-stream
   #/fn text-input-stream maybe-identifier
   #/mat maybe-identifier (just identifier)
     (sink-effects-string-from-located-string identifier
@@ -1228,7 +1226,7 @@
       sink-cexpr-sequence-output-stream?
       sink-effects?)
     sink-effects?)
-  (begin (assert-can-get-cene-definitions!)
+  (sink-effects-claim-freshen unique-name #/fn unique-name
   #/w- result
     (sink-call op-impl
       unique-name qualify text-input-stream output-stream
@@ -1240,6 +1238,7 @@
       (cene-err "Expected the text input stream of a macro's callback results to be a text input stream")
     #/expect (sink-cexpr-sequence-output-stream? output-stream) #t
       (cene-err "Expected the expression sequence output stream of a macro's callback results to be an expression sequence output stream")
+    #/sink-effects-claim-freshen unique-name #/fn unique-name
     #/then unique-name qualify text-input-stream output-stream)
   #/expect (sink-effects? result) #t
     (cene-err "Expected the return value of a macro to be an effectful computation")
@@ -1260,7 +1259,7 @@
       sink-cexpr-sequence-output-stream?
       sink-effects?)
     sink-effects?)
-  (begin (assert-can-get-cene-definitions!)
+  (sink-effects-claim-freshen unique-name #/fn unique-name
   #/sink-effects-read-op text-input-stream qualify pre-qualify
   #/fn text-input-stream op-name
   #/sink-effects-get (sink-authorized-name-get-name op-name)
@@ -1280,8 +1279,7 @@
       sink-cexpr-sequence-output-stream?
       sink-effects?)
     sink-effects?)
-  (begin (assert-can-get-cene-definitions!)
-  #/sink-effects-read-and-run-op
+  (sink-effects-read-and-run-op
     unique-name qualify text-input-stream output-stream
     sink-name-for-freestanding-cexpr-op
     then))
@@ -1297,8 +1295,7 @@
       sink-cexpr-sequence-output-stream?
       sink-effects?)
     sink-effects?)
-  (begin (assert-can-get-cene-definitions!)
-  #/sink-effects-read-and-run-op
+  (sink-effects-read-and-run-op
     unique-name qualify text-input-stream output-stream
     sink-name-for-bounded-cexpr-op
     then))
@@ -1314,7 +1311,7 @@
       sink-cexpr-sequence-output-stream?
       sink-effects?)
     sink-effects?)
-  (begin (assert-can-get-cene-definitions!)
+  (sink-effects-claim-freshen unique-name #/fn unique-name
   #/sink-effects-get
     (sink-authorized-name-get-name
     #/sink-call qualify #/sink-name-for-nameless-bounded-cexpr-op)
@@ -1368,7 +1365,7 @@
   ; `sink-effects-read-maybe-identifier` before calling this.
   
   
-  (begin (assert-can-get-cene-definitions!)
+  (sink-effects-claim-freshen unique-name #/fn unique-name
   #/sink-effects-read-whitespace text-input-stream
   #/fn text-input-stream whitespace
   #/sink-effects-peek-whether-eof text-input-stream
@@ -1497,9 +1494,8 @@
     (-> (listof sink-authorized-name?) sink-effects?)
     sink-effects?)
   (sink-effects-fuse (sink-effects-claim unique-name)
-  #/expect (nat->maybe n) (just n) (then #/list)
   #/w-loop next n n next-name unique-name names (list)
-    (expect (nat->maybe n) (just n) (then #/cons next-name names)
+    (expect (nat->maybe n) (just n) (then names)
     
     ; NOTE: We do not want these to be names that Cene code can
     ; recreate. If we were implementing `sink-effects-claim-and-split`
@@ -1518,6 +1514,13 @@
         (list 'name:rest next-name))
     
     #/next n rest #/cons first names)))
+
+(define/contract (sink-effects-claim-freshen unique-name then)
+  (-> sink-authorized-name? (-> sink-authorized-name sink-effects?)
+    sink-effects?)
+  (sink-effects-claim-and-split unique-name 1
+  #/dissectfn (list unique-name)
+  #/then unique-name))
 
 (define/contract (cexpr-can-eval? cexpr)
   (-> cexpr? boolean?)
@@ -1543,10 +1546,11 @@
   (sink-effects-read-top-level unique-name qualify text-input-stream)
   (-> sink-authorized-name? sink? sink-text-input-stream?
     sink-effects?)
-  (begin (assert-can-get-cene-definitions!)
+  (sink-effects-claim-freshen unique-name #/fn unique-name
   #/sink-effects-read-eof text-input-stream
     ; If we're at the end of the file, we're done. We claim the
-    ; `unique-name` to be sure no one else is using it.
+    ; `unique-name` to stay in the habit, even though it's clear no
+    ; one else can be using it.
     (sink-effects-claim unique-name)
   #/fn text-input-stream
   #/sink-effects-claim-and-split unique-name 3
