@@ -2626,14 +2626,6 @@
     #/sink-effects-read-eof input-stream on-eof #/fn input-stream
     #/verify-callback-effects! #/sink-call then input-stream))
   
-  (def-func! "effects-peek-whether-eof" input-stream then
-    (expect (sink-text-input-stream? input-stream) #t
-      (cene-err "Expected input-stream to be a text input stream")
-    #/sink-effects-peek-whether-eof input-stream
-    #/fn input-stream is-eof
-    #/verify-callback-effects!
-    #/sink-call then input-stream #/racket-boolean->sink is-eof))
-  
   ; TODO BUILTINS: Make sure we have a sufficient set of operations
   ; for manipulating `sink-text-input-stream` values. We don't even
   ; have a single way to create them right now, aside from getting

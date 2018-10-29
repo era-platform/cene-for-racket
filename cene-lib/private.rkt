@@ -50,9 +50,10 @@
 
 (require #/only-in cene/private/textpat
   textpat? textpat-from-string textpat-lookahead
-  textpat-once-or-more textpat-one-in-range textpat-one-in-string
-  textpat-one-not textpat-one-not-in-string textpat-or textpat-star
-  optimized-textpat? optimized-textpat-read! optimize-textpat)
+  textpat-once-or-more textpat-one textpat-one-in-range
+  textpat-one-in-string textpat-one-not textpat-one-not-in-string
+  textpat-or textpat-star optimized-textpat? optimized-textpat-read!
+  optimize-textpat)
 
 
 (provide #/all-defined-out)
@@ -999,17 +1000,6 @@
   #/else #/sink-text-input-stream #/box #/just in))
 
 (define/contract
-  (sink-effects-peek-whether-eof text-input-stream then)
-  (->
-    sink-text-input-stream?
-    (-> sink-text-input-stream? boolean? sink-effects?)
-    sink-effects?)
-  (sink-effects-later #/fn
-  #/w- in (sink-text-input-stream-spend! text-input-stream)
-  #/then (sink-text-input-stream #/box #/just in)
-    (eof-object? #/peek-byte in)))
-
-(define/contract
   (sink-effects-optimized-textpat-read-located
     pattern text-input-stream then)
   (->
@@ -1041,6 +1031,22 @@
           (list start-line start-column start-position)
           text
           (list stop-line stop-column stop-position))))))
+
+(define sink-effects-peek-whether-eof-pat
+  (optimize-textpat #/textpat-lookahead #/textpat-one))
+
+(define/contract
+  (sink-effects-peek-whether-eof text-input-stream then)
+  (->
+    sink-text-input-stream?
+    (-> sink-text-input-stream? boolean? sink-effects?)
+    sink-effects?)
+  (sink-effects-optimized-textpat-read-located
+    sink-effects-peek-whether-eof-pat text-input-stream
+  #/fn text-input-stream maybe-located-string
+  #/mat maybe-located-string (just located-string)
+    (then text-input-stream #f)
+    (then text-input-stream #t)))
 
 (define sink-effects-read-whitespace-pat
   ; TODO: Support a more Unicode-aware notion of whitespace.
