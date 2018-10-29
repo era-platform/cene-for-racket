@@ -1496,19 +1496,27 @@
     natural?
     (-> (listof sink-authorized-name?) sink-effects?)
     sink-effects?)
-  (mat n 1 (then #/list unique-name)
-  #/sink-effects-fuse (sink-effects-claim unique-name)
+  (sink-effects-fuse (sink-effects-claim unique-name)
   #/expect (nat->maybe n) (just n) (then #/list)
   #/w-loop next n n next-name unique-name names (list)
     (expect (nat->maybe n) (just n) (then #/cons next-name names)
+    
+    ; NOTE: We do not want these to be names that Cene code can
+    ; recreate. If we were implementing `sink-effects-claim-and-split`
+    ; in a Cene package, we could do this by using
+    ; `sink-authorized-name-subname` with a key name made out of a
+    ; `dex-struct` of a struct tag that was made out of unique names
+    ; known only to that package. In this implementation, we don't
+    ; have to go to all that trouble.
+    ;
+    #/dissect next-name (sink-authorized-name #/unsafe:name next-name)
     #/w- first
-      (sink-authorized-name-subname
-        (sink-name-for-string #/sink-string "first")
-        next-name)
+      (sink-authorized-name #/unsafe:name
+        (list 'name:first next-name))
     #/w- rest
-      (sink-authorized-name-subname
-        (sink-name-for-string #/sink-string "rest")
-        next-name)
+      (sink-authorized-name #/unsafe:name
+        (list 'name:rest next-name))
+    
     #/next n rest #/cons first names)))
 
 (define/contract (cexpr-can-eval? cexpr)
