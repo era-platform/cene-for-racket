@@ -28,7 +28,8 @@
 (require #/only-in racket/string string-contains?)
 
 (require #/only-in lathe-comforts dissect expect fn mat w- w-loop)
-(require #/only-in lathe-comforts/maybe just maybe-bind nothing)
+(require #/only-in lathe-comforts/maybe
+  just maybe-bind maybe/c maybe-map nothing)
 (require #/only-in lathe-comforts/string immutable-string?)
 (require #/only-in lathe-comforts/struct struct-easy)
 
@@ -54,7 +55,8 @@
   
   textpat-has-empty?
   optimize-textpat
-  optimized-textpat-match)
+  optimized-textpat-match
+  optimized-textpat-read!)
 
 
 ; TODO: See if this file should be factored out into its own Racket
@@ -63,8 +65,8 @@
 
 (struct-easy (textpat has-empty get-data))
 (struct-easy
-  (textpat-data maybe-optional maybe-necessary maybe-make-func))
-(struct-easy (optimized-textpat func))
+  (textpat-data maybe-optional maybe-necessary maybe-make-optimized))
+(struct-easy (optimized-textpat match-string read-stream!))
 (struct-easy (textpat-result-matched stop) #:equal)
 (struct-easy (textpat-result-failed) #:equal)
 (struct-easy (textpat-result-passed-end) #:equal)
@@ -140,26 +142,35 @@
 (define/contract (compile-textpat-data data)
   (-> textpat-data? textpat-data?)
   (dissect data
-    (textpat-data maybe-optional maybe-necessary maybe-make-func)
+    (textpat-data maybe-optional maybe-necessary maybe-make-optimized)
   #/textpat-data maybe-optional maybe-necessary #/just #/fn
     (w- delegate
       (fn
-        (dissect maybe-make-func (just make-func)
-        #/make-func))
+        (dissect maybe-make-optimized (just make-optimized)
+        #/make-optimized))
     #/expect maybe-optional (just optional) (delegate)
     #/expect maybe-necessary (just necessary) (delegate)
-    #/w- compiled
+    #/w- compiled-match-string
       (regexp #/string-append
         "(?:" necessary "()|" (optional "") "())?")
-    #/fn str start stop
-      (dissect (regexp-match-positions compiled str start stop)
-        (list
-          (cons matched-start matched-stop)
-          matched-nec
-          matched-opt)
-      #/if matched-nec (textpat-result-matched matched-stop)
-      #/if matched-opt (textpat-result-passed-end)
-      #/textpat-result-failed))))
+    #/w- compiled-read-stream (regexp #/string-append "^" necessary)
+    #/optimized-textpat
+      (fn str start stop
+        (dissect
+          (regexp-match-positions
+            compiled-match-string str start stop)
+          (list
+            (cons matched-start matched-stop)
+            matched-nec
+            matched-opt)
+        #/if matched-nec (textpat-result-matched matched-stop)
+        #/if matched-opt (textpat-result-passed-end)
+        #/textpat-result-failed))
+      (fn in
+        (expect (regexp-try-match compiled-read-stream in)
+          (list bytes)
+          (nothing)
+        #/just #/bytes->string/utf-8 bytes)))))
 
 (define/contract (textpat-if condition then else)
   (-> textpat? textpat? textpat? textpat?)
@@ -168,11 +179,11 @@
   #/dissect else (textpat e-has-empty e-get-data)
   #/textpat (or (and c-has-empty t-has-empty) e-has-empty) #/fn
     (dissect (compile-textpat-data #/c-get-data)
-      (textpat-data c-opt c-nec #/just c-make-func)
+      (textpat-data c-opt c-nec #/just c-make-optimized)
     #/dissect (compile-textpat-data #/t-get-data)
-      (textpat-data t-opt t-nec #/just t-make-func)
+      (textpat-data t-opt t-nec #/just t-make-optimized)
     #/dissect (compile-textpat-data #/e-get-data)
-      (textpat-data e-opt e-nec #/just e-make-func)
+      (textpat-data e-opt e-nec #/just e-make-optimized)
     #/textpat-data
       (maybe-bind c-nec #/fn c-nec
       #/maybe-bind c-opt #/fn c-opt
@@ -201,17 +212,30 @@
           "(?!" c-nec ")" e-nec
         ")")
       (just #/fn
-        (w- c-func (c-make-func)
-        #/w- t-func (t-make-func)
-        #/w- e-func (e-make-func)
-        #/fn str start stop
-          (w- c-result (c-func str start stop)
-          #/mat c-result (textpat-result-matched c-stop)
-            (t-func str c-stop stop)
-          #/mat c-result (textpat-result-failed)
-            (e-func str start stop)
-          #/dissect c-result (textpat-result-passed-end)
-            (textpat-result-passed-end)))))))
+        (dissect (c-make-optimized)
+          (optimized-textpat c-match-string c-read-stream!)
+        #/dissect (t-make-optimized)
+          (optimized-textpat t-match-string t-read-stream!)
+        #/dissect (e-make-optimized)
+          (optimized-textpat e-match-string e-read-stream!)
+        #/optimized-textpat
+          (fn str start stop
+            (w- c-result (c-match-string str start stop)
+            #/mat c-result (textpat-result-matched c-stop)
+              (t-match-string str c-stop stop)
+            #/mat c-result (textpat-result-failed)
+              (e-match-string str start stop)
+            #/dissect c-result (textpat-result-passed-end)
+              (textpat-result-passed-end)))
+          (fn in
+            (expect (c-read-stream! in) (just c-result)
+              (e-read-stream! in)
+            #/maybe-map (t-read-stream! in) #/fn t-result
+            ; TODO: Figure out if there's a more efficient approach
+            ; than `string-append` for these `read-stream!`
+            ; operations.
+            #/string->immutable-string #/string-append
+              c-result t-result)))))))
 
 (define/contract (textpat-while condition body)
   (-> textpat? textpat? textpat?)
@@ -224,9 +248,9 @@
     (error "Did not expect both condition and body to match the empty string")
   #/textpat #t #/fn
     (dissect (compile-textpat-data #/c-get-data)
-      (textpat-data c-opt c-nec #/just c-make-func)
+      (textpat-data c-opt c-nec #/just c-make-optimized)
     #/dissect (compile-textpat-data #/b-get-data)
-      (textpat-data b-opt b-nec #/just b-make-func)
+      (textpat-data b-opt b-nec #/just b-make-optimized)
     #/textpat-data
       (maybe-bind c-nec #/fn c-nec
       #/maybe-bind c-opt #/fn c-opt
@@ -249,21 +273,36 @@
       #/just #/string->immutable-string #/string-append
         "(?:" c-nec b-nec ")*(?!" c-nec ")")
       (just #/fn
-        (w- c-func (c-make-func)
-        #/w- b-func (b-make-func)
-        #/fn str start stop
-          (w-loop next start start
-            (w- c-result (c-func str start stop)
-            #/mat c-result (textpat-result-failed)
-              (textpat-result-matched start)
-            #/mat c-result (textpat-result-passed-end)
-              (textpat-result-passed-end)
-            #/dissect c-result (textpat-result-matched c-stop)
-            #/w- b-result (b-func str c-stop stop)
-            #/expect b-result (textpat-result-matched b-stop) b-result
-            #/if (= start b-stop)
-              (error "Internal error: It turns out condition and body can both match the empty string after all")
-            #/next b-stop)))))))
+        (dissect (c-make-optimized)
+          (optimized-textpat c-match-string c-read-stream!)
+        #/dissect (b-make-optimized)
+          (optimized-textpat b-match-string b-read-stream!)
+        #/optimized-textpat
+          (fn str start stop
+            (w-loop next start start
+              (w- c-result (c-match-string str start stop)
+              #/mat c-result (textpat-result-failed)
+                (textpat-result-matched start)
+              #/mat c-result (textpat-result-passed-end)
+                (textpat-result-passed-end)
+              #/dissect c-result (textpat-result-matched c-stop)
+              #/w- b-result (b-match-string str c-stop stop)
+              #/expect b-result (textpat-result-matched b-stop)
+                b-result
+              #/if (= start b-stop)
+                (error "Internal error: It turns out condition and body can both match the empty string after all")
+              #/next b-stop)))
+          (fn in
+            (w-loop next so-far ""
+              (expect (c-read-stream! in) (just c-result)
+                (just #/string->immutable-string so-far)
+              #/maybe-bind (b-read-stream! in) #/fn b-result
+              #/if (= 0 #/+ (length c-result) (length b-result))
+                (error "Internal error: It turns out condition and body can both match the empty string after all")
+              ; TODO: Figure out if there's a more efficient approach
+              ; than `string-append` for these `read-stream!`
+              ; operations.
+              #/next #/string-append so-far c-result b-result))))))))
 
 (define/contract (textpat-until body condition)
   (-> textpat? textpat? textpat?)
@@ -275,9 +314,9 @@
     (error "Did not expect body to match the empty string")
   #/textpat c-has-empty #/fn
     (dissect (compile-textpat-data #/b-get-data)
-      (textpat-data b-opt b-nec #/just b-make-func)
+      (textpat-data b-opt b-nec #/just b-make-optimized)
     #/dissect (compile-textpat-data #/c-get-data)
-      (textpat-data c-opt c-nec #/just c-make-func)
+      (textpat-data c-opt c-nec #/just c-make-optimized)
     #/textpat-data
       (maybe-bind b-nec #/fn b-nec
       #/maybe-bind b-opt #/fn b-opt
@@ -302,17 +341,33 @@
       #/just #/string->immutable-string #/string-append
         "(?:(?!" c-nec ")" b-nec ")*" c-nec)
       (just #/fn
-        (w- b-func (b-make-func)
-        #/w- c-func (c-make-func)
-        #/fn str start stop
-          (w-loop next start start
-            (w- c-result (c-func str start stop)
-            #/expect c-result (textpat-result-failed) c-result
-            #/w- b-result (b-func str start stop)
-            #/expect b-result (textpat-result-matched b-stop) b-result
-            #/if (= start b-stop)
-              (error "Internal error: It turns out body can match the empty string after all")
-            #/next b-stop)))))))
+        (dissect (b-make-optimized)
+          (optimized-textpat b-match-string b-read-stream!)
+        #/dissect (c-make-optimized)
+          (optimized-textpat c-match-string c-read-stream!)
+        #/optimized-textpat
+          (fn str start stop
+            (w-loop next start start
+              (w- c-result (c-match-string str start stop)
+              #/expect c-result (textpat-result-failed) c-result
+              #/w- b-result (b-match-string str start stop)
+              #/expect b-result (textpat-result-matched b-stop)
+                b-result
+              #/if (= start b-stop)
+                (error "Internal error: It turns out body can match the empty string after all")
+              #/next b-stop)))
+          (fn in
+            ; TODO: Figure out if there's a more efficient approach
+            ; than `string-append` for these `read-stream!`
+            ; operations.
+            (w-loop next so-far ""
+              (mat (c-read-stream! in) (just c-result)
+                (just #/string->immutable-string #/string-append
+                  so-far c-result)
+              #/maybe-bind (b-read-stream! in) #/fn b-result
+              #/if (= 0 #/length b-result)
+                (error "Internal error: It turns out body can match the empty string after all")
+              #/next #/string-append so-far b-result))))))))
 
 (define/contract (textpat-or a b)
   (-> textpat? textpat? textpat?)
@@ -347,12 +402,12 @@
   (-> textpat? optimized-textpat?)
   (dissect t (textpat has-empty get-data)
   #/dissect (compile-textpat-data #/get-data)
-    (textpat-data opt nec #/just make-func)
-  #/optimized-textpat #/make-func))
+    (textpat-data opt nec #/just make-optimized)
+  #/make-optimized))
 
 (define/contract (optimized-textpat-match ot str start stop)
   (-> optimized-textpat? string? natural? natural? textpat-result?)
-  (dissect ot (optimized-textpat func)
+  (dissect ot (optimized-textpat match-string read-stream!)
   #/w- n (string-length str)
   #/expect (<= start n) #t
     (error "Expected start to be an index of the string")
@@ -360,4 +415,9 @@
     (error "Expected stop to be an index of the string")
   #/expect (<= start stop) #t
     (error "Expected start to be less than or equal to stop")
-  #/func str start stop))
+  #/match-string str start stop))
+
+(define/contract (optimized-textpat-read! ot in)
+  (-> optimized-textpat? input-port? #/maybe/c string?)
+  (dissect ot (optimized-textpat match-string read-stream!)
+  #/read-stream! in))
