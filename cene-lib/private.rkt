@@ -929,10 +929,9 @@
   #/then (sink-text-input-stream #/box #/just in)
     (eof-object? #/peek-byte in)))
 
-; TODO BUILTINS: Figure out how this could be achieved in Cene. The
-; JavaScript version of Cene has a suite of `regex-...` operations
-; that will probably be more than enough to recreate this if we add a
-; way to match a regex on an input stream.
+; TODO BUILTINS: Make sure all the ways we use this can be achieved in
+; Cene using the `textpat-...` operations. We may need to add a way to
+; use a textpat to read from an input stream.
 (define/contract
   (sink-effects-read-regexp text-input-stream pattern then)
   (->

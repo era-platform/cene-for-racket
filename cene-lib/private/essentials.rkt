@@ -91,6 +91,15 @@
   sink-effects-read-leading-specific-number-of-cexprs
   sink-effects-read-leading-specific-number-of-identifiers
   sink-name-for-local-variable)
+; NOTE: This is basically everything there is to import from
+; `cene/private/textpat` except the struct predicates and accessors.
+(require #/only-in cene/private/textpat
+  textpat? textpat-empty textpat-from-string textpat-give-up
+  textpat-has-empty? textpat-if textpat-one textpat-one-in-range
+  textpat-one-in-string textpat-result? textpat-result-failed
+  textpat-result-matched textpat-result-passed-end textpat-until
+  textpat-while optimized-textpat? optimized-textpat-match
+  optimize-textpat)
 
 
 (provide cene-runtime-essentials)
@@ -114,6 +123,13 @@
 (define s-struct-metadata
   (core-sink-struct "struct-metadata"
   #/list "main-tag-name" "projections"))
+
+(define s-textpat-result-matched
+  (core-sink-struct "textpat-result-matched" #/list "stop"))
+(define s-textpat-result-failed
+  (core-sink-struct "textpat-result-failed" #/list))
+(define s-textpat-result-passed-end
+  (core-sink-struct "textpat-result-passed-end" #/list))
 
 
 ; TODO: We used this in `effection/order/base`, and we're using it
@@ -276,6 +292,10 @@
 (struct-easy (sink-fuse fuse)
   #:other #:methods gen:sink [])
 (struct-easy (sink-int racket-int)
+  #:other #:methods gen:sink [])
+(struct-easy (sink-textpat racket-textpat)
+  #:other #:methods gen:sink [])
+(struct-easy (sink-optimized-textpat racket-optimized-textpat)
   #:other #:methods gen:sink [])
 
 
@@ -2248,29 +2268,128 @@
     #/substring string start stop))
   
   
-  ; Regexes
-  
-  ; TODO BUILTINS: Implement the following built-ins from the
-  ; JavaScript version of Cene. We should probably rename them from
-  ; "regex" to "textpat"; they are text patterns, but they're not
-  ; quite regexes. We'll probably want to write a Racket library
-  ; dedicated to these as well, so that people can encounter them and
-  ; learn about them outside the context of Cene's bizarre ecosystem.
+  ; Text patterns
   ;
-  ;   regex-give-up
-  ;   regex-empty
-  ;   regex-if
-  ;   regex-while
-  ;   regex-until
-  ;   regex-one-in-range
-  ;   regex-one
-  ;   regex-from-string
-  ;   regex-one-in-string
-  ;   optimize-regex-later
-  ;   optimized-regex-match-later
-  ;   regex-result-matched
-  ;   regex-result-failed
-  ;   regex-result-passed-end
+  ; NOTE: In the JavaScript version of Cene, these were known as
+  ; "regexes" instead of "text patterns," and the names used `regex`
+  ; instead of `textpat`. These aren't quite regexes, and the fact
+  ; they don't backtrack makes them a lot like pattern-matching
+  ; clauses in functional programming languages, so the name
+  ; "text patterns" is more evocative of what they actually are.
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func! "is-textpat" v
+    (racket-boolean->sink #/sink-textpat? v))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func! "is-optimized-textpat" v
+    (racket-boolean->sink #/sink-optimized-textpat? v))
+  
+  (def-nullary-func! "textpat-give-up"
+    (sink-textpat #/textpat-give-up))
+  
+  (def-nullary-func! "textpat-empty"
+    (sink-textpat #/textpat-empty))
+  
+  (def-func! "textpat-if" condition then else
+    (expect condition (sink-textpat condition)
+      (cene-err "Expected condition to be a text pattern")
+    #/expect then (sink-textpat then)
+      (cene-err "Expected then to be a text pattern")
+    #/expect else (sink-textpat else)
+      (cene-err "Expected else to be a text pattern")
+    #/sink-textpat #/textpat-if condition then else))
+  
+  (def-func! "textpat-while" condition body
+    (expect condition (sink-textpat condition)
+      (cene-err "Expected condition to be a text pattern")
+    #/expect body (sink-textpat body)
+      (cene-err "Expected body to be a text pattern")
+    #/sink-textpat #/textpat-while condition body))
+  
+  (def-func! "textpat-until" body condition
+    (expect body (sink-textpat body)
+      (cene-err "Expected body to be a text pattern")
+    #/expect condition (sink-textpat condition)
+      (cene-err "Expected condition to be a text pattern")
+    #/sink-textpat #/textpat-until body condition))
+  
+  (def-func! "textpat-one-in-range" start stop
+    (expect start (sink-string start)
+      (cene-err "Expected start to be a string")
+    #/expect (string-length start) 1
+      (cene-err "Expected start to be a string containing a single Unicode scalar value")
+    #/w- start (string-ref start 0)
+    #/expect stop (sink-string stop)
+      (cene-err "Expected stop to be a string")
+    #/expect (string-length stop) 1
+      (cene-err "Expected stop to be a string containing a single Unicode scalar value")
+    #/w- stop (string-ref stop 0)
+    #/sink-textpat #/textpat-one-in-range start stop))
+  
+  (def-nullary-func! "textpat-one"
+    (sink-textpat #/textpat-one))
+  
+  (def-func! "textpat-from-string" str
+    (expect str (sink-string str)
+      (cene-err "Expected str to be a string")
+    #/sink-textpat #/textpat-from-string str))
+  
+  (def-func! "textpat-one-in-string" str
+    (expect str (sink-string str)
+      (cene-err "Expected str to be a string")
+    #/sink-textpat #/textpat-one-in-string str))
+  
+  (def-func! "textpat-has-empty" t
+    (expect t (sink-textpat t)
+      (cene-err "Expected t to be a text pattern")
+    #/racket-boolean->sink #/textpat-has-empty? t))
+  
+  ; NOTE: In the JavaScript version of Cene, this was known as
+  ; `optimize-regex-later`.
+  (def-func! "effects-optimize-textpat" t then
+    (expect t (sink-textpat t)
+      (cene-err "Expected t to be a text pattern")
+    #/sink-effects-later #/fn
+    #/sink-call then
+    #/sink-optimized-textpat #/optimize-textpat t))
+  
+  ; NOTE: In the JavaScript version of Cene, this was known as
+  ; `optimized-regex-match-later`.
+  (def-func! "effects-optimized-textpat-match" ot str start stop then
+    (expect ot (sink-optimized-textpat ot)
+      (cene-err "Expected ot to be a text pattern")
+    #/expect str (sink-string str)
+      (cene-err "Expected str to be a string")
+    #/w- n (string-length str)
+    #/expect start (sink-int start)
+      (cene-err "Expected start to be an integer")
+    #/expect (<= 0 start) #t
+      (cene-err "Expected start to be a nonnegative integer")
+    #/expect (<= start n) #t
+      (cene-err "Expected start to be less than or equal to the length of the string")
+    #/expect stop (sink-int stop)
+      (cene-err "Expected stop to be an integer")
+    #/expect (<= 0 stop) #t
+      (cene-err "Expected stop to be a nonnegative integer")
+    #/expect (<= stop n) #t
+      (cene-err "Expected stop to be less than or equal to the length of the string")
+    #/expect (<= start stop) #t
+      (cene-err "Expected start to be less than or equal to stop")
+    #/sink-effects-later #/fn
+    #/sink-call then
+    #/w- result (optimized-textpat-match ot str start stop)
+    #/mat result (textpat-result-matched stop)
+      (make-sink-struct s-textpat-result-matched #/list
+      #/sink-int stop)
+    #/mat result (textpat-result-failed)
+      (make-sink-struct s-textpat-result-failed #/list)
+    #/dissect result (textpat-result-passed-end)
+      (make-sink-struct s-textpat-result-passed-end #/list)))
+  
+  (def-data-struct! "textpat-result-matched" #/list "stop")
+  (def-data-struct! "textpat-result-failed" #/list)
+  (def-data-struct! "textpat-result-passed-end" #/list)
   
   
   ; File I/O for simple builds

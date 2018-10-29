@@ -32,7 +32,6 @@
 (require #/only-in lathe-comforts/string immutable-string?)
 (require #/only-in lathe-comforts/struct struct-easy)
 
-; TODO BUILTINS: Expose each of these as a Cene built-in.
 (provide
   
   (struct-out textpat-result-matched)
@@ -60,6 +59,7 @@
 
 ; TODO: See if this file should be factored out into its own Racket
 ; library.
+
 
 (struct-easy (textpat has-empty get-data))
 (struct-easy
