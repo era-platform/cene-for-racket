@@ -53,6 +53,7 @@
   textpat-until
   textpat-one-in-range
   
+  textpat-has-empty?
   optimize-textpat
   optimized-textpat-match)
 
@@ -334,6 +335,13 @@
   #/textpat-optional-trivial #f
   #/string->immutable-string #/string-append
     "[" a-str "-" b-str "]"))
+
+; NOTE: This is a version of `textpat-as-empty` that doesn't satisfy
+; `struct-accessor-procedure?`.
+(define/contract (textpat-has-empty? t)
+  (-> textpat? boolean?)
+  (dissect t (textpat has-empty get-data)
+    has-empty))
 
 (define/contract (optimize-textpat t)
   (-> textpat? optimized-textpat?)
