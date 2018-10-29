@@ -91,8 +91,9 @@
   sink-effects-read-leading-specific-number-of-cexprs
   sink-effects-read-leading-specific-number-of-identifiers
   sink-name-for-local-variable)
-; NOTE: This is basically everything there is to import from
-; `cene/private/textpat` except the struct predicates and accessors.
+; NOTE: This is all the "essential operations" from
+; `cene/private/textpat` except for the struct predicates and
+; accessors.
 (require #/only-in cene/private/textpat
   textpat? textpat-empty textpat-from-string textpat-give-up
   textpat-has-empty? textpat-if textpat-one textpat-one-in-range
@@ -2131,8 +2132,8 @@
     (expect expr (sink-cexpr expr)
       (cene-err "Expected expr to be an expression")
     #/sink-effects-later #/fn
-    #/verify-callback-effects!
-    #/sink-call then #/racket-boolean->sink #/cexpr-can-eval? expr))
+    #/verify-callback-effects! #/sink-call then
+    #/racket-boolean->sink #/cexpr-can-eval? expr))
   
   ; TODO: See if this can be a pure function.
   ;
@@ -2228,7 +2229,7 @@
     #/expect b (sink-string b)
       (cene-err "Expected b to be a string")
     #/sink-effects-later #/fn
-    #/sink-call then
+    #/verify-callback-effects! #/sink-call then
     #/sink-string #/string->immutable-string #/string-append a b))
   
   ; TODO BUILTINS: Implement the macro `str`.
@@ -2350,9 +2351,9 @@
   (def-func! "effects-optimize-textpat" t then
     (expect t (sink-textpat t)
       (cene-err "Expected t to be a text pattern")
-    #/sink-effects-later #/fn
-    #/sink-call then
-    #/sink-optimized-textpat #/optimize-textpat t))
+    #/sink-effects-optimize-textpat t #/fn t
+    #/verify-callback-effects! #/sink-call then
+    #/sink-optimized-textpat t))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `optimized-regex-match-later`.
@@ -2377,7 +2378,7 @@
     #/expect (<= start stop) #t
       (cene-err "Expected start to be less than or equal to stop")
     #/sink-effects-later #/fn
-    #/sink-call then
+    #/verify-callback-effects! #/sink-call then
     #/w- result (optimized-textpat-match ot str start stop)
     #/mat result (textpat-result-matched stop)
       (make-sink-struct s-textpat-result-matched #/list
@@ -2390,6 +2391,19 @@
   (def-data-struct! "textpat-result-matched" #/list "stop")
   (def-data-struct! "textpat-result-failed" #/list)
   (def-data-struct! "textpat-result-passed-end" #/list)
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func! "effects-optimized-textpat-read-located"
+    ot input-stream then
+    
+    (expect ot (sink-optimized-textpat ot)
+      (cene-err "Expected ot to be a text pattern")
+    #/expect (sink-text-input-stream? input-stream) #t
+      (cene-err "Expected input-stream to be a text input stream")
+    #/sink-effects-optimized-textpat-read-located ot input-stream
+    #/fn input-stream maybe-result
+    #/verify-callback-effects!
+    #/sink-call then input-stream #/racket-maybe->sink maybe-result))
   
   
   ; File I/O for simple builds

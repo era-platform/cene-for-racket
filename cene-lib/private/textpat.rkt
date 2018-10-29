@@ -75,11 +75,29 @@
 ; library.
 
 
+; ===== Miscellaneous infrastructure =================================
+
+(define/contract (regexp-maybe code)
+  (-> string? #/maybe/c regexp?)
+  ; TODO: See if there's any better way to work around the
+  ; "regexp too big" error.
+  (with-handlers
+    (
+      [
+        (fn e
+          (and (exn:fail:contract? e)
+          #/equal? (exn-message e)
+            "regexp: regexp too big"))
+        (fn e
+          (nothing))])
+    (just #/regexp code)))
+
+
 ; ===== Essential operations =========================================
 
 (struct-easy (textpat has-empty get-data))
 (struct-easy
-  (textpat-data maybe-optional maybe-necessary maybe-make-optimized))
+  (textpat-data maybe-optional maybe-necessary make-optimized))
 (struct-easy (optimized-textpat match-string read-stream!))
 (struct-easy (textpat-result-matched stop) #:equal)
 (struct-easy (textpat-result-failed) #:equal)
@@ -110,16 +128,22 @@
     (just #/fn next
       (string->immutable-string #/string-append necessary next))
     (just necessary)
-    (nothing)))
+    (fn
+      (error "Internal error: Expected the regexp to be small enough to compile"))))
 
-(define/contract (textpat-optional-trivial has-empty necessary)
-  (-> boolean? immutable-string? textpat?)
+(define/contract
+  (textpat-optional-trivial has-empty necessary maybe-make-optimized)
+  (-> boolean? immutable-string? (maybe/c #/-> optimized-textpat?)
+    textpat?)
   (textpat has-empty #/fn #/textpat-data
     (just #/fn next
       (string->immutable-string #/string-append
         "(?:" necessary next "|$)"))
     (just necessary)
-    (nothing)))
+    (mat maybe-make-optimized (just make-optimized)
+      make-optimized
+      (fn
+        (error "Internal error: Expected the regexp to be small enough to compile")))))
 
 (define/contract (textpat-give-up)
   (-> textpat?)
@@ -131,44 +155,81 @@
 
 (define/contract (textpat-from-string str)
   (-> immutable-string? textpat?)
-  (textpat (= 0 #/string-length str) #/fn #/textpat-data
+  (w- n (string-length str)
+  #/textpat (= 0 n) #/fn #/textpat-data
     (just #/fn next
       (string->immutable-string #/string-append
-        (regexp-replace #rx"." str #/fn scalar-string
+        (regexp-replace* #rx"." str #/fn scalar-string
           (string-append "(?:" (regexp-quote scalar-string)))
         next
-        (regexp-replace #rx"." str "|$)")))
+        (regexp-replace* #rx"." str "|$)")))
     (just #/regexp-quote str)
-    (nothing)))
+    (fn
+      (optimized-textpat
+        (fn str start stop
+          (if (< (- stop start) n)
+            (textpat-result-passed-end)
+          #/w- potential-stop (+ start n)
+          #/if (equal? str #/substring str start potential-stop)
+            (textpat-result-matched potential-stop)
+            (textpat-result-failed)))
+        (fn in
+          (w- potential-result (peek-string n 0 in)
+          #/if (equal? str potential-result)
+            (begin
+              (read-string n in)
+              (just str))
+            (nothing)))))))
 
-(define/contract (textpat-one-in-string str)
+(define/contract (textpat-one-in-string example-str)
   (-> immutable-string? textpat?)
   (textpat-optional-trivial #f
-  #/string->immutable-string #/string-append
-    "(?:.^"
-    (regexp-replace #rx"." str #/fn scalar-string
-      (string-append "|" (regexp-quote scalar-string)))
-    ")"))
+    (string->immutable-string #/string-append
+      "(?:.^"
+      (regexp-replace* #rx"." example-str #/fn scalar-string
+        (string-append "|" (regexp-quote scalar-string)))
+      ")")
+    (just #/fn
+      (optimized-textpat
+        (fn str start stop
+          (if (= start stop)
+            (textpat-result-passed-end)
+          #/w- potential-stop (add1 start)
+          #/if
+            (string-contains? example-str
+            #/substring str start potential-stop)
+            (textpat-result-matched potential-stop)
+          #/textpat-result-failed))
+        (fn in
+          (w- ch (peek-char in)
+          #/if (eof-object? ch)
+            (nothing)
+          #/w- potential-result (string->immutable-string #/string ch)
+          #/if (string-contains? example-str potential-result)
+            (begin
+              (read-char in)
+              (just potential-result))
+            (nothing)))))))
 
 (define/contract (textpat-one)
   (-> textpat?)
-  (textpat-optional-trivial #f "."))
+  (textpat-optional-trivial #f "." (nothing)))
 
 (define/contract (compile-textpat-data data)
   (-> textpat-data? textpat-data?)
   (dissect data
-    (textpat-data maybe-optional maybe-necessary maybe-make-optimized)
-  #/textpat-data maybe-optional maybe-necessary #/just #/fn
-    (w- delegate
-      (fn
-        (dissect maybe-make-optimized (just make-optimized)
-        #/make-optimized))
-    #/expect maybe-optional (just optional) (delegate)
-    #/expect maybe-necessary (just necessary) (delegate)
-    #/w- compiled-match-string
-      (regexp #/string-append
+    (textpat-data maybe-optional maybe-necessary make-optimized)
+  #/textpat-data maybe-optional maybe-necessary #/fn
+    (expect maybe-optional (just optional) (make-optimized)
+    #/expect maybe-necessary (just necessary) (make-optimized)
+    #/expect
+      (regexp-maybe #/string-append
         "(?:" necessary "()|" (optional "") "())?")
-    #/w- compiled-read-stream (regexp #/string-append "^" necessary)
+      (just compiled-match-string)
+      (make-optimized)
+    #/expect (regexp-maybe #/string-append "^" necessary)
+      (just compiled-read-stream)
+      (make-optimized)
     #/optimized-textpat
       (fn str start stop
         (dissect
@@ -194,11 +255,11 @@
   #/dissect else (textpat e-has-empty e-get-data)
   #/textpat (or (and c-has-empty t-has-empty) e-has-empty) #/fn
     (dissect (compile-textpat-data #/c-get-data)
-      (textpat-data c-opt c-nec #/just c-make-optimized)
+      (textpat-data c-opt c-nec c-make-optimized)
     #/dissect (compile-textpat-data #/t-get-data)
-      (textpat-data t-opt t-nec #/just t-make-optimized)
+      (textpat-data t-opt t-nec t-make-optimized)
     #/dissect (compile-textpat-data #/e-get-data)
-      (textpat-data e-opt e-nec #/just e-make-optimized)
+      (textpat-data e-opt e-nec e-make-optimized)
     #/textpat-data
       (maybe-bind c-nec #/fn c-nec
       #/maybe-bind c-opt #/fn c-opt
@@ -226,7 +287,7 @@
           ; We may match the else clause.
           "(?!" c-nec ")" e-nec
         ")")
-      (just #/fn
+      (fn
         (dissect (c-make-optimized)
           (optimized-textpat c-match-string c-read-stream!)
         #/dissect (t-make-optimized)
@@ -263,9 +324,9 @@
     (error "Did not expect both condition and body to match the empty string")
   #/textpat #t #/fn
     (dissect (compile-textpat-data #/c-get-data)
-      (textpat-data c-opt c-nec #/just c-make-optimized)
+      (textpat-data c-opt c-nec c-make-optimized)
     #/dissect (compile-textpat-data #/b-get-data)
-      (textpat-data b-opt b-nec #/just b-make-optimized)
+      (textpat-data b-opt b-nec b-make-optimized)
     #/textpat-data
       (maybe-bind c-nec #/fn c-nec
       #/maybe-bind c-opt #/fn c-opt
@@ -287,7 +348,7 @@
       #/maybe-bind b-nec #/fn b-nec
       #/just #/string->immutable-string #/string-append
         "(?:" c-nec b-nec ")*(?!" c-nec ")")
-      (just #/fn
+      (fn
         (dissect (c-make-optimized)
           (optimized-textpat c-match-string c-read-stream!)
         #/dissect (b-make-optimized)
@@ -329,9 +390,9 @@
     (error "Did not expect body to match the empty string")
   #/textpat c-has-empty #/fn
     (dissect (compile-textpat-data #/b-get-data)
-      (textpat-data b-opt b-nec #/just b-make-optimized)
+      (textpat-data b-opt b-nec b-make-optimized)
     #/dissect (compile-textpat-data #/c-get-data)
-      (textpat-data c-opt c-nec #/just c-make-optimized)
+      (textpat-data c-opt c-nec c-make-optimized)
     #/textpat-data
       (maybe-bind b-nec #/fn b-nec
       #/maybe-bind b-opt #/fn b-opt
@@ -355,7 +416,7 @@
       #/maybe-bind c-nec #/fn c-nec
       #/just #/string->immutable-string #/string-append
         "(?:(?!" c-nec ")" b-nec ")*" c-nec)
-      (just #/fn
+      (fn
         (dissect (b-make-optimized)
           (optimized-textpat b-match-string b-read-stream!)
         #/dissect (c-make-optimized)
@@ -403,8 +464,9 @@
     (textpat-or-binary (textpat-one-in-string b-str)
     #/textpat-one-in-range (integer->char #/add1 an) b)
   #/textpat-optional-trivial #f
-  #/string->immutable-string #/string-append
-    "[" a-str "-" b-str "]"))
+    (string->immutable-string #/string-append
+      "[" a-str "-" b-str "]")
+    (nothing)))
 
 ; NOTE: This is a version of `textpat-as-empty` that doesn't satisfy
 ; `struct-accessor-procedure?`.
@@ -417,7 +479,7 @@
   (-> textpat? optimized-textpat?)
   (dissect t (textpat has-empty get-data)
   #/dissect (compile-textpat-data #/get-data)
-    (textpat-data opt nec #/just make-optimized)
+    (textpat-data opt nec make-optimized)
   #/make-optimized))
 
 (define/contract (optimized-textpat-match ot str start stop)

@@ -48,6 +48,12 @@
   table-shadow)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe name)
 
+(require #/only-in cene/private/textpat
+  textpat? textpat-from-string textpat-lookahead
+  textpat-once-or-more textpat-one-in-range textpat-one-in-string
+  textpat-one-not textpat-one-not-in-string textpat-or textpat-star
+  optimized-textpat? optimized-textpat-read! optimize-textpat)
+
 
 (provide #/all-defined-out)
 
@@ -929,14 +935,12 @@
   #/then (sink-text-input-stream #/box #/just in)
     (eof-object? #/peek-byte in)))
 
-; TODO BUILTINS: Make sure all the ways we use this can be achieved in
-; Cene using the `textpat-...` operations. We may need to add a way to
-; use a textpat to read from an input stream.
 (define/contract
-  (sink-effects-read-regexp text-input-stream pattern then)
+  (sink-effects-optimized-textpat-read-located
+    pattern text-input-stream then)
   (->
+    optimized-textpat?
     sink-text-input-stream?
-    regexp?
     (-> sink-text-input-stream? (maybe/c sink-located-string?)
       sink-effects?)
     sink-effects?)
@@ -947,7 +951,7 @@
       [
         (start-line start-column start-position)
         (port-next-location in)])
-  #/expect (regexp-try-match pattern in) (list bytes)
+  #/expect (optimized-textpat-read! pattern in) (just text)
     (then (sink-text-input-stream #/box #/just in) (nothing))
   #/let-values
     (
@@ -958,36 +962,53 @@
     (just #/sink-located-string #/list
       (list
         (list start-line start-column start-position)
-        (bytes->string/utf-8 bytes)
+        text
         (list stop-line stop-column stop-position)))))
 
-; TODO BUILTINS: Add the regex we're using here as a Cene built-in.
+(define sink-effects-read-whitespace-pat
+  ; TODO: Support a more Unicode-aware notion of whitespace.
+  (optimize-textpat #/textpat-star #/textpat-one-in-string " \t\r\n"))
+
 (define/contract
   (sink-effects-read-whitespace text-input-stream then)
   (->
     sink-text-input-stream?
     (-> sink-text-input-stream? sink-located-string? sink-effects?)
     sink-effects?)
-  ; TODO: Support a more Unicode-aware notion of whitespace.
-  (sink-effects-read-regexp text-input-stream #px"^[ \t\r\n]*"
+  (sink-effects-optimized-textpat-read-located
+    sink-effects-read-whitespace-pat text-input-stream
   #/fn text-input-stream maybe-located-string
   #/dissect maybe-located-string (just located-string)
   #/then text-input-stream located-string))
 
-; TODO BUILTINS: Add the regex we're using here as a Cene built-in.
+(define sink-effects-read-non-line-breaks-pat
+  (optimize-textpat
+  ; TODO: Support a more Unicode-aware notion of line break.
+  #/textpat-star #/textpat-one-not-in-string "\r\n"))
+
 (define/contract
   (sink-effects-read-non-line-breaks text-input-stream then)
   (->
     sink-text-input-stream?
     (-> sink-text-input-stream? sink-located-string? sink-effects?)
     sink-effects?)
-  ; TODO: Support a more Unicode-aware notion of line break.
-  (sink-effects-read-regexp text-input-stream #px"^[^\r\n]*"
+  (sink-effects-optimized-textpat-read-located
+    sink-effects-read-non-line-breaks-pat text-input-stream
   #/fn text-input-stream maybe-located-string
   #/dissect maybe-located-string (just located-string)
   #/then text-input-stream located-string))
 
-; TODO BUILTINS: Add the regexes we're using here as Cene built-ins.
+(define sink-effects-read-maybe-identifier-pat
+  ; TODO: Support a more Unicode-aware notion of identifier. Not only
+  ; should `sink-effects-read-maybe-identifier` recognize an
+  ; identifier according to one of the Unicode algorithms, it should
+  ; normalize it according to a Unicode algorithm as well.
+  (optimize-textpat #/textpat-once-or-more #/textpat-or
+    (textpat-one-in-string "-0")
+    (textpat-one-in-range #\1 #\9)
+    (textpat-one-in-range #\a #\z)
+    (textpat-one-in-range #\A #\Z)))
+
 (define/contract
   (sink-effects-read-maybe-identifier
     qualify text-input-stream pre-qualify then)
@@ -1000,11 +1021,8 @@
       (maybe/c #/list/c sink-located-string? sink-authorized-name?)
       sink-effects?)
     sink-effects?)
-  ; TODO: Support a more Unicode-aware notion of identifier. Not only
-  ; should this recognize an identifier according to one of the
-  ; Unicode algorithms, it should normalize it according to a Unicode
-  ; algorithm as well.
-  (sink-effects-read-regexp text-input-stream #px"^[-01-9a-zA-Z]+"
+  (sink-effects-optimized-textpat-read-located
+    sink-effects-read-maybe-identifier-pat text-input-stream
   #/fn text-input-stream maybe-located-string
   #/expect maybe-located-string (just located-string)
     (then text-input-stream #/nothing)
@@ -1013,7 +1031,15 @@
     (just #/list located-string
     #/sink-call qualify #/pre-qualify #/sink-name-for-string string)))
 
-; TODO BUILTINS: Add the regex we're using here as a Cene built-in.
+(define sink-effects-read-maybe-op-character-pat
+  ; TODO: Support a more Unicode-aware notion here, maybe the
+  ; "pattern" symbols described in the Unicode identifier rules.
+  (optimize-textpat #/textpat-one-not #/textpat-or
+    (textpat-one-in-string "-0 \t\r\n[]()\\.:")
+    (textpat-one-in-range #\1 #\9)
+    (textpat-one-in-range #\a #\z)
+    (textpat-one-in-range #\A #\Z)))
+
 (define/contract
   (sink-effects-read-maybe-op-character text-input-stream then)
   (->
@@ -1021,57 +1047,41 @@
     (-> sink-text-input-stream? (maybe/c sink-located-string?)
       sink-effects?)
     sink-effects?)
-  ; TODO: Support a more Unicode-aware notion here, maybe the
-  ; "pattern" symbols described in the Unicode identifier rules.
-  (sink-effects-read-regexp text-input-stream
-    #px"^[^-01-9a-zA-Z \t\r\n\\[\\]()\\\\.:]"
-    then))
+  (sink-effects-optimized-textpat-read-located
+    sink-effects-read-maybe-op-character-pat text-input-stream then))
 
-(define/contract
-  (sink-effects-read-maybe-given-racket text-input-stream str then)
+(define/contract (sink-effects-optimize-textpat t then)
   (->
-    sink-text-input-stream?
-    string?
-    (-> sink-text-input-stream? (maybe/c sink-located-string?)
-      sink-effects?)
+    textpat?
+    (-> optimized-textpat? sink-effects?)
     sink-effects?)
-  ; TODO: See if we should compile more of these ahead of time rather
-  ; than generating regexp code at run time like this.
-  (sink-effects-read-regexp text-input-stream
-    (pregexp #/string-append "^" #/regexp-quote str)
-    then))
+  (sink-effects-later #/fn #/then #/optimize-textpat t))
 
-(define/contract
-  (sink-effects-peek-whether-given-racket text-input-stream str then)
-  (->
-    sink-text-input-stream?
-    string?
-    (-> sink-text-input-stream? boolean? sink-effects?)
-    sink-effects?)
-  ; TODO: See if we should compile more of these ahead of time rather
-  ; than generating regexp code at run time like this.
-  (sink-effects-read-regexp text-input-stream
-    (pregexp #/string-append "^(?=" (regexp-quote str) ")")
-  #/fn text-input-stream maybe-located-empty-string
-  #/mat maybe-located-empty-string (just located-empty-string)
-    (then text-input-stream #t)
-    (then text-input-stream #f)))
+(define |pat "["| (optimize-textpat #/textpat-from-string "["))
+(define |pat "]"| (optimize-textpat #/textpat-from-string "]"))
+(define |pat "("| (optimize-textpat #/textpat-from-string "("))
+(define |pat ")"| (optimize-textpat #/textpat-from-string ")"))
+(define |pat "\\"| (optimize-textpat #/textpat-from-string "\\"))
+(define |pat "."| (optimize-textpat #/textpat-from-string "."))
+(define |pat ":"| (optimize-textpat #/textpat-from-string ":"))
+(define |pat "/"| (optimize-textpat #/textpat-from-string "/"))
 
-; TODO BUILTINS: Add the regexes we're using here as Cene built-ins.
+(define sink-effects-peek-whether-closing-bracket-pat
+  (optimize-textpat #/textpat-lookahead #/textpat-one-in-string "])"))
+
 (define/contract
   (sink-effects-peek-whether-closing-bracket text-input-stream then)
   (->
     sink-text-input-stream?
     (-> sink-text-input-stream? boolean? sink-effects?)
     sink-effects?)
-  (sink-effects-peek-whether-given-racket text-input-stream ")"
-  #/fn text-input-stream it-is
-  #/if it-is
+  (sink-effects-optimized-textpat-read-located
+    sink-effects-peek-whether-closing-bracket-pat text-input-stream
+  #/fn text-input-stream maybe-located-empty-string
+  #/mat maybe-located-empty-string (just located-empty-string)
     (then text-input-stream #t)
-  #/sink-effects-peek-whether-given-racket text-input-stream "]"
-    then))
+    (then text-input-stream #f)))
 
-; TODO BUILTINS: Add the regexes we're using here as Cene built-ins.
 (define/contract
   (sink-effects-read-op text-input-stream qualify pre-qualify then)
   (->
@@ -1103,17 +1113,20 @@
   
   #/w- then
     (fn text-input-stream op-name
-      (sink-effects-read-maybe-given-racket text-input-stream ":"
+      (sink-effects-optimized-textpat-read-located
+        |pat ":"| text-input-stream
       #/fn text-input-stream maybe-str
       #/then text-input-stream op-name))
   
   ; TODO: Support the use of ( and [ as delimiters for macro
   ; names.
-  #/sink-effects-read-maybe-given-racket text-input-stream "("
+  #/sink-effects-optimized-textpat-read-located
+    |pat "("| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     (cene-err "The use of ( to delimit a macro name is not yet supported")
-  #/sink-effects-read-maybe-given-racket text-input-stream "["
+  #/sink-effects-optimized-textpat-read-located
+    |pat "["| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     (cene-err "The use of [ to delimit a macro name is not yet supported")
@@ -1242,9 +1255,6 @@
 
 ; TODO: For every cexpr read this way, wrap that cexpr in a located
 ; cexpr.
-;
-; TODO BUILTINS: Add the regexes we're using here as Cene built-ins.
-;
 (define/contract
   (sink-effects-read-cexprs
     unique-name qualify text-input-stream output-stream then)
@@ -1288,32 +1298,38 @@
   #/if is-eof
     (then unique-name qualify text-input-stream output-stream)
   
-  #/sink-effects-read-maybe-given-racket text-input-stream ")"
+  #/sink-effects-optimized-textpat-read-located
+    |pat ")"| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     (cene-err "Encountered an unmatched )")
-  #/sink-effects-read-maybe-given-racket text-input-stream "]"
+  #/sink-effects-optimized-textpat-read-located
+    |pat "]"| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     (cene-err "Encountered an unmatched ]")
   
-  #/sink-effects-read-maybe-given-racket text-input-stream "\\"
+  #/sink-effects-optimized-textpat-read-located
+    |pat "\\"| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     (sink-effects-read-and-run-freestanding-cexpr-op
       unique-name qualify text-input-stream output-stream then)
   
-  #/sink-effects-read-maybe-given-racket text-input-stream "("
+  #/sink-effects-optimized-textpat-read-located
+    |pat "("| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     (w- then
       (fn unique-name qualify text-input-stream output-stream
-        (sink-effects-read-maybe-given-racket text-input-stream ")"
+        (sink-effects-optimized-textpat-read-located
+          |pat ")"| text-input-stream
         #/fn text-input-stream maybe-str
         #/expect maybe-str (just _)
           (cene-err "Encountered a syntax that began with ( or (. and did not end with )")
         #/then unique-name qualify text-input-stream output-stream))
-    #/sink-effects-read-maybe-given-racket text-input-stream "."
+    #/sink-effects-optimized-textpat-read-located
+      |pat "."| text-input-stream
     #/fn text-input-stream maybe-str
     #/mat maybe-str (just _)
       (sink-effects-read-and-run-bounded-cexpr-op
@@ -1321,17 +1337,20 @@
     #/sink-effects-run-nameless-op
       unique-name qualify text-input-stream output-stream then)
   
-  #/sink-effects-read-maybe-given-racket text-input-stream "["
+  #/sink-effects-optimized-textpat-read-located
+    |pat "["| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     (w- then
       (fn unique-name qualify text-input-stream output-stream
-        (sink-effects-read-maybe-given-racket text-input-stream "]"
+        (sink-effects-optimized-textpat-read-located
+          |pat "]"| text-input-stream
         #/fn text-input-stream maybe-str
         #/expect maybe-str (just _)
           (cene-err "Encountered a syntax that began with [ or [. and did not end with ]")
         #/then unique-name qualify text-input-stream output-stream))
-    #/sink-effects-read-maybe-given-racket text-input-stream "."
+    #/sink-effects-optimized-textpat-read-located
+      |pat "."| text-input-stream
     #/fn text-input-stream maybe-str
     #/mat maybe-str (just _)
       (sink-effects-read-and-run-bounded-cexpr-op
@@ -1339,7 +1358,8 @@
     #/sink-effects-run-nameless-op
       unique-name qualify text-input-stream output-stream then)
   
-  #/sink-effects-read-maybe-given-racket text-input-stream "/"
+  #/sink-effects-optimized-textpat-read-located
+    |pat "/"| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     (w- then
@@ -1349,7 +1369,8 @@
         #/if (not is-closing-bracket)
           (cene-err "Encountered a syntax that began with /. and did not end at ) or ]")
         #/then unique-name qualify text-input-stream output-stream))
-    #/sink-effects-read-maybe-given-racket text-input-stream "."
+    #/sink-effects-optimized-textpat-read-located
+      |pat "."| text-input-stream
     #/fn text-input-stream maybe-str
     #/mat maybe-str (just _)
       (sink-effects-read-and-run-bounded-cexpr-op
