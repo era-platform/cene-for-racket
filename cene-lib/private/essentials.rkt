@@ -936,16 +936,17 @@
 
 
 ; TODO: Use this in some kind of CLI entrypoint or something.
-;
-; TODO BUILTINS: See if we should add something like this as a Cene
-; built-in. Yes, a Cene built-in that installs the Cene built-ins.
-;
 (define/contract (cene-runtime-essentials)
   (-> cene-runtime?)
   
   (define defined-dexes (table-empty))
   (define defined-values (table-empty))
   (define init-package-steps (list))
+  
+  (define/contract (sink-effects-init-package qualify-for-package)
+    (-> (-> sink-name? sink-authorized-name?) sink-effects?)
+    (sink-effects-fuse-list #/list-map init-package-steps #/fn step
+      (step qualify-for-package)))
   
   (define/contract (def-dexable-value-for-lang-impl! name dex value)
     (-> sink-authorized-name? sink-dex? sink? void?)
@@ -2721,11 +2722,47 @@
       (cene-err "Expected dex-elem to be a dex")
     #/sink-dex-list dex-elem))
   
+  ; This installs all the built-ins so they're in the appropriate
+  ; places for loading code under the given `qualify` function.
+  ;
+  ; NOTE:
+  ;
+  ; New releases of this Cene implementation are likely to introduce
+  ; more built-ins. This means this behavior will potentially install
+  ; definitions it didn't install before. In the big picture, this
+  ; could break the way some people's programs use Cene.
+  ;
+  ; However, this is nothing special to
+  ; `effects-put-all-built-in-syntaxes-this-came-with`. A program
+  ; that's executed in a newer version of Cene than it was written for
+  ; could already have new definition conflicts at its top level. To
+  ; avoid this, Cene packages will already need to be published with a
+  ; particular UUID to identify what version of Cene they use. And
+  ; since we can assume Cene packages will be pinned to their
+  ; respective Cene language UUIDs, there's no problem offering
+  ; `effects-put-all-built-in-syntaxes-this-came-with` as another
+  ; built-in for that UUID.
+  ;
+  ; In order for this Cene implementation to accommodate Cene programs
+  ; that were written for earlier versions and slight forks of Cene,
+  ; we'll eventually want to implement multiple sets of built-ins to
+  ; use to simulate multiple Cene language UUIDs. (TODO: Do that.)
+  ; Once we do, we'll probably end up with a much more sophisticated
+  ; variant of `effects-put-all-built-in-syntaxes-this-came-with`
+  ; which takes the desired UUID as an argument.
+  ;
+  (def-func! "effects-put-all-built-in-syntaxes-this-came-with"
+    qualify
+    
+    (sink-effects-init-package #/fn name
+      (w- qualified-name (sink-call qualify name)
+      #/expect (sink-authorized-name? qualified-name) #t
+        (cene-err "Expected the result of an effects-put-all-built-in-syntaxes-this-came-with qualify function to be an authorized name")
+        qualified-name)))
+  
   
   
   (cene-runtime
     (sink-table defined-dexes)
     (sink-table defined-values)
-    (fn qualify-for-package
-      (sink-effects-fuse-list #/list-map init-package-steps #/fn step
-        (step qualify-for-package)))))
+    sink-effects-init-package))
