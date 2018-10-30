@@ -28,7 +28,9 @@
   -> ->i any/c cons/c list/c listof)
 (require #/only-in racket/contract/region define/contract)
 (require #/only-in racket/generic define/generic)
+(require #/only-in racket/match match-define)
 (require #/only-in racket/math natural?)
+(require #/only-in racket/runtime-path define-runtime-path)
 (require #/only-in syntax/parse/define define-simple-macro)
 
 (require #/only-in lathe-comforts
@@ -103,6 +105,10 @@
   textpat-result-passed-end textpat-star textpat-until textpat-while
   optimized-textpat? optimized-textpat-match optimize-textpat)
 
+(define-runtime-path prelude-per-package-path
+  "prelude-per-package.cene")
+(define-runtime-path prelude-for-lang-impl-path
+  "prelude-for-lang-impl.cene")
 
 (provide cene-runtime-essentials)
 
@@ -939,6 +945,8 @@
 (define/contract (cene-runtime-essentials)
   (-> cene-runtime?)
   
+  (assert-cannot-get-cene-definitions!)
+  
   (define defined-dexes (table-empty))
   (define defined-values (table-empty))
   (define init-package-steps (list))
@@ -958,13 +966,15 @@
         (table-shadow name (just value) defined-values))
     #/void))
   
+  (define/contract (add-init-package-step! step)
+    (-> (-> (-> sink-name? sink-authorized-name?) sink-effects?)
+      void?)
+    (set! init-package-steps (cons step init-package-steps)))
+  
   (define/contract (def-dexable-value-for-package! name dex value)
     (-> sink-name? sink-dex? sink? void?)
-    (set! init-package-steps
-      (cons
-        (fn qualify-for-package
-          (sink-effects-put (qualify-for-package name) dex value))
-        init-package-steps)))
+    (add-init-package-step! #/fn qualify-for-package
+      (sink-effects-put (qualify-for-package name) dex value)))
   
   (define/contract (def-value-for-lang-impl! name value)
     (-> sink-authorized-name? sink? void?)
@@ -2762,7 +2772,48 @@
   
   
   
-  (cene-runtime
-    (sink-table defined-dexes)
-    (sink-table defined-values)
-    sink-effects-init-package))
+  (add-init-package-step! #/fn qualify-for-package
+    (w- prelude-per-package-unique-name
+      (sink-authorized-name #/unsafe:name
+        'name:prelude-per-package-unique-name)
+    #/sink-effects-read-top-level
+      prelude-per-package-unique-name
+      (sink-fn-curried 1 #/fn name
+        (expect (sink-name? name) #t
+          (cene-err "Expected the input to the root qualify function to be a name")
+        #/qualify-for-package name))
+      (sink-text-input-stream #/box #/just
+      #/open-input-file prelude-per-package-path)))
+  
+  
+  (define rt-before-prelude
+    (cene-runtime
+      (sink-table defined-dexes)
+      (sink-table defined-values)
+      sink-effects-init-package))
+  
+  (match-define (list rt-after-prelude prelude-errors)
+    (cene-runtime-effects-run rt-before-prelude #/fn
+      (w- prelude-for-lang-impl-unique-name
+        (sink-authorized-name #/unsafe:name
+          'name:prelude-for-lang-impl-unique-name)
+      #/w- prelude-for-lang-impl-qualify-root
+        (sink-authorized-name #/unsafe:name
+          'name:prelude-for-lang-impl-qualify-root)
+      #/sink-effects-read-top-level
+        prelude-for-lang-impl-unique-name
+        (sink-fn-curried 1 #/fn name
+          (expect (sink-name? name) #t
+            (cene-err "Expected the input to the root qualify function to be a name")
+          #/sink-authorized-name-subname
+            name prelude-for-lang-impl-qualify-root))
+        (sink-text-input-stream #/box #/just
+        #/open-input-file prelude-for-lang-impl-path))))
+  
+  (expect prelude-errors (list)
+    (error "Internal error: Errors occurred in prelude-for-lang-impl")
+  #/void)
+  
+  
+  
+  rt-after-prelude)
