@@ -36,7 +36,8 @@
 (require #/only-in lathe-comforts
   dissect dissectfn expect expectfn fn mat w- w-loop)
 (require #/only-in lathe-comforts/list
-  list-all list-any list-foldl list-foldr list-kv-map list-map)
+  list-all list-any list-foldl list-foldr list-kv-map list-map
+  list-zip-map)
 (require #/only-in lathe-comforts/maybe
   just maybe-bind maybe/c maybe-map nothing)
 (require #/only-in lathe-comforts/string immutable-string?)
@@ -951,10 +952,17 @@
   (define defined-values (table-empty))
   (define init-package-steps (list))
   
-  (define/contract (sink-effects-init-package qualify-for-package)
-    (-> (-> sink-name? sink-authorized-name?) sink-effects?)
-    (sink-effects-fuse-list #/list-map init-package-steps #/fn step
-      (step qualify-for-package)))
+  (define/contract
+    (sink-effects-init-package unique-name qualify-for-package)
+    (-> sink-authorized-name? (-> sink-name? sink-authorized-name?)
+      sink-effects?)
+    (sink-effects-claim-and-split unique-name
+      (length init-package-steps)
+    #/fn unique-names
+    #/sink-effects-fuse-list
+    #/list-zip-map init-package-steps unique-names
+    #/fn step unique-name
+      (step unique-name qualify-for-package)))
   
   (define/contract (def-dexable-value-for-lang-impl! name dex value)
     (-> sink-authorized-name? sink-dex? sink? void?)
@@ -967,14 +975,17 @@
     #/void))
   
   (define/contract (add-init-package-step! step)
-    (-> (-> (-> sink-name? sink-authorized-name?) sink-effects?)
+    (->
+      (-> sink-authorized-name? (-> sink-name? sink-authorized-name?)
+        sink-effects?)
       void?)
     (set! init-package-steps (cons step init-package-steps)))
   
   (define/contract (def-dexable-value-for-package! name dex value)
     (-> sink-name? sink-dex? sink? void?)
-    (add-init-package-step! #/fn qualify-for-package
-      (sink-effects-put (qualify-for-package name) dex value)))
+    (add-init-package-step! #/fn unique-name qualify-for-package
+      (sink-effects-claim-and-split unique-name 0 #/dissectfn (list)
+      #/sink-effects-put (qualify-for-package name) dex value)))
   
   (define/contract (def-value-for-lang-impl! name value)
     (-> sink-authorized-name? sink? void?)
@@ -1045,8 +1056,14 @@
   
   
   (define/contract
-    (def-func-verbose! main-tag-string n-args racket-func)
-    (-> immutable-string? exact-positive-integer? procedure? void?)
+    (def-func-verbose!
+      def-value-custom! main-tag-string n-args racket-func)
+    (->
+      (-> sink-name? sink? void?)
+      immutable-string?
+      exact-positive-integer?
+      procedure?
+      void?)
     (w- main-tag-name
       (sink-name-for-string #/sink-string main-tag-string)
     #/w- qualified-main-tag-name
@@ -1055,7 +1072,7 @@
       
       ; We define a reader macro so that the user can write code that
       ; compiles into a call to this function.
-      (def-value-for-package!
+      (def-value-custom!
         (sink-name-for-bounded-cexpr-op main-tag-name)
         
         ; Given precisely `n-args` cexprs, we construct a cexpr that
@@ -1090,7 +1107,7 @@
   (define-syntax (def-func! stx)
     (syntax-parse stx #/
       (_ main-tag-string:expr param:id ... body:expr)
-      #`(def-func-verbose! main-tag-string
+      #`(def-func-verbose! def-value-for-package! main-tag-string
           '#,(length (syntax->list #'(param ...)))
           (fn param ...
             body))))
@@ -2762,9 +2779,12 @@
   ; which takes the desired UUID as an argument.
   ;
   (def-func! "effects-put-all-built-in-syntaxes-this-came-with"
-    qualify
+    unique-name qualify
     
-    (sink-effects-init-package #/fn name
+    (expect (sink-authorized-name? unique-name) #t
+      (cene-err "Expected unique-name to be an authorized name")
+    #/sink-effects-claim-freshen unique-name #/fn unique-name
+    #/sink-effects-init-package unique-name #/fn name
       (w- qualified-name (sink-call qualify name)
       #/expect (sink-authorized-name? qualified-name) #t
         (cene-err "Expected the result of an effects-put-all-built-in-syntaxes-this-came-with qualify function to be an authorized name")
@@ -2772,12 +2792,44 @@
   
   
   
-  (add-init-package-step! #/fn qualify-for-package
-    (w- prelude-per-package-unique-name
-      (sink-authorized-name #/unsafe:name
-        'name:prelude-per-package-unique-name)
-    #/sink-effects-read-top-level
-      prelude-per-package-unique-name
+  (define prelude-for-lang-impl-unique-name
+    (sink-authorized-name #/unsafe:name
+      'name:prelude-for-lang-impl-unique-name))
+  (define prelude-for-lang-impl-qualify-root
+    (sink-authorized-name #/unsafe:name
+      'name:prelude-for-lang-impl-qualify-root))
+  (define/contract (qualify-for-prelude-for-lang-impl name)
+    (-> sink-name? sink-authorized-name?)
+    (sink-authorized-name-subname
+      name prelude-for-lang-impl-qualify-root))
+  
+  (define/contract (def-value-for-prelude-for-lang-impl! name value)
+    (-> sink-name? sink? void?)
+    (dissect (qualify-for-prelude-for-lang-impl name)
+      (sink-authorized-name name)
+    #/begin
+      (set! defined-dexes
+        (table-shadow name (just #/sink-dex #/dex-give-up)
+          defined-dexes))
+      (set! defined-values
+        (table-shadow name (just value) defined-values))
+    #/void))
+  
+  ; We define `qualify-for-lang-impl` built-in only in the scope of
+  ; prelude-for-lang-impl.cene.
+  
+  (def-func-verbose! def-value-for-prelude-for-lang-impl!
+    "qualify-for-lang-impl"
+    1
+    (fn name
+      (expect (sink-name? name) #t
+        (cene-err "Expected name to be a name")
+      #/sink-name-qualify-for-lang-impl name)))
+  
+  
+  (add-init-package-step! #/fn unique-name qualify-for-package
+    (sink-effects-read-top-level
+      unique-name
       (sink-fn-curried 1 #/fn name
         (expect (sink-name? name) #t
           (cene-err "Expected the input to the root qualify function to be a name")
@@ -2794,19 +2846,12 @@
   
   (match-define (list rt-after-prelude prelude-errors)
     (cene-runtime-effects-run rt-before-prelude #/fn
-      (w- prelude-for-lang-impl-unique-name
-        (sink-authorized-name #/unsafe:name
-          'name:prelude-for-lang-impl-unique-name)
-      #/w- prelude-for-lang-impl-qualify-root
-        (sink-authorized-name #/unsafe:name
-          'name:prelude-for-lang-impl-qualify-root)
-      #/sink-effects-read-top-level
+      (sink-effects-read-top-level
         prelude-for-lang-impl-unique-name
         (sink-fn-curried 1 #/fn name
           (expect (sink-name? name) #t
             (cene-err "Expected the input to the root qualify function to be a name")
-          #/sink-authorized-name-subname
-            name prelude-for-lang-impl-qualify-root))
+          #/qualify-for-prelude-for-lang-impl name))
         (sink-text-input-stream #/box #/just
         #/open-input-file prelude-for-lang-impl-path))))
   

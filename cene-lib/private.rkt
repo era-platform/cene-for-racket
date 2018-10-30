@@ -1607,13 +1607,17 @@
     (fn #/sink-effects-run! #/get-effects)
     (fn process process)))
 
-(define/contract (cene-init-package rt qualify)
-  (-> cene-runtime? (-> sink-name? sink-authorized-name?)
+(define/contract (cene-init-package rt unique-name qualify)
+  (->
+    cene-runtime?
+    sink-authorized-name?
+    (-> sink-name? sink-authorized-name?)
     (list/c cene-runtime? #/listof string?))
   (begin (assert-cannot-get-cene-definitions!)
   #/dissect rt
     (cene-runtime defined-dexes defined-values init-package)
-  #/cene-runtime-effects-run rt #/fn #/init-package qualify))
+  #/cene-runtime-effects-run rt #/fn
+    (init-package unique-name qualify)))
 
 (define/contract (cene-run-string rt unique-name qualify string)
   (->
@@ -1633,9 +1637,18 @@
       (sink-text-input-stream #/box #/just
       #/open-input-string string))))
 
-(define/contract (sink-sample-unique-name-root)
+; TODO: See if there's a more elegant approach here than just defining
+; two separate roots. Note that these are only used in the `cene-test`
+; package. We probably won't actually need these `...-sample-...`
+; things in the long run, once we have a module system.
+(define/contract (sink-sample-unique-name-root-1)
   (-> sink-authorized-name?)
-  (sink-authorized-name #/unsafe:name 'name:sample-unique-name-root))
+  (sink-authorized-name #/unsafe:name
+    'name:sample-unique-name-root-1))
+(define/contract (sink-sample-unique-name-root-2)
+  (-> sink-authorized-name?)
+  (sink-authorized-name #/unsafe:name
+    'name:sample-unique-name-root-2))
 
 (define/contract (sink-sample-qualify-root name)
   (-> sink-name? sink-authorized-name?)

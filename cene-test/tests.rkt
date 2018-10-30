@@ -31,12 +31,13 @@
 (define (cene-run-string-sample code-string)
   (dissect
     (cene-init-package (cene-runtime-essentials)
+      (sink-sample-unique-name-root-1)
       sink-sample-qualify-root)
     (list rt errors-a)
   #/dissect
     (cene-run-string
       rt
-      (sink-sample-unique-name-root)
+      (sink-sample-unique-name-root-2)
       sink-sample-qualify-root
       code-string)
     (list rt errors-b)

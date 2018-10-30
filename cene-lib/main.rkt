@@ -26,7 +26,8 @@
 ; TODO: Document these exports.
 (provide #/rename-out [-cene-runtime? cene-runtime?])
 (provide cene-run-string)
-(provide sink-sample-unique-name-root)
+(provide sink-sample-unique-name-root-1)
+(provide sink-sample-unique-name-root-2)
 (provide sink-sample-qualify-root)
 (provide cene-init-package)
 (provide cene-runtime-essentials)
