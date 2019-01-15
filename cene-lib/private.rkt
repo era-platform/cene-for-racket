@@ -87,6 +87,13 @@
   (-> table? (-> any/c any/c) table?)
   (table-kv-map table #/fn k v #/v-to-v v))
 
+; TODO: Since Lathe Comforts isn't specifically designed around
+; Effection, its `trivial?` values doesn't expose struct info
+; Effection's `dex-struct` can use. We work around that here by
+; defining another structure type to use in place of `trivial?`. If
+; there ever gets to be a better way to do this, let's use that.
+(struct-easy (effection-trivial) #:equal)
+
 
 (define-generics sink)
 
@@ -730,8 +737,8 @@
   (dissect main-tag-name (sink-name #/unsafe:name main-tag)
   #/dissect proj-tag-names (sink-table proj-tag-names)
   #/dissect
-    (name-of (dex-table #/dex-struct trivial)
-    #/table-v-map proj-tag-names #/dissectfn _ #/trivial)
+    (name-of (dex-table #/dex-struct effection-trivial)
+    #/table-v-map proj-tag-names #/dissectfn _ #/effection-trivial)
     (just #/unsafe:name proj-table-name)
   #/sink-name #/unsafe:name
   #/list result-tag main-tag proj-table-name))
