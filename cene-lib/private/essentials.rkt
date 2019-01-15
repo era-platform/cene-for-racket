@@ -21,7 +21,8 @@
 
 
 (require #/for-syntax racket/base)
-(require #/for-syntax #/only-in syntax/parse expr id nat syntax-parse)
+(require #/for-syntax #/only-in syntax/parse
+  expr expr/c id nat syntax-parse)
 
 
 (require #/only-in racket/contract/base
@@ -51,10 +52,10 @@
 (require #/only-in effection/order/base
   call-fuse call-merge cline-by-dex cline-default cline-give-up
   cline-opaque cline-result? cline-struct compare-by-cline
-  compare-by-dex dex? dexable dex-cline dex-default dex-dex dex-fix
-  dex-fuse dex-give-up dex-merge dex-name dex-opaque dex-struct
-  dex-table fusable-function? fuse-by-merge fuse-opaque fuse-struct
-  fuse-table in-cline? in-dex? get-dex-from-cline
+  compare-by-dex dex? dexable dexable? dex-cline dex-default dex-dex
+  dex-fix dex-fuse dex-give-up dex-merge dex-name dex-opaque
+  dex-struct dex-table fusable-function? fuse-by-merge fuse-opaque
+  fuse-struct fuse-table in-cline? in-dex? get-dex-from-cline
   make-fusable-function make-ordering-private-gt
   make-ordering-private-lt merge-by-dex merge-opaque merge-struct
   merge-table name? name-of ordering-eq ordering-gt ordering-lt
@@ -157,10 +158,22 @@
   #/maybe-compare-aligned-lists as bs maybe-compare-elems))
 
 ; TODO: See if we should put something like this in Effection.
-(define-syntax-rule (dexable-struct tag dexable-field ...)
-  (dexable
-    (dex-struct tag (dissect dexable-field (dexable dex val) dex) ...)
-    (tag (dissect dexable-field (dexable dex val) val) ...)))
+(define-syntax (dexable-struct stx)
+  (syntax-parse stx #/ (_ tag:id dexable-field ...)
+    
+    #:declare dexable-field (expr/c #'dexable? #:name "a field")
+    
+    #:with (dexable-field-result ...)
+    (generate-temporaries #'(dexable-field ...))
+    
+    #'(let ([dexable-field-result dexable-field.c] ...)
+        (dexable
+          (dex-struct tag
+            (dissect dexable-field-result (dexable dex val) dex)
+            ...)
+          (tag
+            (dissect dexable-field-result (dexable dex val) val)
+            ...)))))
 
 (define/contract (racket-boolean->sink racket-boolean)
   (-> boolean? sink?)
