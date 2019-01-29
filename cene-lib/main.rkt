@@ -19,12 +19,15 @@
 ;   language governing permissions and limitations under the License.
 
 
+(require #/only-in racket/contract/base -> any/c contract-out)
+
 (require cene/private)
 (require #/only-in cene/private/essentials cene-runtime-essentials)
 
 
 ; TODO: Document these exports.
-(provide #/rename-out [-cene-runtime? cene-runtime?])
+(provide #/contract-out
+  [cene-runtime? (-> any/c boolean?)])
 (provide cene-run-string)
 (provide sink-sample-unique-name-root-1)
 (provide sink-sample-unique-name-root-2)

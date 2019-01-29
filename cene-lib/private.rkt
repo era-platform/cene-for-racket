@@ -36,7 +36,8 @@
 (require #/only-in lathe-comforts/maybe
   just maybe/c maybe-map nothing nothing?)
 (require #/only-in lathe-comforts/string immutable-string?)
-(require #/only-in lathe-comforts/struct struct-easy)
+(require #/only-in lathe-comforts/struct
+  auto-write define-imitation-simple-struct struct-easy)
 (require #/only-in lathe-comforts/trivial trivial)
 
 (require #/only-in effection/order
@@ -258,13 +259,12 @@
     (cene-process-noop? v)
     (cene-process-fuse? v)))
 
-(struct-easy (cene-runtime defined-dexes defined-values init-package))
-
-; A version of `cene-runtime?` that does not satisfy
-; `struct-predicate-procedure?`.
-(define/contract (-cene-runtime? v)
-  (-> any/c boolean?)
-  (cene-runtime? v))
+(define-imitation-simple-struct
+  (cene-runtime?
+    cene-runtime-defined-dexes
+    cene-runtime-defined-values
+    cene-runtime-init-package)
+  cene-runtime 'cene-runtime (current-inspector) (auto-write))
 
 (define/contract (sink-table-get-maybe table name)
   (-> sink-table? sink-name? #/maybe/c sink?)
@@ -1668,4 +1668,7 @@
   (-> cene-runtime?)
   (cene-runtime
     (sink-table #/table-empty)
-    (sink-table #/table-empty)))
+    (sink-table #/table-empty)
+    (fn unique-name qualify-for-package
+      (sink-effects-claim-and-split unique-name 0 #/dissectfn (list)
+      #/sink-effects-noop))))

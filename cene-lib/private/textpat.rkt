@@ -22,7 +22,8 @@
 ;   language governing permissions and limitations under the License.
 
 
-(require #/only-in racket/contract/base -> ->* any/c listof)
+(require #/only-in racket/contract/base
+  -> ->* any/c contract-out listof)
 (require #/only-in racket/contract/region define/contract)
 (require #/only-in racket/math natural?)
 (require #/only-in racket/string string-contains?)
@@ -32,17 +33,22 @@
 (require #/only-in lathe-comforts/maybe
   just maybe-bind maybe/c maybe-map nothing)
 (require #/only-in lathe-comforts/string immutable-string?)
-(require #/only-in lathe-comforts/struct struct-easy)
+(require #/only-in lathe-comforts/struct
+  auto-equal auto-write define-imitation-simple-struct)
 
 ; Essential operations
 (provide
   
-  (struct-out textpat-result-matched)
-  (struct-out textpat-result-failed)
-  (struct-out textpat-result-passed-end)
-  (rename-out
-    [-textpat? textpat?]
-    [-optimized-textpat? optimized-textpat?])
+  textpat-result-matched
+  textpat-result-failed
+  textpat-result-passed-end
+  (contract-out
+    [textpat-result-matched? (-> any/c boolean?)]
+    [textpat-result-matched-stop (-> textpat-result-matched? any/c)]
+    [textpat-result-failed? (-> any/c boolean?)]
+    [textpat-result-passed-end? (-> any/c boolean?)]
+    [textpat? (-> any/c boolean?)]
+    [optimized-textpat? (-> any/c boolean?)])
   textpat-result?
   
   textpat-give-up
@@ -55,7 +61,8 @@
   textpat-until
   textpat-one-in-range
   
-  textpat-has-empty?
+  (contract-out
+    [textpat-has-empty? (-> textpat? boolean?)])
   optimize-textpat
   optimized-textpat-match
   optimized-textpat-read!)
@@ -95,25 +102,39 @@
 
 ; ===== Essential operations =========================================
 
-(struct-easy (textpat has-empty get-data))
-(struct-easy
-  (textpat-data maybe-optional maybe-necessary make-optimized))
-(struct-easy (optimized-textpat match-string read-stream!))
-(struct-easy (textpat-result-matched stop) #:equal)
-(struct-easy (textpat-result-failed) #:equal)
-(struct-easy (textpat-result-passed-end) #:equal)
-
-; NOTE: This is a version of `textpat?` which doesn't satisfy
-; `struct-predicate-procedure?`.
-(define/contract (-textpat? v)
-  (-> any/c boolean?)
-  (textpat? v))
-
-; NOTE: This is a version of `optimized-textpat?` which doesn't
-; satisfy `struct-predicate-procedure?`.
-(define/contract (-optimized-textpat? v)
-  (-> any/c boolean?)
-  (optimized-textpat? v))
+(define-imitation-simple-struct
+  (textpat? textpat-has-empty? textpat-get-data)
+  textpat 'textpat (current-inspector) (auto-write))
+(define-imitation-simple-struct
+  (textpat-data?
+    textpat-data-maybe-optional
+    textpat-data-maybe-necessary
+    textpat-data-make-optimized)
+  textpat-data 'textpat-data (current-inspector) (auto-write))
+(define-imitation-simple-struct
+  (optimized-textpat?
+    optimized-textpat-match-string
+    optimized-textpat-read-stream!)
+  optimized-textpat
+  'optimized-textpat (current-inspector) (auto-write))
+(define-imitation-simple-struct
+  (textpat-result-matched? textpat-result-matched-stop)
+  textpat-result-matched
+  'textpat-result-matched (current-inspector)
+  (auto-write)
+  (auto-equal))
+(define-imitation-simple-struct
+  (textpat-result-failed?)
+  textpat-result-failed
+  'textpat-result-failed (current-inspector)
+  (auto-write)
+  (auto-equal))
+(define-imitation-simple-struct
+  (textpat-result-passed-end?)
+  textpat-result-passed-end
+  'textpat-result-passed-end (current-inspector)
+  (auto-write)
+  (auto-equal))
 
 (define/contract (textpat-result? v)
   (-> any/c boolean?)
@@ -467,13 +488,6 @@
     (string->immutable-string #/string-append
       "[" a-str "-" b-str "]")
     (nothing)))
-
-; NOTE: This is a version of `textpat-as-empty` that doesn't satisfy
-; `struct-accessor-procedure?`.
-(define/contract (textpat-has-empty? t)
-  (-> textpat? boolean?)
-  (dissect t (textpat has-empty get-data)
-    has-empty))
 
 (define/contract (optimize-textpat t)
   (-> textpat? optimized-textpat?)
