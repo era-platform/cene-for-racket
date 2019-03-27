@@ -63,9 +63,10 @@
 
 (define/contract
   (sink-effects-read-ids-and-exprs-onto
-    unique-name qualify text-input-stream rev-results pre-qualify
-    then)
+    fault unique-name qualify text-input-stream rev-results
+    pre-qualify then)
   (->
+    sink?
     sink-authorized-name?
     sink?
     sink-text-input-stream?
@@ -80,7 +81,7 @@
     sink-effects?)
   (sink-effects-claim-freshen unique-name #/fn unique-name
   #/sink-effects-read-maybe-identifier
-    qualify text-input-stream pre-qualify
+    fault qualify text-input-stream pre-qualify
   #/fn text-input-stream maybe-id
   #/mat maybe-id (just #/list located-string qualified-name)
     (then unique-name qualify text-input-stream
@@ -88,13 +89,15 @@
         rev-results))
   #/sink-effects-claim-and-split unique-name 2
   #/dissectfn (list unique-name-stream unique-name)
-  #/sink-effects-make-cexpr-sequence-output-stream unique-name-stream
+  #/sink-effects-make-cexpr-sequence-output-stream
+    fault
+    unique-name-stream
     rev-results
     (fn rev-results cexpr then
       (then #/cons (id-or-expr-expr cexpr) rev-results))
   #/fn output-stream unwrap
   #/sink-effects-read-cexprs
-    unique-name qualify text-input-stream output-stream
+    fault unique-name qualify text-input-stream output-stream
   #/fn unique-name qualify text-input-stream output-stream
   #/unwrap output-stream #/fn rev-results
   #/then unique-name qualify text-input-stream rev-results))
@@ -103,8 +106,9 @@
 ; bracket.
 (define/contract
   (sink-effects-read-bounded-ids-and-exprs
-    unique-name qualify text-input-stream pre-qualify then)
+    fault unique-name qualify text-input-stream pre-qualify then)
   (->
+    sink?
     sink-authorized-name?
     sink?
     sink-text-input-stream?
@@ -123,27 +127,31 @@
     text-input-stream text-input-stream
     rev-results (list)
     
-    (sink-effects-read-whitespace text-input-stream
+    (sink-effects-read-whitespace fault text-input-stream
     #/fn text-input-stream whitespace
-    #/sink-effects-peek-whether-eof text-input-stream
+    #/sink-effects-peek-whether-eof fault text-input-stream
     #/fn text-input-stream is-eof
     #/if is-eof
-      (cene-err "Encountered end of file while expecting any number of identifiers and expressions preceding a closing bracket")
-    #/sink-effects-peek-whether-closing-bracket text-input-stream
+      ; TODO FAULT: Make this `fault` more specific.
+      (cene-err fault "Encountered end of file while expecting any number of identifiers and expressions preceding a closing bracket")
+    #/sink-effects-peek-whether-closing-bracket
+      fault text-input-stream
     #/fn text-input-stream is-closing-bracket
     #/if is-closing-bracket
       (then unique-name qualify text-input-stream
         (reverse rev-results))
     #/sink-effects-read-ids-and-exprs-onto
-      unique-name qualify text-input-stream rev-results pre-qualify
+      fault unique-name qualify text-input-stream rev-results
+      pre-qualify
     #/fn unique-name qualify text-input-streams rev-results
     #/next unique-name qualify text-input-streams rev-results)))
 
 ; This reads cexprs until it gets to a closing bracket.
 (define/contract
   (sink-effects-read-bounded-cexprs
-    unique-name qualify text-input-stream then)
+    fault unique-name qualify text-input-stream then)
   (->
+    sink?
     sink-authorized-name?
     sink?
     sink-text-input-stream?
@@ -155,7 +163,8 @@
       sink-effects?)
     sink-effects?)
   (sink-effects-read-bounded-ids-and-exprs
-    unique-name qualify text-input-stream sink-name-for-local-variable
+    fault unique-name qualify text-input-stream
+    sink-name-for-local-variable
   #/fn unique-name qualify text-input-stream ids-and-exprs
   #/then unique-name qualify text-input-stream
   #/list-map ids-and-exprs #/fn id-or-expr
@@ -165,8 +174,9 @@
 ; verifies that there are precisely `n` of them.
 (define/contract
   (sink-effects-read-bounded-specific-number-of-cexprs
-    unique-name qualify text-input-stream n then)
+    fault unique-name qualify text-input-stream n then)
   (->
+    sink?
     sink-authorized-name?
     sink?
     sink-text-input-stream?
@@ -179,13 +189,15 @@
       sink-effects?)
     sink-effects?)
   (sink-effects-read-bounded-cexprs
-    unique-name qualify text-input-stream
+    fault unique-name qualify text-input-stream
   #/fn unique-name qualify text-input-stream cexprs
   #/w- actual-n (length cexprs)
   #/if (< n actual-n)
-    (cene-err "Encountered too many expressions")
+    ; TODO FAULT: Make this `fault` more specific.
+    (cene-err fault "Encountered too many expressions")
   #/if (< actual-n n)
-    (cene-err "Expected another expression")
+    ; TODO FAULT: Make this `fault` more specific.
+    (cene-err fault "Expected another expression")
   #/then unique-name qualify text-input-stream cexprs))
 
 ; This reads precisely `n` identifiers and cexprs, and it causes an
@@ -193,8 +205,9 @@
 ; cexprs in one cexpr read.
 (define/contract
   (sink-effects-read-leading-specific-number-of-ids-and-exprs
-    unique-name qualify text-input-stream n pre-qualify then)
+    fault unique-name qualify text-input-stream n pre-qualify then)
   (->
+    sink?
     sink-authorized-name?
     sink?
     sink-text-input-stream?
@@ -222,19 +235,24 @@
       (then unique-name qualify text-input-stream
         (reverse rev-results))
     #/if (< n #/length rev-results)
-      (cene-err "Encountered a single operation that expanded to too many expressions while expecting a specific number of identifiers and expressions")
-    #/sink-effects-read-whitespace text-input-stream
+      ; TODO FAULT: Make this `fault` more specific.
+      (cene-err fault "Encountered a single operation that expanded to too many expressions while expecting a specific number of identifiers and expressions")
+    #/sink-effects-read-whitespace fault text-input-stream
     #/fn text-input-stream whitespace
-    #/sink-effects-peek-whether-eof text-input-stream
+    #/sink-effects-peek-whether-eof fault text-input-stream
     #/fn text-input-stream is-eof
     #/if is-eof
-      (cene-err "Encountered end of file while expecting an identifier or an expression")
-    #/sink-effects-peek-whether-closing-bracket text-input-stream
+      ; TODO FAULT: Make this `fault` more specific.
+      (cene-err fault "Encountered end of file while expecting an identifier or an expression")
+    #/sink-effects-peek-whether-closing-bracket
+      fault text-input-stream
     #/fn text-input-stream is-closing-bracket
     #/if is-closing-bracket
-      (cene-err "Encountered a closing bracket while expecting an identifier or an expression")
+      ; TODO FAULT: Make this `fault` more specific.
+      (cene-err fault "Encountered a closing bracket while expecting an identifier or an expression")
     #/sink-effects-read-ids-and-exprs-onto
-      unique-name qualify text-input-stream rev-results pre-qualify
+      fault unique-name qualify text-input-stream rev-results
+      pre-qualify
     #/fn unique-name qualify text-input-streams rev-results
     #/next unique-name qualify text-input-streams rev-results)))
 
@@ -243,8 +261,9 @@
 ; one cexpr read.
 (define/contract
   (sink-effects-read-leading-specific-number-of-cexprs
-    unique-name qualify text-input-stream n then)
+    fault unique-name qualify text-input-stream n then)
   (->
+    sink?
     sink-authorized-name?
     sink?
     sink-text-input-stream?
@@ -257,7 +276,7 @@
       sink-effects?)
     sink-effects?)
   (sink-effects-read-leading-specific-number-of-ids-and-exprs
-    unique-name qualify text-input-stream n
+    fault unique-name qualify text-input-stream n
     sink-name-for-local-variable
   #/fn unique-name qualify text-input-stream ids-and-exprs
   #/then unique-name qualify text-input-stream
@@ -268,8 +287,9 @@
 ; causes an error if it runs out of identifiers to read too soon.
 (define/contract
   (sink-effects-read-leading-specific-number-of-identifiers
-    qualify text-input-stream n pre-qualify then)
+    fault qualify text-input-stream n pre-qualify then)
   (->
+    sink?
     sink?
     sink-text-input-stream?
     natural?
@@ -287,11 +307,12 @@
     
     (expect (nat->maybe n) (just n)
       (then text-input-stream #/reverse rev-results)
-    #/sink-effects-read-whitespace text-input-stream
+    #/sink-effects-read-whitespace fault text-input-stream
     #/fn text-input-stream whitespace
     #/sink-effects-read-maybe-identifier
-      qualify text-input-stream pre-qualify
+      fault qualify text-input-stream pre-qualify
     #/fn text-input-stream maybe-id
     #/expect maybe-id (just id)
-      (cene-err "Expected an identifier")
+      ; TODO FAULT: Make this `fault` more specific.
+      (cene-err fault "Expected an identifier")
     #/next text-input-stream n #/cons id rev-results)))

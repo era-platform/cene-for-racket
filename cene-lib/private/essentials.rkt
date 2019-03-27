@@ -229,24 +229,24 @@
 (struct-easy
   (cene-struct-metadata tags proj-string-to-name proj-name-to-string))
 
-(define/contract (verify-sink-struct-metadata! sink-metadata)
-  (-> sink? cene-struct-metadata?)
+(define/contract (verify-sink-struct-metadata! fault sink-metadata)
+  (-> sink? sink? cene-struct-metadata?)
   (expect (unmake-sink-struct-maybe s-struct-metadata sink-metadata)
     (just #/list main-tag-name projs)
-    (cene-err "Expected a defined struct metadata entry to be a struct-metadata")
+    (cene-err fault "Expected a defined struct metadata entry to be a struct-metadata")
   #/expect main-tag-name (sink-name main-tag-name)
-    (cene-err "Expected a defined struct metadata entry to have a main tag name that was a name")
+    (cene-err fault "Expected a defined struct metadata entry to have a main tag name that was a name")
   #/expect (sink-list->maybe-racket projs) (just projs)
-    (cene-err "Expected a defined struct metadata entry to have a cons list of projections")
+    (cene-err fault "Expected a defined struct metadata entry to have a cons list of projections")
   #/w- projs
     (list-map projs #/fn entry
       (expect (unmake-sink-struct-maybe s-assoc entry)
         (just #/list proj-string proj-name)
-        (cene-err "Expected a defined struct metadata entry to have a projection list where each entry was an assoc")
+        (cene-err fault "Expected a defined struct metadata entry to have a projection list where each entry was an assoc")
       #/expect proj-string (sink-string proj-string)
-        (cene-err "Expected a defined struct metadata entry to have a projection list where each key was a string")
+        (cene-err fault "Expected a defined struct metadata entry to have a projection list where each key was a string")
       #/expect proj-name (sink-name proj-name)
-        (cene-err "Expected a defined struct metadata entry to have a projection list where each associated value was a name")
+        (cene-err fault "Expected a defined struct metadata entry to have a projection list where each associated value was a name")
       #/w- proj-string-name
         (name-for-sink-string #/sink-string proj-string)
       #/list proj-string proj-string-name proj-name))
@@ -255,13 +255,13 @@
     #/list-map projs #/dissectfn (list string string-name name)
       (cons string-name name))
     (just proj-string-to-name)
-    (cene-err "Expected a defined struct metadata entry to have a projection list with mutually unique strings")
+    (cene-err fault "Expected a defined struct metadata entry to have a projection list with mutually unique strings")
   #/expect
     (assocs->table-if-mutually-unique
     #/list-map projs #/dissectfn (list string string-name name)
       (cons name string))
     (just proj-name-to-string)
-    (cene-err "Expected a defined struct metadata entry to have a projection list with mutually unique names")
+    (cene-err fault "Expected a defined struct metadata entry to have a projection list with mutually unique names")
   #/cene-struct-metadata
     (cons main-tag-name
     #/list-map projs #/dissectfn (list string string-name name) name)
@@ -274,8 +274,9 @@
 
 (define/contract
   (sink-effects-read-maybe-struct-metadata
-    qualify text-input-stream then)
+    fault qualify text-input-stream then)
   (->
+    sink?
     sink?
     sink-text-input-stream?
     (->
@@ -284,14 +285,15 @@
       sink-effects?)
     sink-effects?)
   (sink-effects-read-maybe-identifier
-    qualify text-input-stream sink-name-for-struct-metadata
+    fault qualify text-input-stream sink-name-for-struct-metadata
   #/fn text-input-stream maybe-metadata-name
   #/expect maybe-metadata-name
     (just #/list located-string metadata-name)
     (then #/nothing)
   #/sink-effects-get (sink-authorized-name-get-name metadata-name)
   #/fn metadata
-  #/then #/just #/verify-sink-struct-metadata! metadata))
+  ; TODO FAULT: Make this `fault` more specific.
+  #/then #/just #/verify-sink-struct-metadata! fault metadata))
 
 (define/contract (struct-metadata-tags metadata)
   (-> cene-struct-metadata? #/listof name?)
@@ -553,7 +555,7 @@
       #/list-any projs #/dissectfn (list proj-name proj-cexpr)
         (-has-free-vars? proj-cexpr env)))
     
-    (define (cexpr-eval this env)
+    (define (cexpr-eval fault this env)
       (expect this (cexpr-dex-struct main-tag-name projs)
         (error "Expected this to be a cexpr-dex-struct")
       #/sink-dex #/unsafe:dex #/dex-internals-sink-struct
@@ -561,7 +563,7 @@
         #/list-map projs #/dissectfn (list proj-name proj-cexpr)
           proj-name)
       #/list-map projs #/dissectfn (list proj-name proj-cexpr)
-        (-eval proj-cexpr env)))
+        (-eval fault proj-cexpr env)))
   ])
 
 
@@ -627,7 +629,7 @@
       #/list-any projs #/dissectfn (list proj-name proj-cexpr)
         (-has-free-vars? proj-cexpr env)))
     
-    (define (cexpr-eval this env)
+    (define (cexpr-eval fault this env)
       (expect this (cexpr-cline-struct main-tag-name projs)
         (error "Expected this to be a cexpr-cline-struct")
       #/sink-cline #/unsafe:cline #/cline-internals-sink-struct
@@ -635,7 +637,7 @@
         #/list-map projs #/dissectfn (list proj-name proj-cexpr)
           proj-name)
       #/list-map projs #/dissectfn (list proj-name proj-cexpr)
-        (-eval proj-cexpr env)))
+        (-eval fault proj-cexpr env)))
   ])
 
 
@@ -694,7 +696,7 @@
       #/list-any projs #/dissectfn (list proj-name proj-cexpr)
         (-has-free-vars? proj-cexpr env)))
     
-    (define (cexpr-eval this env)
+    (define (cexpr-eval fault this env)
       (expect this (cexpr-merge-struct main-tag-name projs)
         (error "Expected this to be a cexpr-merge-struct")
       #/sink-merge #/unsafe:merge #/furge-internals-sink-struct
@@ -703,7 +705,7 @@
         #/list-map projs #/dissectfn (list proj-name proj-cexpr)
           proj-name)
       #/list-map projs #/dissectfn (list proj-name proj-cexpr)
-        (-eval proj-cexpr env)))
+        (-eval fault proj-cexpr env)))
   ])
 
 (struct-easy (cexpr-fuse-struct main-tag-name projs)
@@ -721,7 +723,7 @@
       #/list-any projs #/dissectfn (list proj-name proj-cexpr)
         (-has-free-vars? proj-cexpr env)))
     
-    (define (cexpr-eval this env)
+    (define (cexpr-eval fault this env)
       (expect this (cexpr-fuse-struct main-tag-name projs)
         (error "Expected this to be a cexpr-fuse-struct")
       #/sink-fuse #/unsafe:fuse #/furge-internals-sink-struct
@@ -775,17 +777,17 @@
           (table-shadow var (just #/trivial) env))
         (-has-free-vars? else-expr env)))
     
-    (define (cexpr-eval this env)
+    (define (cexpr-eval fault this env)
       (expect this
         (cexpr-case subject-expr tags vars then-expr else-expr)
         (error "Expected this to be a cexpr-case")
-      #/w- subject (-eval subject-expr env)
+      #/w- subject (-eval fault subject-expr env)
       #/mat (unmake-sink-struct-maybe tags subject) (just vals)
-        (-eval then-expr
+        (-eval fault then-expr
         #/list-foldl env (map list vars vals) #/fn env entry
           (dissect entry (list var val)
           #/table-shadow var (just val) env))
-        (-eval else-expr env)))
+        (-eval fault else-expr env)))
   ])
 
 (define/contract
@@ -836,6 +838,21 @@
   #/sink-dex #/dex-struct sink-table #/dex-table dex-val))
 
 
+; TODO: See if there's a way to eliminate this state.
+(define current-fault (make-parameter #/nothing))
+
+(define (get-current-fault)
+  (expect (current-fault) (just fault)
+    (error "Expected the current fault to be determined dynamically")
+    fault))
+
+(define (with-current-fault fault body)
+  (expect (current-fault) (nothing)
+    (error "Did not expect the current fault to be determined already dynamically")
+  #/parameterize ([current-fault (just fault)])
+    (body)))
+
+
 (define-syntax-rule
   (define-fix-converter converter constructor error-message)
   (struct-easy (converter unwrap)
@@ -844,8 +861,9 @@
     #:property prop:procedure
     (fn this x
       (dissect this (converter unwrap)
-      #/expect (sink-call unwrap x) (constructor result)
-        (cene-err error-message)
+      #/w- fault (get-current-fault)
+      #/expect (sink-call fault unwrap x) (constructor result)
+        (cene-err fault error-message)
         result))))
 
 (define-fix-converter converter-for-dex-fix sink-dex
@@ -863,13 +881,14 @@
   #:property prop:procedure
   (fn this command
     (dissect this (sink-dex-by-own-method-unthorough get-method)
+    #/w- fault (get-current-fault)
     #/mat command
       (unsafe:dex-by-own-method::raise-different-methods-error
         a b a-method b-method)
-      (cene-err "Obtained two different methods from the two values being compared")
+      (cene-err fault "Obtained two different methods from the two values being compared")
     #/dissect command (unsafe:dex-by-own-method::get-method source)
-    #/expect (sink-call get-method source) (sink-dex method)
-      (cene-err "Expected the result of a dex-by-own-method body to be a dex")
+    #/expect (sink-call fault get-method source) (sink-dex method)
+      (cene-err fault "Expected the result of a dex-by-own-method body to be a dex")
       method)))
 
 (struct-easy (sink-cline-by-own-method-unthorough get-method)
@@ -878,13 +897,14 @@
   #:property prop:procedure
   (fn this command
     (dissect this (sink-cline-by-own-method-unthorough get-method)
+    #/w- fault (get-current-fault)
     #/mat command
       (unsafe:cline-by-own-method::raise-different-methods-error
         a b a-method b-method)
-      (cene-err "Obtained two different methods from the two values being compared")
+      (cene-err fault "Obtained two different methods from the two values being compared")
     #/dissect command (unsafe:cline-by-own-method::get-method source)
-    #/expect (sink-call get-method source) (sink-cline method)
-      (cene-err "Expected the result of a cline-by-own-method body to be a cline")
+    #/expect (sink-call fault get-method source) (sink-cline method)
+      (cene-err fault "Expected the result of a cline-by-own-method body to be a cline")
       method)))
 
 (struct-easy (sink-merge-by-own-method-unthorough get-method)
@@ -893,21 +913,22 @@
   #:property prop:procedure
   (fn this command
     (dissect this (sink-merge-by-own-method-unthorough get-method)
+    #/w- fault (get-current-fault)
     #/mat command
       (unsafe:merge-by-own-method::raise-different-input-methods-error
         a b a-method b-method)
-      (cene-err "Obtained two different methods from the two input values")
+      (cene-err fault "Obtained two different methods from the two input values")
     #/mat command
       (unsafe:merge-by-own-method::raise-cannot-get-output-method-error
         a b result input-method)
-      (cene-err "Could not obtain a method from the result value")
+      (cene-err fault "Could not obtain a method from the result value")
     #/mat command
       (unsafe:merge-by-own-method::raise-different-output-method-error
         a b result input-method output-method)
-      (cene-err "Obtained two different methods from the input and the output")
+      (cene-err fault "Obtained two different methods from the input and the output")
     #/dissect command (unsafe:merge-by-own-method::get-method source)
-    #/expect (sink-call get-method source) (sink-merge method)
-      (cene-err "Expected the result of a merge-by-own-method body to be a merge")
+    #/expect (sink-call fault get-method source) (sink-merge method)
+      (cene-err fault "Expected the result of a merge-by-own-method body to be a merge")
       method)))
 
 (struct-easy (sink-fuse-by-own-method-unthorough get-method)
@@ -916,21 +937,22 @@
   #:property prop:procedure
   (fn this command
     (dissect this (sink-fuse-by-own-method-unthorough get-method)
+    #/w- fault (get-current-fault)
     #/mat command
       (unsafe:fuse-by-own-method::raise-different-input-methods-error
         a b a-method b-method)
-      (cene-err "Obtained two different methods from the two input values")
+      (cene-err fault "Obtained two different methods from the two input values")
     #/mat command
       (unsafe:fuse-by-own-method::raise-cannot-get-output-method-error
         a b result input-method)
-      (cene-err "Could not obtain a method from the result value")
+      (cene-err fault "Could not obtain a method from the result value")
     #/mat command
       (unsafe:fuse-by-own-method::raise-different-output-method-error
         a b result input-method output-method)
-      (cene-err "Obtained two different methods from the input and the output")
+      (cene-err fault "Obtained two different methods from the input and the output")
     #/dissect command (unsafe:fuse-by-own-method::get-method source)
-    #/expect (sink-call get-method source) (sink-fuse method)
-      (cene-err "Expected the result of a fuse-by-own-method body to be a fuse")
+    #/expect (sink-call fault get-method source) (sink-fuse method)
+      (cene-err fault "Expected the result of a fuse-by-own-method body to be a fuse")
       method)))
 
 (struct-easy (sink-fuse-fusable-fn-unthorough arg-to-method)
@@ -939,14 +961,15 @@
   #:property prop:procedure
   (fn this command
     (dissect this (sink-fuse-fusable-fn-unthorough arg-to-method)
+    #/w- fault (get-current-fault)
     #/mat command
       (unsafe:fuse-fusable-function::raise-cannot-combine-results-error
         method a b a-result b-result)
-      (cene-err "Could not combine the result values")
+      (cene-err fault "Could not combine the result values")
     #/dissect command
       (unsafe:fuse-fusable-function::arg-to-method arg)
-    #/expect (sink-call arg-to-method arg) (sink-fuse method)
-      (cene-err "Expected the result of a fuse-fusable-fn body to be a fuse")
+    #/expect (sink-call fault arg-to-method arg) (sink-fuse method)
+      (cene-err fault "Expected the result of a fuse-fusable-fn body to be a fuse")
       method)))
 
 
@@ -1013,7 +1036,7 @@
   (define/contract (macro-impl body)
     (->
       (->
-        sink-authorized-name? sink? sink-text-input-stream?
+        sink? sink-authorized-name? sink? sink-text-input-stream?
         sink-cexpr-sequence-output-stream?
         (->
           sink-authorized-name? sink? sink-text-input-stream?
@@ -1021,22 +1044,22 @@
           sink-effects?)
         sink-effects?)
       sink?)
-    (sink-fn-curried 5 #/fn
-      unique-name qualify text-input-stream output-stream then
+    (sink-fn-curried-fault 5 #/fn
+      fault unique-name qualify text-input-stream output-stream then
       
       (expect (sink-authorized-name? unique-name) #t
-        (cene-err "Expected unique-name to be an authorized name")
+        (cene-err fault "Expected unique-name to be an authorized name")
       #/expect (sink-text-input-stream? text-input-stream) #t
-        (cene-err "Expected text-input-stream to be a text input stream")
+        (cene-err fault "Expected text-input-stream to be a text input stream")
       #/expect (sink-cexpr-sequence-output-stream? output-stream) #t
-        (cene-err "Expected output-stream to be an expression sequence output stream")
-      #/body unique-name qualify text-input-stream output-stream
+        (cene-err fault "Expected output-stream to be an expression sequence output stream")
+      #/body fault unique-name qualify text-input-stream output-stream
       #/fn unique-name qualify text-input-stream output-stream
       #/w- effects
-        (sink-call then
+        (sink-call fault then
           unique-name qualify text-input-stream output-stream)
       #/expect (sink-effects? effects) #t
-        (cene-err "Expected the return value of a macro's callback to be an effectful computation")
+        (cene-err fault "Expected the return value of a macro's callback to be an effectful computation")
         effects)))
   
   ; This creates a macro implementation function that reads a form
@@ -1045,12 +1068,12 @@
   (define/contract (macro-impl-specific-number-of-args n-args body)
     (-> natural? (-> (listof sink-cexpr?) sink-cexpr?) sink?)
     (macro-impl #/fn
-      unique-name qualify text-input-stream output-stream then
+      fault unique-name qualify text-input-stream output-stream then
       
       (sink-effects-read-bounded-specific-number-of-cexprs
-        unique-name qualify text-input-stream n-args
+        fault unique-name qualify text-input-stream n-args
       #/fn unique-name qualify text-input-stream args
-      #/sink-effects-cexpr-write output-stream (body args)
+      #/sink-effects-cexpr-write fault output-stream (body args)
       #/fn output-stream
       #/then unique-name qualify text-input-stream output-stream)))
   
@@ -1113,17 +1136,22 @@
         qualified-main-tag-name
         (sink-table #/table-empty)
         (sink-opaque-fn #/fn struct-value
-          (sink-fn-curried n-args racket-func)))
+          (sink-fn-curried-fault n-args racket-func)))
       
       ))
+  
+  (define-syntax (def-func-fault! stx)
+    (syntax-parse stx #/
+      (_ main-tag-string:expr fault:id param:id ... body:expr)
+      #`(def-func-verbose! def-value-for-package! main-tag-string
+          '#,(length (syntax->list #'(param ...)))
+          (fn fault param ...
+            body))))
   
   (define-syntax (def-func! stx)
     (syntax-parse stx #/
       (_ main-tag-string:expr param:id ... body:expr)
-      #`(def-func-verbose! def-value-for-package! main-tag-string
-          '#,(length (syntax->list #'(param ...)))
-          (fn param ...
-            body))))
+      #`(def-func-fault! main-tag-string fault param ... body)))
   
   (define/contract (def-nullary-func! main-tag-string result)
     (-> immutable-string? sink? void?)
@@ -1156,10 +1184,10 @@
       (def-func-impl-reified!
         qualified-main-tag-name
         (sink-table #/table-empty)
-        (sink-fn-curried 2 #/fn struct-value arg
+        (sink-fn-curried-fault 2 #/fn fault struct-value arg
           (expect (unmake-sink-struct-maybe s-trivial arg)
             (just #/list)
-            (cene-err "Expected the argument to a nullary function to be a trivial")
+            (cene-err fault "Expected the argument to a nullary function to be a trivial")
             result)))
       
       ))
@@ -1225,8 +1253,8 @@
       (def-func-impl-reified!
         qualified-main-tag-name
         (sink-table qualified-proj-names-table)
-        (sink-opaque-fn #/fn struct-value
-          (cene-err "Called a struct that wasn't intended for calling")))
+        (sink-opaque-fn-fault #/dissectfn (list fault struct-value)
+          (cene-err fault "Called a struct that wasn't intended for calling")))
       
       ; We also define something we can use to look up a qualified
       ; main tag name and an ordered list of qualified and unqualified
@@ -1257,7 +1285,7 @@
     (->
       immutable-string?
       (->
-        sink-authorized-name? sink? sink-text-input-stream?
+        sink? sink-authorized-name? sink? sink-text-input-stream?
         (->
           sink-authorized-name? sink? sink-text-input-stream?
           sink-cexpr?
@@ -1268,11 +1296,11 @@
       (sink-name-for-bounded-cexpr-op
       #/sink-name-for-string #/sink-string name-string)
       (macro-impl #/fn
-        unique-name qualify text-input-stream output-stream then
+        fault unique-name qualify text-input-stream output-stream then
         
-        (body unique-name qualify text-input-stream
+        (body fault unique-name qualify text-input-stream
         #/fn unique-name qualify text-input-stream cexpr
-        #/sink-effects-cexpr-write output-stream cexpr
+        #/sink-effects-cexpr-write fault output-stream cexpr
         #/fn output-stream
         #/then unique-name qualify text-input-stream output-stream))))
   
@@ -1290,10 +1318,11 @@
   ;
   (def-value-for-package! (sink-name-for-nameless-bounded-cexpr-op)
     (macro-impl #/fn
-      unique-name qualify text-input-stream output-stream then
+      fault unique-name qualify text-input-stream output-stream then
       
       (sink-effects-read-and-run-bounded-cexpr-op
-        unique-name qualify text-input-stream output-stream then)))
+        fault unique-name qualify text-input-stream output-stream
+        then)))
   
   ; This binds the freestanding expression reader macro for `=`. This
   ; implementation is a line comment syntax: It consumes all the
@@ -1306,10 +1335,10 @@
     (sink-name-for-freestanding-cexpr-op
     #/sink-name-for-string #/sink-string "=")
     (macro-impl #/fn
-      unique-name qualify text-input-stream output-stream then
+      fault unique-name qualify text-input-stream output-stream then
       
       (sink-effects-claim-freshen unique-name #/fn unique-name
-      #/sink-effects-read-non-line-breaks text-input-stream
+      #/sink-effects-read-non-line-breaks fault text-input-stream
       #/fn text-input-stream non-line-breaks
       #/then unique-name qualify text-input-stream output-stream)))
   
@@ -1333,8 +1362,8 @@
   ; Errors and conscience
   
   ; TODO: Test this.
-  (def-func! "follow-heart" clamor
-    (raise-cene-err (current-continuation-marks) clamor))
+  (def-func-fault! "follow-heart" fault clamor
+    (raise-cene-err fault clamor))
   
   (def-data-struct! "clamor-err" #/list "message")
   
@@ -1359,24 +1388,33 @@
   (def-nullary-func! "make-ordering-private-gt"
     (sink-ordering-private #/make-ordering-private-gt))
   
-  (def-func! "in-dex" dex v
+  (def-func-fault! "in-dex" fault dex v
     (expect dex (sink-dex dex)
-      (cene-err "Expected dex to be a dex")
-    #/racket-boolean->sink #/in-dex? dex v))
+      (cene-err fault "Expected dex to be a dex")
+    #/racket-boolean->sink
+    #/with-current-fault fault #/fn
+    #/in-dex? dex v))
   
-  (def-func! "name-of" dex v
+  (def-func-fault! "name-of" fault dex v
     (expect dex (sink-dex dex)
-      (cene-err "Expected dex to be a dex")
-    #/racket-maybe->sink #/maybe-map (name-of dex v) #/fn name
-      (sink-name name)))
+      (cene-err fault "Expected dex to be a dex")
+    #/racket-maybe->sink
+      (maybe-map
+        (with-current-fault fault #/fn
+        #/name-of dex v)
+      #/fn name
+        (sink-name name))))
   
   ; NOTE: In the JavaScript version of Cene, this was called
   ; `call-dex`.
-  (def-func! "compare-by-dex" dex a b
+  (def-func-fault! "compare-by-dex" fault dex a b
     (expect dex (sink-dex dex)
-      (cene-err "Expected dex to be a dex")
+      (cene-err fault "Expected dex to be a dex")
     #/racket-maybe->sink
-    #/maybe-map (compare-by-dex dex a b) #/fn dex-result
+    #/maybe-map
+      (with-current-fault fault #/fn
+      #/compare-by-dex dex a b)
+    #/fn dex-result
       (if (ordering-private? dex-result)
         (sink-ordering-private dex-result)
       #/dissect dex-result (ordering-eq)
@@ -1392,56 +1430,66 @@
   
   (def-nullary-func! "dex-give-up" (sink-dex #/dex-give-up))
   
-  (def-func! "dex-default" dex-for-trying-first dex-for-trying-second
+  (def-func-fault! "dex-default"
+    fault dex-for-trying-first dex-for-trying-second
     (expect dex-for-trying-first (sink-dex dex-for-trying-first)
-      (cene-err "Expected dex-for-trying-first to be a dex")
+      (cene-err fault "Expected dex-for-trying-first to be a dex")
     #/expect dex-for-trying-second (sink-dex dex-for-trying-second)
-      (cene-err "Expected dex-for-trying-second to be a dex")
+      (cene-err fault "Expected dex-for-trying-second to be a dex")
     #/sink-dex
     #/dex-default dex-for-trying-first dex-for-trying-second))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
-  (def-func! "dex-opaque" name dex
+  (def-func-fault! "dex-opaque" fault name dex
     (expect name (sink-name name)
-      (cene-err "Expected name to be a name")
+      (cene-err fault "Expected name to be a name")
     #/expect dex (sink-dex dex)
-      (cene-err "Expected dex to be a dex")
+      (cene-err fault "Expected dex to be a dex")
     #/sink-dex #/dex-opaque name dex))
   
-  (def-func! "dex-by-own-method" dexable-get-method
+  (def-func-fault! "dex-by-own-method" fault dexable-get-method
     (expect (sink-valid-dexable->maybe-racket dexable-get-method)
       (just dexable-get-method)
-      (cene-err "Expected dexable-get-method to be a valid dexable")
+      (cene-err fault "Expected dexable-get-method to be a valid dexable")
     #/sink-dex #/unsafe:dex-by-own-method-thorough-unchecked
     #/dexable-struct sink-dex-by-own-method-unthorough
       dexable-get-method))
   
-  (def-func! "dex-fix" dexable-unwrap
+  (def-func-fault! "dex-fix" fault dexable-unwrap
     (expect (sink-valid-dexable->maybe-racket dexable-unwrap)
       (just dexable-unwrap)
-      (cene-err "Expected dexable-unwrap to be a valid dexable")
+      (cene-err fault "Expected dexable-unwrap to be a valid dexable")
     #/sink-dex #/unsafe:dex-fix-unchecked
     #/dexable-struct converter-for-dex-fix dexable-unwrap))
   
   ; NOTE: In the JavaScript version of Cene, there was a similar
   ; operation called `dex-by-cline`.
-  (def-func! "get-dex-from-cline" cline
+  (def-func-fault! "get-dex-from-cline" fault cline
     (expect cline (sink-cline cline)
-      (cene-err "Expected cline to be a cline")
-    #/sink-dex #/get-dex-from-cline cline))
+      (cene-err fault "Expected cline to be a cline")
+    #/sink-dex
+    ; TODO FAULT: See if we really need this `with-current-fault`
+    ; call.
+    #/with-current-fault fault #/fn
+    #/get-dex-from-cline cline))
   
-  (def-func! "in-cline" cline v
+  (def-func-fault! "in-cline" fault cline v
     (expect cline (sink-cline cline)
-      (cene-err "Expected cline to be a cline")
-    #/racket-boolean->sink #/in-cline? cline v))
+      (cene-err fault "Expected cline to be a cline")
+    #/racket-boolean->sink
+    #/with-current-fault fault #/fn
+    #/in-cline? cline v))
   
   ; NOTE: In the JavaScript version of Cene, this was called
   ; `call-cline`.
-  (def-func! "compare-by-cline" cline a b
+  (def-func-fault! "compare-by-cline" fault cline a b
     (expect cline (sink-cline cline)
-      (cene-err "Expected cline to be a cline")
+      (cene-err fault "Expected cline to be a cline")
     #/racket-maybe->sink
-    #/maybe-map (compare-by-cline cline a b) #/fn cline-result
+    #/maybe-map
+      (with-current-fault fault #/fn
+      #/compare-by-cline cline a b)
+    #/fn cline-result
       (if (ordering-private? cline-result)
         (sink-ordering-private cline-result)
       #/mat cline-result (ordering-lt)
@@ -1454,55 +1502,59 @@
   (def-nullary-func! "dex-cline"
     (sink-dex #/dex-struct sink-cline #/dex-cline))
   
-  (def-func! "cline-by-dex" dex
+  (def-func-fault! "cline-by-dex" fault dex
     (expect dex (sink-dex dex)
-      (cene-err "Expected dex to be a dex")
+      (cene-err fault "Expected dex to be a dex")
     #/sink-cline #/cline-by-dex dex))
   
   (def-nullary-func! "cline-give-up" (sink-cline #/cline-give-up))
   
-  (def-func! "cline-default"
-    cline-for-trying-first cline-for-trying-second
+  (def-func-fault! "cline-default"
+    fault cline-for-trying-first cline-for-trying-second
     
     (expect cline-for-trying-first (sink-cline cline-for-trying-first)
-      (cene-err "Expected cline-for-trying-first to be a cline")
+      (cene-err fault "Expected cline-for-trying-first to be a cline")
     #/expect cline-for-trying-second (sink-cline cline-for-trying-second)
-      (cene-err "Expected cline-for-trying-second to be a cline")
+      (cene-err fault "Expected cline-for-trying-second to be a cline")
     #/sink-cline
     #/cline-default cline-for-trying-first cline-for-trying-second))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
-  (def-func! "cline-opaque" name cline
+  (def-func-fault! "cline-opaque" fault name cline
     (expect name (sink-name name)
-      (cene-err "Expected name to be a name")
+      (cene-err fault "Expected name to be a name")
     #/expect cline (sink-cline cline)
-      (cene-err "Expected cline to be a cline")
+      (cene-err fault "Expected cline to be a cline")
     #/sink-cline #/cline-opaque name cline))
   
-  (def-func! "cline-by-own-method" dexable-get-method
+  (def-func-fault! "cline-by-own-method" fault dexable-get-method
     (expect (sink-valid-dexable->maybe-racket dexable-get-method)
       (just dexable-get-method)
-      (cene-err "Expected dexable-get-method to be a valid dexable")
+      (cene-err fault "Expected dexable-get-method to be a valid dexable")
     #/sink-cline #/unsafe:cline-by-own-method-thorough-unchecked
     #/dexable-struct sink-cline-by-own-method-unthorough
       dexable-get-method))
   
-  (def-func! "cline-fix" dexable-unwrap
+  (def-func-fault! "cline-fix" fault dexable-unwrap
     (expect (sink-valid-dexable->maybe-racket dexable-unwrap)
       (just dexable-unwrap)
-      (cene-err "Expected dexable-unwrap to be a valid dexable")
+      (cene-err fault "Expected dexable-unwrap to be a valid dexable")
     #/sink-cline #/unsafe:cline-fix-unchecked
     #/dexable-struct converter-for-cline-fix dexable-unwrap))
   
-  (def-func! "call-merge" merge a b
+  (def-func-fault! "call-merge" fault merge a b
     (expect merge (sink-merge merge)
-      (cene-err "Expected merge to be a merge")
-    #/racket-maybe->sink #/call-merge merge a b))
+      (cene-err fault "Expected merge to be a merge")
+    #/racket-maybe->sink
+    #/with-current-fault fault #/fn
+    #/call-merge merge a b))
   
-  (def-func! "call-fuse" fuse a b
+  (def-func-fault! "call-fuse" fault fuse a b
     (expect fuse (sink-fuse fuse)
-      (cene-err "Expected fuse to be a fuse")
-    #/racket-maybe->sink #/call-fuse fuse a b))
+      (cene-err fault "Expected fuse to be a fuse")
+    #/racket-maybe->sink
+    #/with-current-fault fault #/fn
+    #/call-fuse fuse a b))
   
   (def-nullary-func! "dex-merge"
     (sink-dex #/dex-struct sink-merge #/dex-merge))
@@ -1514,82 +1566,88 @@
   ; `fuse-default` from the JavaScript version of Cene since they are
   ; not well-behaved furges.
   
-  (def-func! "merge-by-dex" dex
+  (def-func-fault! "merge-by-dex" fault dex
     (expect dex (sink-dex dex)
-      (cene-err "Expected dex to be a dex")
+      (cene-err fault "Expected dex to be a dex")
     #/sink-merge #/merge-by-dex dex))
   
-  (def-func! "fuse-by-merge" merge
+  (def-func-fault! "fuse-by-merge" fault merge
     (expect merge (sink-merge merge)
-      (cene-err "Expected merge to be a merge")
+      (cene-err fault "Expected merge to be a merge")
     #/sink-fuse #/fuse-by-merge merge))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
-  (def-func! "merge-opaque" name merge
+  (def-func-fault! "merge-opaque" fault name merge
     (expect name (sink-name name)
-      (cene-err "Expected name to be a name")
+      (cene-err fault "Expected name to be a name")
     #/expect merge (sink-merge merge)
-      (cene-err "Expected merge to be a merge")
+      (cene-err fault "Expected merge to be a merge")
     #/sink-merge #/merge-opaque name merge))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
-  (def-func! "fuse-opaque" name fuse
+  (def-func-fault! "fuse-opaque" fault name fuse
     (expect name (sink-name name)
-      (cene-err "Expected name to be a name")
+      (cene-err fault "Expected name to be a name")
     #/expect fuse (sink-fuse fuse)
-      (cene-err "Expected fuse to be a fuse")
+      (cene-err fault "Expected fuse to be a fuse")
     #/sink-fuse #/fuse-opaque name fuse))
   
-  (def-func! "merge-by-own-method" dexable-get-method
+  (def-func-fault! "merge-by-own-method" fault dexable-get-method
     (expect (sink-valid-dexable->maybe-racket dexable-get-method)
       (just dexable-get-method)
-      (cene-err "Expected dexable-get-method to be a valid dexable")
+      (cene-err fault "Expected dexable-get-method to be a valid dexable")
     #/sink-merge #/unsafe:merge-by-own-method-thorough-unchecked
     #/dexable-struct sink-merge-by-own-method-unthorough
       dexable-get-method))
   
-  (def-func! "fuse-by-own-method" dexable-get-method
+  (def-func-fault! "fuse-by-own-method" fault dexable-get-method
     (expect (sink-valid-dexable->maybe-racket dexable-get-method)
       (just dexable-get-method)
-      (cene-err "Expected dexable-get-method to be a valid dexable")
+      (cene-err fault "Expected dexable-get-method to be a valid dexable")
     #/sink-fuse #/unsafe:fuse-by-own-method-thorough-unchecked
     #/dexable-struct sink-fuse-by-own-method-unthorough
       dexable-get-method))
   
-  (def-func! "merge-fix" dexable-unwrap
+  (def-func-fault! "merge-fix" fault dexable-unwrap
     (expect (sink-valid-dexable->maybe-racket dexable-unwrap)
       (just dexable-unwrap)
-      (cene-err "Expected dexable-unwrap to be a valid dexable")
+      (cene-err fault "Expected dexable-unwrap to be a valid dexable")
     #/sink-merge #/unsafe:merge-fix-unchecked
     #/dexable-struct converter-for-merge-fix dexable-unwrap))
   
-  (def-func! "fuse-fix" dexable-unwrap
+  (def-func-fault! "fuse-fix" fault dexable-unwrap
     (expect (sink-valid-dexable->maybe-racket dexable-unwrap)
       (just dexable-unwrap)
-      (cene-err "Expected dexable-unwrap to be a valid dexable")
+      (cene-err fault "Expected dexable-unwrap to be a valid dexable")
     #/sink-fuse #/unsafe:fuse-fix-unchecked
     #/dexable-struct converter-for-fuse-fix dexable-unwrap))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func! "is-fusable-fn" v
     (racket-boolean->sink
-    #/expect v (sink-opaque-fn v) #f
-    #/fusable-function? v))
+    #/mat v (sink-opaque-fn v) (fusable-function? v)
+    #/mat v (sink-opaque-fn-fault v) (fusable-function? v)
+      #f))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
-  (def-func! "make-fusable-fn" func
-    (sink-opaque-fn #/make-fusable-function #/fn arg
-      (sink-call func arg)))
+  (def-func-fault! "make-fusable-fn" caller-fault func
+    (sink-opaque-fn-fault
+      (make-fusable-function #/dissectfn (list explicit-fault arg)
+        (sink-call-fault caller-fault explicit-fault func arg))))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
-  (def-func! "fuse-fusable-fn" dexable-arg-to-method
-    (expect (sink-valid-dexable->maybe-racket dexable-arg-to-method)
-      (just dexable-arg-to-method)
-      (cene-err "Expected dexable-arg-to-method to be a valid dexable")
+  (def-func-fault! "fuse-fusable-fn-fault"
+    fault dexable-fault-and-arg-to-method
+    
+    (expect
+      (sink-valid-dexable->maybe-racket
+        dexable-fault-and-arg-to-method)
+      (just dexable-fault-and-arg-to-method)
+      (cene-err fault "Expected dexable-fault-and-arg-to-method to be a valid dexable")
     #/sink-fuse #/fuse-struct sink-opaque-fn
     #/unsafe:fuse-fusable-function-thorough-unchecked
     #/dexable-struct sink-fuse-fusable-fn-unthorough
-      dexable-arg-to-method))
+      dexable-fault-and-arg-to-method))
   
   
   ; Authorized names
@@ -1601,19 +1659,19 @@
   (def-func! "is-authorized-name" v
     (racket-boolean->sink #/sink-authorized-name? v))
   
-  (def-func! "authorized-name-get-name" name
+  (def-func-fault! "authorized-name-get-name" fault name
     (expect (sink-authorized-name? name) #t
-      (cene-err "Expected name to be an authorized name")
+      (cene-err fault "Expected name to be an authorized name")
     #/sink-authorized-name-get-name name))
   
-  (def-func! "name-subname" name
+  (def-func-fault! "name-subname" fault name
     (expect (sink-name? name) #t
-      (cene-err "Expected name to be a name")
+      (cene-err fault "Expected name to be a name")
     #/sink-name-subname name))
   
-  (def-func! "authorized-name-subname" name
+  (def-func-fault! "authorized-name-subname" fault name
     (expect (sink-authorized-name? name) #t
-      (cene-err "Expected name to be an authorized name")
+      (cene-err fault "Expected name to be an authorized name")
     #/sink-authorized-name-subname name))
   
   
@@ -1628,34 +1686,35 @@
     (list "main-tag-name" "projections"))
   
   (define/contract
-    (verify-cexpr-struct-args! main-tag-name projections)
-    (-> sink? sink?
+    (verify-cexpr-struct-args! fault main-tag-name projections)
+    (-> sink? sink? sink?
       (list/c sink-name? #/listof #/list/c name? cexpr?))
     
     (expect main-tag-name (sink-authorized-name main-tag-name)
-      (cene-err "Expected main-tag-name to be an authorized name")
+      (cene-err fault "Expected main-tag-name to be an authorized name")
     #/expect (sink-list->maybe-racket projections) (just projections)
-      (cene-err "Expected projections to be a list made up of cons and nil values")
+      (cene-err fault "Expected projections to be a list made up of cons and nil values")
     #/w- projections
       (list-map projections #/fn projection
         (expect (unmake-sink-struct-maybe s-assoc projection)
           (just #/list k v)
-          (cene-err "Expected projections to be a list of assoc values")
+          (cene-err fault "Expected projections to be a list of assoc values")
         #/expect k (sink-authorized-name k)
-          (cene-err "Expected projections to be an association list with authorized names as keys")
+          (cene-err fault "Expected projections to be an association list with authorized names as keys")
         #/expect v (sink-cexpr v)
-          (cene-err "Expected projections to be an association list with expressions as values")
+          (cene-err fault "Expected projections to be an association list with expressions as values")
         #/list k v))
     #/if
       (names-have-duplicate?
       #/list-map projections #/dissectfn (list k v) k)
-      (cene-err "Expected projections to be an association list with mutually unique names as keys")
+      (cene-err fault "Expected projections to be an association list with mutually unique names as keys")
     #/list main-tag-name projections))
   
   (define/contract
     (sink-effects-expand-struct-op
-      unique-name qualify text-input-stream then)
+      fault unique-name qualify text-input-stream then)
     (->
+      sink?
       sink-authorized-name?
       sink?
       sink-text-input-stream?
@@ -1668,7 +1727,8 @@
       sink-effects?)
     
     (sink-effects-claim-freshen unique-name #/fn unique-name
-    #/sink-effects-read-maybe-struct-metadata qualify text-input-stream
+    #/sink-effects-read-maybe-struct-metadata
+      fault qualify text-input-stream
     #/fn text-input-stream maybe-metadata
     #/expect maybe-metadata (just metadata)
       (then unique-name qualify text-input-stream #/nothing)
@@ -1676,7 +1736,8 @@
       (cons main-tag-name proj-names)
     
     #/sink-effects-read-bounded-specific-number-of-cexprs
-      unique-name qualify text-input-stream (length proj-names)
+      fault unique-name qualify text-input-stream
+      (length proj-names)
     #/fn unique-name qualify text-input-stream proj-exprs
     
     #/then unique-name qualify text-input-stream
@@ -1685,131 +1746,141 @@
   ; NOTE: The JavaScript version of Cene makes this functionality
   ; possible using a combination of `cexpr-cline-struct`,
   ; `cline-by-dex`, and `dex-by-cline`. We will probably be offering
-  ; `get-dex-by-cline` (as provided by Effection) instead of
+  ; `get-dex-from-cline` (as provided by Effection) instead of
   ; `dex-by-cline`, but the same circuitous combination would work.
   ; Nevertheless, we provide this operation directly.
   ;
-  (def-func! "expr-dex-struct" main-tag-name projections
-    (dissect (verify-cexpr-struct-args! main-tag-name projections)
+  (def-func-fault! "expr-dex-struct" fault main-tag-name projections
+    (dissect
+      (verify-cexpr-struct-args! fault main-tag-name projections)
       (list main-tag-name projections)
     #/sink-cexpr #/cexpr-dex-struct main-tag-name projections))
   
   (def-macro! "dex-struct" #/fn
-    unique-name qualify text-input-stream then
+    fault unique-name qualify text-input-stream then
     
     (sink-effects-expand-struct-op
-      unique-name qualify text-input-stream
+      fault unique-name qualify text-input-stream
     #/fn unique-name qualify text-input-stream maybe-pieces
     #/expect maybe-pieces (just #/list main-tag-name projections)
-      (cene-err "Expected a dex-struct form to designate a struct metadata name")
+      ; TODO FAULT: Make this `fault` more specific.
+      (cene-err fault "Expected a dex-struct form to designate a struct metadata name")
     #/then unique-name qualify text-input-stream
     #/sink-cexpr #/cexpr-dex-struct main-tag-name projections))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-cline-struct`.
-  (def-func! "expr-cline-struct" main-tag-name projections
-    (dissect (verify-cexpr-struct-args! main-tag-name projections)
+  (def-func-fault! "expr-cline-struct" fault main-tag-name projections
+    (dissect
+      (verify-cexpr-struct-args! fault main-tag-name projections)
       (list main-tag-name projections)
     #/sink-cexpr #/cexpr-cline-struct main-tag-name projections))
   
   (def-macro! "cline-struct" #/fn
-    unique-name qualify text-input-stream then
+    fault unique-name qualify text-input-stream then
     
     (sink-effects-expand-struct-op
-      unique-name qualify text-input-stream
+      fault unique-name qualify text-input-stream
     #/fn unique-name qualify text-input-stream maybe-pieces
     #/expect maybe-pieces (just #/list main-tag-name projections)
-      (cene-err "Expected a cline-struct form to designate a struct metadata name")
+      ; TODO FAULT: Make this `fault` more specific.
+      (cene-err fault "Expected a cline-struct form to designate a struct metadata name")
     #/then unique-name qualify text-input-stream
     #/sink-cexpr #/cexpr-cline-struct main-tag-name projections))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-merge-struct`.
-  (def-func! "expr-merge-struct" main-tag-name projections
-    (dissect (verify-cexpr-struct-args! main-tag-name projections)
+  (def-func-fault! "expr-merge-struct" fault main-tag-name projections
+    (dissect
+      (verify-cexpr-struct-args! fault main-tag-name projections)
       (list main-tag-name projections)
     #/sink-cexpr #/cexpr-merge-struct main-tag-name projections))
   
   (def-macro! "merge-struct" #/fn
-    unique-name qualify text-input-stream then
+    fault unique-name qualify text-input-stream then
     
     (sink-effects-expand-struct-op
-      unique-name qualify text-input-stream
+      fault unique-name qualify text-input-stream
     #/fn unique-name qualify text-input-stream maybe-pieces
     #/expect maybe-pieces (just #/list main-tag-name projections)
-      (cene-err "Expected a merge-struct form to designate a struct metadata name")
+      ; TODO FAULT: Make this `fault` more specific.
+      (cene-err fault "Expected a merge-struct form to designate a struct metadata name")
     #/then unique-name qualify text-input-stream
     #/sink-cexpr #/cexpr-merge-struct main-tag-name projections))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-fuse-struct`.
-  (def-func! "expr-fuse-struct" main-tag-name projections
-    (dissect (verify-cexpr-struct-args! main-tag-name projections)
+  (def-func-fault! "expr-fuse-struct" fault main-tag-name projections
+    (dissect
+      (verify-cexpr-struct-args! fault main-tag-name projections)
       (list main-tag-name projections)
     #/sink-cexpr #/cexpr-fuse-struct main-tag-name projections))
   
   (def-macro! "fuse-struct" #/fn
-    unique-name qualify text-input-stream then
+    fault unique-name qualify text-input-stream then
     
     (sink-effects-expand-struct-op
-      unique-name qualify text-input-stream
+      fault unique-name qualify text-input-stream
     #/fn unique-name qualify text-input-stream maybe-pieces
     #/expect maybe-pieces (just #/list main-tag-name projections)
-      (cene-err "Expected a fuse-struct form to designate a struct metadata name")
+      ; TODO FAULT: Make this `fault` more specific.
+      (cene-err fault "Expected a fuse-struct form to designate a struct metadata name")
     #/then unique-name qualify text-input-stream
     #/sink-cexpr #/cexpr-fuse-struct main-tag-name projections))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-struct`.
-  (def-func! "expr-construct" main-tag-name projections
-    (dissect (verify-cexpr-struct-args! main-tag-name projections)
+  (def-func-fault! "expr-construct" fault main-tag-name projections
+    (dissect
+      (verify-cexpr-struct-args! fault main-tag-name projections)
       (list main-tag-name projections)
     #/sink-cexpr #/cexpr-construct main-tag-name projections))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-macro! "construct" #/fn
-    unique-name qualify text-input-stream then
+    fault unique-name qualify text-input-stream then
     
     (sink-effects-expand-struct-op
-      unique-name qualify text-input-stream
+      fault unique-name qualify text-input-stream
     #/fn unique-name qualify text-input-stream maybe-pieces
     #/expect maybe-pieces (just #/list main-tag-name projections)
-      (cene-err "Expected a construct form to designate a struct metadata name")
+      (cene-err fault "Expected a construct form to designate a struct metadata name")
     #/then unique-name qualify text-input-stream
     #/sink-cexpr #/cexpr-construct main-tag-name projections))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-case`.
-  (def-func! "expr-case"
-    subject-expr main-tag-name projections then-expr else-expr
+  (def-func-fault! "expr-case"
+    fault subject-expr main-tag-name projections then-expr else-expr
+    
     (expect subject-expr (sink-cexpr subject-expr)
-      (cene-err "Expected subject-expr to be an expression")
+      (cene-err fault "Expected subject-expr to be an expression")
     #/expect main-tag-name (sink-authorized-name main-tag-name)
-      (cene-err "Expected main-tag-name to be an authorized name")
+      (cene-err fault "Expected main-tag-name to be an authorized name")
     #/expect (sink-list->maybe-racket projections) (just projections)
-      (cene-err "Expected projections to be a list made up of cons and nil values")
+      (cene-err fault "Expected projections to be a list made up of cons and nil values")
     #/w- projections
       (list-map projections #/fn projection
         (expect (unmake-sink-struct-maybe s-assoc projection)
           (just #/list k v)
-          (cene-err "Expected projections to be a list of assoc values")
+          (cene-err fault "Expected projections to be a list of assoc values")
         #/expect k (sink-authorized-name k)
-          (cene-err "Expected projections to be an association list with authorized names as keys")
+          (cene-err fault "Expected projections to be an association list with authorized names as keys")
         #/expect v (sink-name v)
-          (cene-err "Expected projections to be an association list with names as values")
+          (cene-err fault "Expected projections to be an association list with names as values")
         #/list k v))
     #/if
       (names-have-duplicate?
       #/list-map projections #/dissectfn (list k v) k)
-      (cene-err "Expected projections to be an association list with mutually unique authorized names as keys")
+      (cene-err fault "Expected projections to be an association list with mutually unique authorized names as keys")
     #/if
       (names-have-duplicate?
       #/list-map projections #/dissectfn (list k v) v)
-      (cene-err "Expected projections to be an association list with mutually unique names as values")
+      (cene-err fault "Expected projections to be an association list with mutually unique names as values")
     #/expect then-expr (sink-cexpr then-expr)
-      (cene-err "Expected then-expr to be an expression")
+      (cene-err fault "Expected then-expr to be an expression")
     #/expect else-expr (sink-cexpr else-expr)
-      (cene-err "Expected else-expr to be an expression")
+      (cene-err fault "Expected else-expr to be an expression")
     #/sink-cexpr #/cexpr-case subject-expr
       (cons main-tag-name
       #/list-map projections #/dissectfn (list proj-name var)
@@ -1820,8 +1891,10 @@
       else-expr))
   
   (define/contract
-    (sink-effects-read-case-pattern qualify text-input-stream then)
+    (sink-effects-read-case-pattern
+      fault qualify text-input-stream then)
     (->
+      sink?
       sink?
       sink-text-input-stream?
       (->i
@@ -1833,55 +1906,61 @@
         [_ sink-effects?])
       sink-effects?)
     
-    (sink-effects-read-maybe-struct-metadata qualify text-input-stream
+    (sink-effects-read-maybe-struct-metadata
+      fault qualify text-input-stream
     #/fn text-input-stream maybe-metadata
     #/expect maybe-metadata (just metadata)
-      (cene-err "Expected the first part of a case pattern to designate a struct metadata name")
+      ; TODO FAULT: Make this `fault` more specific.
+      (cene-err fault "Expected the first part of a case pattern to designate a struct metadata name")
     #/maybe-bind maybe-metadata #/fn metadata
     #/w- tags (struct-metadata-tags metadata)
     #/w- n-projs (struct-metadata-n-projs metadata)
     
     #/sink-effects-read-leading-specific-number-of-identifiers
-      qualify text-input-stream n-projs sink-name-for-local-variable
+      fault qualify text-input-stream n-projs
+      sink-name-for-local-variable
     #/fn text-input-stream vars
     #/w- vars
       (list-map vars #/dissectfn (list located-string var)
         (sink-authorized-name-get-name var))
     #/if (sink-names-have-duplicate? vars)
-      (cene-err "Expected the variables of a case pattern to be mutually unique")
+      ; TODO FAULT: Make this `fault` more specific.
+      (cene-err fault "Expected the variables of a case pattern to be mutually unique")
     
     #/then text-input-stream tags vars))
   
-  (def-macro! "case" #/fn unique-name qualify text-input-stream then
+  (def-macro! "case" #/fn
+    fault unique-name qualify text-input-stream then
     
     (sink-effects-read-leading-specific-number-of-cexprs
-      unique-name qualify text-input-stream 1
+      fault unique-name qualify text-input-stream 1
     #/fn unique-name qualify text-input-stream args-subject
     #/dissect args-subject (list subject-expr)
     
-    #/sink-effects-read-case-pattern qualify text-input-stream
+    #/sink-effects-read-case-pattern fault qualify text-input-stream
     #/fn text-input-stream tags vars
     
     #/sink-effects-read-bounded-specific-number-of-cexprs
-      unique-name qualify text-input-stream 2
+      fault unique-name qualify text-input-stream 2
     #/fn unique-name qualify text-input-stream args-branches
     #/dissect args-branches (list then-expr else-expr)
     
     #/then unique-name qualify text-input-stream
     #/sink-cexpr-case subject-expr tags vars then-expr else-expr))
   
-  (def-macro! "cast" #/fn unique-name qualify text-input-stream then
+  (def-macro! "cast" #/fn
+    fault unique-name qualify text-input-stream then
     
     (sink-effects-read-leading-specific-number-of-cexprs
-      unique-name qualify text-input-stream 1
+      fault unique-name qualify text-input-stream 1
     #/fn unique-name qualify text-input-stream args-subject
     #/dissect args-subject (list subject-expr)
     
-    #/sink-effects-read-case-pattern qualify text-input-stream
+    #/sink-effects-read-case-pattern fault qualify text-input-stream
     #/fn text-input-stream tags vars
     
     #/sink-effects-read-bounded-specific-number-of-cexprs
-      unique-name qualify text-input-stream 2
+      fault unique-name qualify text-input-stream 2
     #/fn unique-name qualify text-input-stream args-branches
     #/dissect args-branches (list else-expr then-expr)
     
@@ -1889,24 +1968,24 @@
     #/sink-cexpr-case subject-expr tags vars then-expr else-expr))
   
   (def-macro! "caselet" #/fn
-    unique-name qualify text-input-stream then
+    fault unique-name qualify text-input-stream then
     
     (sink-effects-read-leading-specific-number-of-identifiers
-      qualify text-input-stream 1 sink-name-for-local-variable
+      fault qualify text-input-stream 1 sink-name-for-local-variable
     #/fn text-input-stream args-subject-var
     #/dissect args-subject-var (list #/list _ subject-var)
     #/w- subject-var (sink-authorized-name-get-name subject-var)
     
     #/sink-effects-read-leading-specific-number-of-cexprs
-      unique-name qualify text-input-stream 1
+      fault unique-name qualify text-input-stream 1
     #/fn unique-name qualify text-input-stream args-subject-expr
     #/dissect args-subject-expr (list subject-expr)
     
-    #/sink-effects-read-case-pattern qualify text-input-stream
+    #/sink-effects-read-case-pattern fault qualify text-input-stream
     #/fn text-input-stream tags vars
     
     #/sink-effects-read-bounded-specific-number-of-cexprs
-      unique-name qualify text-input-stream 2
+      fault unique-name qualify text-input-stream 2
     #/fn unique-name qualify text-input-stream args-branches
     #/dissect args-branches (list then-expr else-expr)
     
@@ -1916,24 +1995,62 @@
       then-expr
       else-expr))
   
-  ; NOTE: In the JavaScript version of Cene, this was known as
-  ; `cexpr-call`.
-  (def-func! "expr-call" func-expr arg-expr
-    (expect func-expr (sink-cexpr func-expr)
-      (cene-err "Expected func-expr to be an expression")
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func-fault! "expr-call-blame"
+    fault fault-arg-expr func-expr arg-expr
+    
+    (expect fault-arg-expr (sink-cexpr fault-arg-expr)
+      (cene-err fault "Expected blame-arg-expr to be an expression")
+    #/expect func-expr (sink-cexpr func-expr)
+      (cene-err fault "Expected func-expr to be an expression")
     #/expect arg-expr (sink-cexpr arg-expr)
-      (cene-err "Expected arg-expr to be an expression")
-    #/sink-cexpr #/cexpr-call func-expr arg-expr))
+      (cene-err fault "Expected arg-expr to be an expression")
+    #/sink-cexpr
+      (cexpr-call-fault fault-arg-expr func-expr arg-expr)))
   
-  (def-macro! "c" #/fn unique-name qualify text-input-stream then
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-macro! "c-blame" #/fn
+    fault unique-name qualify text-input-stream then
     
     (sink-effects-read-leading-specific-number-of-cexprs
-      unique-name qualify text-input-stream 1
+      fault unique-name qualify text-input-stream 2
+    #/fn unique-name qualify text-input-stream args-func
+    #/dissect args-func (list fault-arg-expr func-expr)
+    
+    #/sink-effects-read-bounded-cexprs
+      fault unique-name qualify text-input-stream
+    #/fn unique-name qualify text-input-stream args-args
+    
+    #/expect (reverse args-args)
+      (cons last-arg-arg rev-past-args-args)
+      ; TODO FAULT: Make this `fault` more specific.
+      (cene-err fault "Expected a c-blame form to have at least one argument aside from the blame argument and the function to call")
+    
+    #/then unique-name qualify text-input-stream
+      (sink-cexpr #/cexpr-call-fault fault-arg-expr
+        (list-foldl func-expr (reverse rev-past-args-args)
+        #/fn func arg
+          (cexpr-call func arg)))))
+  
+  ; NOTE: In the JavaScript version of Cene, this was known as
+  ; `cexpr-call`.
+  (def-func-fault! "expr-call" fault func-expr arg-expr
+    (expect func-expr (sink-cexpr func-expr)
+      (cene-err fault "Expected func-expr to be an expression")
+    #/expect arg-expr (sink-cexpr arg-expr)
+      (cene-err fault "Expected arg-expr to be an expression")
+    #/sink-cexpr #/cexpr-call func-expr arg-expr))
+  
+  (def-macro! "c" #/fn
+    fault unique-name qualify text-input-stream then
+    
+    (sink-effects-read-leading-specific-number-of-cexprs
+      fault unique-name qualify text-input-stream 1
     #/fn unique-name qualify text-input-stream args-func
     #/dissect args-func (list func-expr)
     
     #/sink-effects-read-bounded-cexprs
-      unique-name qualify text-input-stream
+      fault unique-name qualify text-input-stream
     #/fn unique-name qualify text-input-stream args-args
     
     #/then unique-name qualify text-input-stream
@@ -1955,30 +2072,83 @@
   ; TODO BUILTINS: Implement `def-struct`, probably in a Cene prelude.
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
-  (def-func! "expr-opaque-fn" param body
-    (expect (sink-name? param) #t
-      (cene-err "Expected param to be a name")
+  (def-func-fault! "expr-opaque-fn-blame" fault fault-param param body
+    (expect (sink-name? fault-param) #t
+      (cene-err fault "Expected blame-param to be a name")
+    #/expect (sink-name? param) #t
+      (cene-err fault "Expected param to be a name")
     #/expect (sink-cexpr? body) #t
-      (cene-err "Expected body to be an expression")
+      (cene-err fault "Expected body to be an expression")
+    #/if (sink-names-have-duplicate? #/list fault-param param)
+      (cene-err fault "Expected blame-param and param to be mutually unique")
+    #/sink-cexpr-opaque-fn-fault fault-param param body))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func-fault! "expr-opaque-fn" fault param body
+    (expect (sink-name? param) #t
+      (cene-err fault "Expected param to be a name")
+    #/expect (sink-cexpr? body) #t
+      (cene-err fault "Expected body to be an expression")
     #/sink-cexpr-opaque-fn param body))
   
   ; TODO BUILTINS: Implement `defn`, probably in a Cene prelude.
   
-  (def-macro! "fn" #/fn unique-name qualify text-input-stream then
+  (define (parse-param param)
+    (expect param
+      (id-or-expr-id param-located-string param-qualified-name)
+      (nothing)
+    #/just #/sink-authorized-name-get-name param-qualified-name))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-macro! "fn-blame" #/fn
+    fault unique-name qualify text-input-stream then
+    
     (sink-effects-read-bounded-ids-and-exprs
-      unique-name qualify text-input-stream
+      fault unique-name qualify text-input-stream
+      sink-name-for-local-variable
+    #/fn unique-name qualify text-input-stream args
+    #/expect args (cons fault-param args)
+      (cene-err fault "Expected a fn-blame form to have a blame parameter")
+    #/expect (parse-param fault-param) (just fault-param)
+      (cene-err fault "Expected the blame parameter of a fn-blame form to be an identifier")
+    #/expect (reverse args) (cons body rev-params)
+      (cene-err fault "Expected a fn-blame form to have a body expression")
+    #/w- rev-params
+      (list-map rev-params #/fn param
+        (expect (parse-param param) (just param)
+          (cene-err fault "Expected every parameter of a fn form to be an identifier")
+          param))
+    #/if (sink-names-have-duplicate? #/cons fault-param rev-params)
+      (cene-err fault "Expected every parameter of a fn form to be unique, including the blame parameter")
+    #/expect rev-params (cons last-param rev-past-params)
+      (cene-err fault "Expected a fn-blame form to have at least one parameter aside from the blame parameter")
+    #/then unique-name qualify text-input-stream
+      (list-foldl
+        (sink-cexpr-opaque-fn-fault fault-param last-param
+          (id-or-expr->cexpr body))
+        rev-past-params
+      #/fn body param
+        (sink-cexpr-opaque-fn param body))))
+  
+  (def-macro! "fn" #/fn
+    fault unique-name qualify text-input-stream then
+    
+    (sink-effects-read-bounded-ids-and-exprs
+      fault unique-name qualify text-input-stream
       sink-name-for-local-variable
     #/fn unique-name qualify text-input-stream args
     #/expect (reverse args) (cons body rev-params)
-      (cene-err "Expected a fn form to have a body expression")
+      (cene-err fault "Expected a fn form to have a body expression")
+    #/w- rev-params
+      (list-map rev-params #/fn param
+        (expect (parse-param param) (just param)
+          (cene-err fault "Expected every parameter of a fn form to be an identifier")
+          param))
+    #/if (sink-names-have-duplicate? rev-params)
+      (cene-err fault "Expected every parameter of a fn form to be mutually unique")
     #/then unique-name qualify text-input-stream
-    #/list-foldl (id-or-expr->cexpr body) rev-params #/fn body param
-      (expect param
-        (id-or-expr-id param-located-string param-qualified-name)
-        (cene-err "Expected every parameter of a fn form to be an identifier")
-      #/sink-cexpr-opaque-fn
-        (sink-authorized-name-get-name param-qualified-name)
-        body)))
+      (list-foldl (id-or-expr->cexpr body) rev-params #/fn body param
+        (sink-cexpr-opaque-fn param body))))
   
   
   ; Tables
@@ -1987,52 +2157,52 @@
   (def-func! "is-table" v
     (racket-boolean->sink #/sink-table? v))
   
-  (def-func! "dex-table" dex-val
+  (def-func-fault! "dex-table" fault dex-val
     (expect dex-val (sink-dex dex-val)
-      (cene-err "Expected dex-val to be a dex")
+      (cene-err fault "Expected dex-val to be a dex")
     #/sink-dex-table dex-val))
   
-  (def-func! "merge-table" merge-val
+  (def-func-fault! "merge-table" fault merge-val
     (expect merge-val (sink-merge merge-val)
-      (cene-err "Expected merge-val to be a merge")
+      (cene-err fault "Expected merge-val to be a merge")
     #/sink-merge #/merge-struct sink-table #/merge-table merge-val))
   
-  (def-func! "fuse-table" fuse-val
+  (def-func-fault! "fuse-table" fault fuse-val
     (expect fuse-val (sink-fuse fuse-val)
-      (cene-err "Expected fuse-val to be a fuse")
+      (cene-err fault "Expected fuse-val to be a fuse")
     #/sink-fuse #/fuse-struct sink-table #/fuse-table fuse-val))
   
   (def-nullary-func! "table-empty" (sink-table #/table-empty))
   
-  (def-func! "table-shadow" key maybe-val table
+  (def-func-fault! "table-shadow" fault key maybe-val table
     (expect (sink-name? key) #t
-      (cene-err "Expected key to be a name")
+      (cene-err fault "Expected key to be a name")
     #/expect (sink-table? table) #t
-      (cene-err "Expected table to be a table")
+      (cene-err fault "Expected table to be a table")
     #/expect (sink-maybe->maybe-racket maybe-val) (just maybe-val)
-      (cene-err "Expected maybe-val to be a nothing or a just")
+      (cene-err fault "Expected maybe-val to be a nothing or a just")
     #/sink-table-put-maybe table key maybe-val))
   
-  (def-func! "table-get" key table
+  (def-func-fault! "table-get" fault key table
     (expect (sink-name? key) #t
-      (cene-err "Expected key to be a name")
+      (cene-err fault "Expected key to be a name")
     #/expect (sink-table? table) #t
-      (cene-err "Expected table to be a table")
+      (cene-err fault "Expected table to be a table")
     #/racket-maybe->sink #/sink-table-get-maybe table key))
   
-  (def-func! "table-map-fuse" table fuse key-to-operand
+  (def-func-fault! "table-map-fuse" fault table fuse key-to-operand
     (expect table (sink-table table)
-      (cene-err "Expected table to be a table")
+      (cene-err fault "Expected table to be a table")
     #/expect fuse (sink-fuse fuse)
-      (cene-err "Expected fuse to be a fuse")
+      (cene-err fault "Expected fuse to be a fuse")
     #/table-map-fuse table fuse #/fn k
-      (sink-call key-to-operand #/sink-name k)))
+      (sink-call fault key-to-operand #/sink-name k)))
   
-  (def-func! "table-sort" cline table
+  (def-func-fault! "table-sort" fault cline table
     (expect cline (sink-cline cline)
-      (cene-err "Expected cline to be a cline")
+      (cene-err fault "Expected cline to be a cline")
     #/expect table (sink-table table)
-      (cene-err "Expected table to be a table")
+      (cene-err fault "Expected table to be a table")
     #/racket-maybe->sink
     #/maybe-map (table-sort cline table) #/fn ranks
       (racket-list->sink #/list-map ranks #/fn rank
@@ -2059,20 +2229,21 @@
   ;   get-mode
   ;   assert-current-mode
   
-  (define/contract (verify-callback-effects! effects)
-    (-> sink? sink-effects?)
+  (define/contract (verify-callback-effects! fault effects)
+    (-> sink? sink? sink-effects?)
     (expect (sink-effects? effects) #t
-      (cene-err "Expected the return value of the callback to be an effects value")
+      (cene-err fault "Expected the return value of the callback to be an effects value")
       effects))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `later`, and it took an effects value rather than a function that
   ; computed one. When we needed to do what this does, we used
   ; `get-mode` and ignored the mode value.
-  (def-func! "effects-later" get-effects
+  (def-func-fault! "effects-later" fault get-effects
     (sink-effects-later #/fn
-    #/verify-callback-effects!
-    #/sink-call get-effects #/make-sink-struct s-trivial #/list))
+    #/verify-callback-effects! fault
+    #/sink-call fault get-effects
+      (make-sink-struct s-trivial #/list)))
   
   ; TODO BUILTINS: Consider implementing the following.
   ;
@@ -2082,18 +2253,18 @@
   ;   committing-to-define
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
-  (def-func! "effects-get" name then
+  (def-func-fault! "effects-get" fault name then
     (expect (sink-name? name) #t
-      (cene-err "Expected name to be a name")
+      (cene-err fault "Expected name to be a name")
     #/sink-effects-get name #/fn result
-    #/verify-callback-effects! #/sink-call then result))
+    #/verify-callback-effects! fault #/sink-call fault then result))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
-  (def-func! "effects-put" name dex value
+  (def-func-fault! "effects-put" fault name dex value
     (expect (sink-authorized-name? name) #t
-      (cene-err "Expected name to be an authorized name")
+      (cene-err fault "Expected name to be an authorized name")
     #/expect (sink-dex? dex) #t
-      (cene-err "Expected dex to be a dex")
+      (cene-err fault "Expected dex to be a dex")
     #/sink-effects-put name dex value))
   
   
@@ -2152,9 +2323,9 @@
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-var`.
-  (def-func! "expr-var" var
+  (def-func-fault! "expr-var" fault var
     (expect (sink-name? var) #t
-      (cene-err "Expected var to be a name")
+      (cene-err fault "Expected var to be a name")
     #/sink-cexpr-var var))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
@@ -2163,51 +2334,53 @@
     (sink-cexpr-reified val))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
-  (def-func! "expr-located" location-definition-name body
+  (def-func-fault! "expr-located" fault location-definition-name body
     (expect (sink-name? location-definition-name) #t
-      (cene-err "Expected location-definition-name to be a name")
+      (cene-err fault "Expected location-definition-name to be a name")
     #/expect body (sink-cexpr body)
-      (cene-err "Expected body to be an expression")
+      (cene-err fault "Expected body to be an expression")
     #/sink-cexpr #/cexpr-located location-definition-name body))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-let`.
-  (def-func! "expr-let" bindings body
+  (def-func-fault! "expr-let" fault bindings body
     (expect (sink-list->maybe-racket bindings) (just bindings)
-      (cene-err "Expected bindings to be a list")
+      (cene-err fault "Expected bindings to be a list")
     #/w- bindings
       (list-map bindings #/fn binding
         (expect (unmake-sink-struct-maybe binding s-assoc)
           (just #/list var val)
-          (cene-err "Expected bindings to be an assoc list")
+          (cene-err fault "Expected bindings to be an assoc list")
         #/expect (sink-name? var) #t
-          (cene-err "Expected bindings to be an assoc list with names as the keys")
+          (cene-err fault "Expected bindings to be an assoc list with names as the keys")
         #/expect (sink-cexpr? val) #t
-          (cene-err "Expected bindings to be an assoc list with expressions as the values")
+          (cene-err fault "Expected bindings to be an assoc list with expressions as the values")
         #/list var val))
     #/expect (sink-cexpr? body) #t
-      (cene-err "Expected body to be an expression")
+      (cene-err fault "Expected body to be an expression")
     #/sink-cexpr-let bindings body))
   
-  (def-macro! "let" #/fn unique-name qualify text-input-stream then
+  (def-macro! "let" #/fn
+    fault unique-name qualify text-input-stream then
+    
     (sink-effects-read-bounded-ids-and-exprs
-      unique-name qualify text-input-stream
+      fault unique-name qualify text-input-stream
       sink-name-for-local-variable
     #/fn unique-name qualify text-input-stream args
     #/expect (reverse args) (cons body rev-bindings)
-      (cene-err "Expected a let form to have a body expression")
+      (cene-err fault "Expected a let form to have a body expression")
     #/w- bindings
       (w-loop next rest rev-bindings so-far (list)
         (mat rest (list) so-far
         #/expect rest (list* val var rest)
-          (cene-err "Expected a let form to have an odd number of subforms")
+          (cene-err fault "Expected a let form to have an odd number of subforms")
         #/next rest (cons (list var val) so-far)))
     #/then unique-name qualify text-input-stream
     #/sink-cexpr-let
       (list-map bindings #/dissectfn (list var val)
         (expect var
           (id-or-expr-id var-located-string var-qualified-name)
-          (cene-err "Expected every bound variable of a let form to be an identifier")
+          (cene-err fault "Expected every bound variable of a let form to be an identifier")
         #/list
           (sink-authorized-name-get-name var-qualified-name)
           (id-or-expr->cexpr val)))
@@ -2219,11 +2392,11 @@
   
   ; TODO: See if this can be a pure function.
   ; NOTE: The JavaScript version of Cene doesn't have this.
-  (def-func! "effects-expr-can-eval" expr then
+  (def-func-fault! "effects-expr-can-eval" fault expr then
     (expect expr (sink-cexpr expr)
-      (cene-err "Expected expr to be an expression")
+      (cene-err fault "Expected expr to be an expression")
     #/sink-effects-later #/fn
-    #/verify-callback-effects! #/sink-call then
+    #/verify-callback-effects! fault #/sink-call fault then
     #/racket-boolean->sink #/cexpr-can-eval? expr))
   
   ; TODO: See if this can be a pure function.
@@ -2232,14 +2405,14 @@
   ; `eval-cexpr`, and it was a pure function that took a mode
   ; parameter.
   ;
-  (def-func! "effects-expr-eval" expr then
+  (def-func-fault! "effects-expr-eval" fault expr then
     (expect expr (sink-cexpr expr)
-      (cene-err "Expected expr to be an expression")
+      (cene-err fault "Expected expr to be an expression")
     #/sink-effects-later #/fn
     #/expect (cexpr-can-eval? expr) #t
-      (cene-err "Expected expr to be an expression which had all the information it needed for evaluation")
+      (cene-err fault "Expected expr to be an expression which had all the information it needed for evaluation")
     #/sink-effects-cexpr-eval expr #/fn result
-    #/verify-callback-effects! #/sink-call then result))
+    #/verify-callback-effects! fault #/sink-call fault then result))
   
   ; TODO BUILTINS: Consider implementing something like the following
   ; built-ins from the JavaScript version of Cene. We can probably
@@ -2268,18 +2441,18 @@
   (def-nullary-func! "fuse-int-by-times"
     (sink-fuse #/fuse-struct sink-int #/fuse-exact-rational-by-times))
   
-  (def-func! "int-minus" minuend subtrahend
+  (def-func-fault! "int-minus" fault minuend subtrahend
     (expect minuend (sink-int minuend)
-      (cene-err "Expected minuend to be an int")
+      (cene-err fault "Expected minuend to be an int")
     #/expect subtrahend (sink-int subtrahend)
-      (cene-err "Expected subtrahend to be an int")
+      (cene-err fault "Expected subtrahend to be an int")
     #/sink-int #/- minuend subtrahend))
   
-  (def-func! "int-div-rounded-down" dividend divisor
+  (def-func-fault! "int-div-rounded-down" fault dividend divisor
     (expect dividend (sink-int dividend)
-      (cene-err "Expected dividend to be an int")
+      (cene-err fault "Expected dividend to be an int")
     #/expect divisor (sink-int divisor)
-      (cene-err "Expected divisor to be an int")
+      (cene-err fault "Expected divisor to be an int")
     #/mat divisor 0 (make-sink-struct s-nothing #/list)
     #/make-sink-struct s-just #/list
     #/let-values ([(q r) (quotient/remainder dividend divisor)])
@@ -2300,27 +2473,27 @@
   
   (def-nullary-func! "string-empty" (sink-string ""))
   
-  (def-func! "string-singleton" unicode-scalar
+  (def-func-fault! "string-singleton" fault unicode-scalar
     (expect unicode-scalar (sink-int unicode-scalar)
-      (cene-err "Expected unicode-scalar to be an int")
+      (cene-err fault "Expected unicode-scalar to be an int")
     #/expect
       (and
         (<= 0 unicode-scalar #x10FFFF)
         (not #/<= #xD800 unicode-scalar #xDFFF))
       #t
-      (cene-err "Expected unicode-scalar to be in the range of valid Unicode scalars")
+      (cene-err fault "Expected unicode-scalar to be in the range of valid Unicode scalars")
     #/sink-string #/string->immutable-string
     #/list->string #/list #/integer->char unicode-scalar))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `string-append-later`.
-  (def-func! "effects-string-append" a b then
+  (def-func-fault! "effects-string-append" fault a b then
     (expect a (sink-string a)
-      (cene-err "Expected a to be a string")
+      (cene-err fault "Expected a to be a string")
     #/expect b (sink-string b)
-      (cene-err "Expected b to be a string")
+      (cene-err fault "Expected b to be a string")
     #/sink-effects-later #/fn
-    #/verify-callback-effects! #/sink-call then
+    #/verify-callback-effects! fault #/sink-call fault then
     #/sink-string #/string->immutable-string #/string-append a b))
   
   ; This is an extremely basic string syntax. It doesn't have any
@@ -2331,11 +2504,11 @@
   ; NOTE: The JavaScript version of Cene doesn't have this.
   ;
   (def-macro! "str-prim" #/fn
-    unique-name qualify text-input-stream then
+    fault unique-name qualify text-input-stream then
     
     (sink-effects-claim-freshen unique-name #/fn unique-name
     #/sink-effects-optimized-textpat-read-located
-      str-prim-pat text-input-stream
+      fault str-prim-pat text-input-stream
     #/fn text-input-stream maybe-contents
     #/dissect maybe-contents (just contents)
     #/sink-effects-string-from-located-string contents #/fn contents
@@ -2345,37 +2518,37 @@
   ; TODO BUILTINS: Implement the macro `str`, probably in a Cene
   ; prelude.
   
-  (def-func! "string-length" string
+  (def-func-fault! "string-length" fault string
     (expect string (sink-string string)
-      (cene-err "Expected string to be a string")
+      (cene-err fault "Expected string to be a string")
     #/sink-int #/string-length string))
   
-  (def-func! "string-get-unicode-scalar" string start
+  (def-func-fault! "string-get-unicode-scalar" fault string start
     (expect string (sink-string string)
-      (cene-err "Expected string to be a string")
+      (cene-err fault "Expected string to be a string")
     #/expect start (sink-int start)
-      (cene-err "Expected start to be an int")
+      (cene-err fault "Expected start to be an int")
     #/expect (<= 0 start) #t
-      (cene-err "Expected start to be a nonnegative int")
+      (cene-err fault "Expected start to be a nonnegative int")
     #/expect (< start #/string-length string) #t
-      (cene-err "Expected start to be an int less than the length of string")
+      (cene-err fault "Expected start to be an int less than the length of string")
     #/sink-int #/char->integer #/string-ref string start))
   
-  (def-func! "string-cut-later" string start stop then
+  (def-func-fault! "string-cut-later" fault string start stop then
     (expect string (sink-string string)
-      (cene-err "Expected string to be a string")
+      (cene-err fault "Expected string to be a string")
     #/expect start (sink-int start)
-      (cene-err "Expected start to be an int")
+      (cene-err fault "Expected start to be an int")
     #/expect stop (sink-int stop)
-      (cene-err "Expected stop to be an int")
+      (cene-err fault "Expected stop to be an int")
     #/expect (<= 0 start) #t
-      (cene-err "Expected start to be a nonnegative int")
+      (cene-err fault "Expected start to be a nonnegative int")
     #/expect (<= start stop) #t
-      (cene-err "Expected start to be an int no greater than stop")
+      (cene-err fault "Expected start to be an int no greater than stop")
     #/expect (<= stop #/string-length string) #t
-      (cene-err "Expected stop to be an int no greater than the length of string")
+      (cene-err fault "Expected stop to be an int no greater than the length of string")
     #/sink-effects-later #/fn
-    #/sink-call then
+    #/sink-call fault then
     #/sink-string #/string->immutable-string
     #/substring string start stop))
   
@@ -2403,93 +2576,95 @@
   (def-nullary-func! "textpat-empty"
     (sink-textpat #/textpat-empty))
   
-  (def-func! "textpat-if" condition then else
+  (def-func-fault! "textpat-if" fault condition then else
     (expect condition (sink-textpat condition)
-      (cene-err "Expected condition to be a text pattern")
+      (cene-err fault "Expected condition to be a text pattern")
     #/expect then (sink-textpat then)
-      (cene-err "Expected then to be a text pattern")
+      (cene-err fault "Expected then to be a text pattern")
     #/expect else (sink-textpat else)
-      (cene-err "Expected else to be a text pattern")
+      (cene-err fault "Expected else to be a text pattern")
     #/sink-textpat #/textpat-if condition then else))
   
-  (def-func! "textpat-while" condition body
+  (def-func-fault! "textpat-while" fault condition body
     (expect condition (sink-textpat condition)
-      (cene-err "Expected condition to be a text pattern")
+      (cene-err fault "Expected condition to be a text pattern")
     #/expect body (sink-textpat body)
-      (cene-err "Expected body to be a text pattern")
+      (cene-err fault "Expected body to be a text pattern")
     #/sink-textpat #/textpat-while condition body))
   
-  (def-func! "textpat-until" body condition
+  (def-func-fault! "textpat-until" fault body condition
     (expect body (sink-textpat body)
-      (cene-err "Expected body to be a text pattern")
+      (cene-err fault "Expected body to be a text pattern")
     #/expect condition (sink-textpat condition)
-      (cene-err "Expected condition to be a text pattern")
+      (cene-err fault "Expected condition to be a text pattern")
     #/sink-textpat #/textpat-until body condition))
   
-  (def-func! "textpat-one-in-range" start stop
+  (def-func-fault! "textpat-one-in-range" fault start stop
     (expect start (sink-string start)
-      (cene-err "Expected start to be a string")
+      (cene-err fault "Expected start to be a string")
     #/expect (string-length start) 1
-      (cene-err "Expected start to be a string containing a single Unicode scalar value")
+      (cene-err fault "Expected start to be a string containing a single Unicode scalar value")
     #/w- start (string-ref start 0)
     #/expect stop (sink-string stop)
-      (cene-err "Expected stop to be a string")
+      (cene-err fault "Expected stop to be a string")
     #/expect (string-length stop) 1
-      (cene-err "Expected stop to be a string containing a single Unicode scalar value")
+      (cene-err fault "Expected stop to be a string containing a single Unicode scalar value")
     #/w- stop (string-ref stop 0)
     #/sink-textpat #/textpat-one-in-range start stop))
   
   (def-nullary-func! "textpat-one"
     (sink-textpat #/textpat-one))
   
-  (def-func! "textpat-from-string" str
+  (def-func-fault! "textpat-from-string" fault str
     (expect str (sink-string str)
-      (cene-err "Expected str to be a string")
+      (cene-err fault "Expected str to be a string")
     #/sink-textpat #/textpat-from-string str))
   
-  (def-func! "textpat-one-in-string" str
+  (def-func-fault! "textpat-one-in-string" fault str
     (expect str (sink-string str)
-      (cene-err "Expected str to be a string")
+      (cene-err fault "Expected str to be a string")
     #/sink-textpat #/textpat-one-in-string str))
   
-  (def-func! "textpat-has-empty" t
+  (def-func-fault! "textpat-has-empty" fault t
     (expect t (sink-textpat t)
-      (cene-err "Expected t to be a text pattern")
+      (cene-err fault "Expected t to be a text pattern")
     #/racket-boolean->sink #/textpat-has-empty? t))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `optimize-regex-later`.
-  (def-func! "effects-optimize-textpat" t then
+  (def-func-fault! "effects-optimize-textpat" fault t then
     (expect t (sink-textpat t)
-      (cene-err "Expected t to be a text pattern")
+      (cene-err fault "Expected t to be a text pattern")
     #/sink-effects-optimize-textpat t #/fn t
-    #/verify-callback-effects! #/sink-call then
+    #/verify-callback-effects! fault #/sink-call fault then
     #/sink-optimized-textpat t))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `optimized-regex-match-later`.
-  (def-func! "effects-optimized-textpat-match" ot str start stop then
+  (def-func-fault! "effects-optimized-textpat-match"
+    fault ot str start stop then
+    
     (expect ot (sink-optimized-textpat ot)
-      (cene-err "Expected ot to be a text pattern")
+      (cene-err fault "Expected ot to be a text pattern")
     #/expect str (sink-string str)
-      (cene-err "Expected str to be a string")
+      (cene-err fault "Expected str to be a string")
     #/w- n (string-length str)
     #/expect start (sink-int start)
-      (cene-err "Expected start to be an integer")
+      (cene-err fault "Expected start to be an integer")
     #/expect (<= 0 start) #t
-      (cene-err "Expected start to be a nonnegative integer")
+      (cene-err fault "Expected start to be a nonnegative integer")
     #/expect (<= start n) #t
-      (cene-err "Expected start to be less than or equal to the length of the string")
+      (cene-err fault "Expected start to be less than or equal to the length of the string")
     #/expect stop (sink-int stop)
-      (cene-err "Expected stop to be an integer")
+      (cene-err fault "Expected stop to be an integer")
     #/expect (<= 0 stop) #t
-      (cene-err "Expected stop to be a nonnegative integer")
+      (cene-err fault "Expected stop to be a nonnegative integer")
     #/expect (<= stop n) #t
-      (cene-err "Expected stop to be less than or equal to the length of the string")
+      (cene-err fault "Expected stop to be less than or equal to the length of the string")
     #/expect (<= start stop) #t
-      (cene-err "Expected start to be less than or equal to stop")
+      (cene-err fault "Expected start to be less than or equal to stop")
     #/sink-effects-later #/fn
-    #/verify-callback-effects! #/sink-call then
+    #/verify-callback-effects! fault #/sink-call fault then
     #/w- result (optimized-textpat-match ot str start stop)
     #/mat result (textpat-result-matched stop)
       (make-sink-struct s-textpat-result-matched #/list
@@ -2504,17 +2679,19 @@
   (def-data-struct! "textpat-result-passed-end" #/list)
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
-  (def-func! "effects-optimized-textpat-read-located"
-    ot input-stream then
+  (def-func-fault! "effects-optimized-textpat-read-located"
+    fault ot input-stream then
     
     (expect ot (sink-optimized-textpat ot)
-      (cene-err "Expected ot to be a text pattern")
+      (cene-err fault "Expected ot to be a text pattern")
     #/expect (sink-text-input-stream? input-stream) #t
-      (cene-err "Expected input-stream to be a text input stream")
-    #/sink-effects-optimized-textpat-read-located ot input-stream
+      (cene-err fault "Expected input-stream to be a text input stream")
+    #/sink-effects-optimized-textpat-read-located
+      fault ot input-stream
     #/fn input-stream maybe-result
-    #/verify-callback-effects!
-    #/sink-call then input-stream #/racket-maybe->sink maybe-result))
+    #/verify-callback-effects! fault #/sink-call fault then
+      input-stream
+      (racket-maybe->sink maybe-result)))
   
   
   ; File I/O for simple builds
@@ -2555,107 +2732,109 @@
   (def-func! "directive" directive
     (sink-directive directive))
   
-  (def-func! "name-for-claim" name
+  (def-func-fault! "name-for-claim" fault name
     (expect (sink-name? name) #t
-      (cene-err "Expected name to be a name")
+      (cene-err fault "Expected name to be a name")
     #/sink-name-for-claim name))
   
-  (def-func! "authorized-name-for-claim" name
+  (def-func-fault! "authorized-name-for-claim" fault name
     (expect (sink-authorized-name? name) #t
-      (cene-err "Expected name to be an authorized name")
+      (cene-err fault "Expected name to be an authorized name")
     #/sink-authorized-name-for-claim name))
   
-  (def-func! "name-for-function-implementation-code"
-    main-tag-name proj-tag-names
+  (def-func-fault! "name-for-function-implementation-code"
+    fault main-tag-name proj-tag-names
     
     (expect (sink-name? main-tag-name) #t
-      (cene-err "Expected main-tag-name to be a name")
+      (cene-err fault "Expected main-tag-name to be a name")
     #/expect
       (in-dex? (sink-dex-table #/sink-dex-struct s-trivial #/list)
         proj-tag-names)
       #t
-      (cene-err "Expected proj-tag-names to be a table of trivial values")
+      (cene-err fault "Expected proj-tag-names to be a table of trivial values")
     #/sink-name-for-function-implementation-code
       main-tag-name proj-tag-names))
   
-  (def-func! "name-for-function-implementation-value"
-    main-tag-name proj-tag-names
+  (def-func-fault! "name-for-function-implementation-value"
+    fault main-tag-name proj-tag-names
     
     (expect (sink-name? main-tag-name) #t
-      (cene-err "Expected main-tag-name to be a name")
+      (cene-err fault "Expected main-tag-name to be a name")
     #/expect
       (in-dex? (sink-dex-table #/sink-dex-struct s-trivial #/list)
         proj-tag-names)
       #t
-      (cene-err "Expected proj-tag-names to be a table of trivial values")
+      (cene-err fault "Expected proj-tag-names to be a table of trivial values")
     #/sink-name-for-function-implementation-value
       main-tag-name proj-tag-names))
   
-  (define (verify-proj-tag-authorized-names! proj-tag-names)
+  (define (verify-proj-tag-authorized-names! fault proj-tag-names)
     (expect proj-tag-names (sink-table proj-tag-names)
-      (cene-err "Expected proj-tag-names to be a table")
+      (cene-err fault "Expected proj-tag-names to be a table")
     #/begin
       (table-kv-map proj-tag-names #/fn k v
         (expect v (sink-authorized-name name)
-          (cene-err "Expected each value of proj-tag-names to be an authorized name")
+          (cene-err fault "Expected each value of proj-tag-names to be an authorized name")
         #/expect (eq-by-dex? (dex-name) k name) #t
-          (cene-err "Expected each value of proj-tag-names to be an authorized name where the name authorized is the same as the name it's filed under")
+          (cene-err fault "Expected each value of proj-tag-names to be an authorized name where the name authorized is the same as the name it's filed under")
           v))
     #/void))
   
-  (def-func! "authorized-name-for-function-implementation-code"
-    main-tag-name proj-tag-names
+  (def-func-fault! "authorized-name-for-function-implementation-code"
+    fault main-tag-name proj-tag-names
     
     (expect (sink-authorized-name? main-tag-name) #t
-      (cene-err "Expected main-tag-name to be an authorized name")
-    #/begin (verify-proj-tag-authorized-names! proj-tag-names)
+      (cene-err fault "Expected main-tag-name to be an authorized name")
+    #/begin (verify-proj-tag-authorized-names! fault proj-tag-names)
     #/sink-authorized-name-for-function-implementation-code
       main-tag-name proj-tag-names))
   
-  (def-func! "authorized-name-for-function-implementation-value"
-    main-tag-name proj-tag-names
+  (def-func-fault! "authorized-name-for-function-implementation-value"
+    fault main-tag-name proj-tag-names
     
     (expect (sink-authorized-name? main-tag-name) #t
-      (cene-err "Expected main-tag-name to be an authorized name")
-    #/begin (verify-proj-tag-authorized-names! proj-tag-names)
+      (cene-err fault "Expected main-tag-name to be an authorized name")
+    #/begin (verify-proj-tag-authorized-names! fault proj-tag-names)
     #/sink-authorized-name-for-function-implementation-value
       main-tag-name proj-tag-names))
   
-  (def-func! "name-for-freestanding-expr-op" name
+  (def-func-fault! "name-for-freestanding-expr-op" fault name
     (expect (sink-name? name) #t
-      (cene-err "Expected name to be a name")
+      (cene-err fault "Expected name to be a name")
     #/sink-name-for-freestanding-cexpr-op name))
   
-  (def-func! "name-for-bounded-expr-op" name
+  (def-func-fault! "name-for-bounded-expr-op" fault name
     (expect (sink-name? name) #t
-      (cene-err "Expected name to be a name")
+      (cene-err fault "Expected name to be a name")
     #/sink-name-for-bounded-cexpr-op name))
   
-  (def-func! "name-for-nameless-bounded-expr-op" name
+  (def-func-fault! "name-for-nameless-bounded-expr-op" fault name
     (expect (sink-name? name) #t
-      (cene-err "Expected name to be a name")
+      (cene-err fault "Expected name to be a name")
     #/sink-name-for-nameless-bounded-cexpr-op name))
   
-  (def-func! "name-for-struct-main-tag" name
+  (def-func-fault! "name-for-struct-main-tag" fault name
     (expect (sink-name? name) #t
-      (cene-err "Expected name to be a name")
+      (cene-err fault "Expected name to be a name")
     #/sink-name-for-struct-main-tag name))
   
-  (def-func! "name-for-struct-proj" qualified-main-tag-name proj-name
+  (def-func-fault! "name-for-struct-proj"
+    fault qualified-main-tag-name proj-name
+    
     (expect (sink-name? qualified-main-tag-name) #t
-      (cene-err "Expected qualified-main-tag-name to be a name")
+      (cene-err fault "Expected qualified-main-tag-name to be a name")
     #/expect (sink-name? proj-name) #t
-      (cene-err "Expected proj-name to be a name")
+      (cene-err fault "Expected proj-name to be a name")
     #/sink-name-for-struct-proj qualified-main-tag-name proj-name))
   
-  (def-func! "name-for-local-variable" name
+  (def-func-fault! "name-for-local-variable" fault name
     (expect (sink-name? name) #t
-      (cene-err "Expected name to be a name")
+      (cene-err fault "Expected name to be a name")
     #/sink-name-for-local-variable name))
   
-  (def-func! "name-for-struct-metadata" name
+  (def-func-fault! "name-for-struct-metadata" fault name
     (expect (sink-name? name) #t
-      (cene-err "Expected name to be a name")
+      (cene-err fault "Expected name to be a name")
     #/sink-name-for-struct-metadata name))
   
   ; TODO: See if Cene code should be able to make the kinds of names
@@ -2673,12 +2852,14 @@
   (def-func! "is-located-string" v
     (racket-boolean->sink #/sink-located-string? v))
   
-  (def-func! "effects-string-from-located-string" located-string then
+  (def-func-fault! "effects-string-from-located-string"
+    fault located-string then
+    
     (expect (sink-located-string? located-string) #t
-      (cene-err "Expected located-string to be a located string")
+      (cene-err fault "Expected located-string to be a located string")
     #/sink-effects-string-from-located-string located-string
     #/fn string
-    #/verify-callback-effects! #/sink-call then string))
+    #/verify-callback-effects! fault #/sink-call fault then string))
   
   ; TODO BUILTINS: Make sure we have a sufficient set of operations
   ; for manipulating `sink-located-string` values.
@@ -2686,48 +2867,53 @@
   (def-func! "is-expr-sequence-output-stream" v
     (racket-boolean->sink #/sink-cexpr-sequence-output-stream? v))
   
-  (def-func! "effects-make-expr-sequence-output-stream"
-    unique-name state on-expr then
+  (def-func-fault! "effects-make-expr-sequence-output-stream"
+    fault unique-name state on-expr then
     
     ; TODO: See if we should differentiate the error messages for
     ; these three occurrences of `verify-callback-effects!`.
     (expect (sink-authorized-name? unique-name) #t
-      (cene-err "Expected unique-name to be an authorized name")
+      (cene-err fault "Expected unique-name to be an authorized name")
     #/sink-effects-make-cexpr-sequence-output-stream
+      fault
       unique-name
       state
       (fn state cexpr then
-        (verify-callback-effects! #/sink-call on-expr
+        (verify-callback-effects! fault #/sink-call fault on-expr
           state
           cexpr
           (sink-fn-curried 1 #/fn state #/then state)))
     #/fn output-stream unwrap
-    #/verify-callback-effects! #/sink-call then
+    #/verify-callback-effects! fault #/sink-call fault then
       output-stream
-      (sink-fn-curried 2 #/fn output-stream then
+      (sink-fn-curried-fault 2 #/fn fault output-stream then
       #/expect (sink-cexpr-sequence-output-stream? output-stream) #t
-        (cene-err "Expected output-stream to be an expression sequence output stream")
+        (cene-err fault "Expected output-stream to be an expression sequence output stream")
       #/unwrap output-stream #/fn state
-      #/verify-callback-effects! #/sink-call then state)))
+      #/verify-callback-effects! fault #/sink-call fault then state)))
   
-  (def-func! "effects-expr-write" output-stream expr then
+  (def-func-fault! "effects-expr-write" fault output-stream expr then
     (expect (sink-cexpr-sequence-output-stream? output-stream) #t
-      (cene-err "Expected output-stream to be an expression sequence output stream")
+      (cene-err fault "Expected output-stream to be an expression sequence output stream")
     #/expect (cexpr? expr) #t
-      (cene-err "Expected expr to be an expression")
-    #/sink-effects-cexpr-write output-stream expr #/fn output-stream
-    #/verify-callback-effects! #/sink-call then output-stream))
+      (cene-err fault "Expected expr to be an expression")
+    #/sink-effects-cexpr-write fault output-stream expr
+    #/fn output-stream
+    #/verify-callback-effects! fault #/sink-call fault then
+      output-stream))
   
   (def-func! "is-text-input-stream" v
     (racket-boolean->sink #/sink-text-input-stream? v))
   
-  (def-func! "effects-read-eof" input-stream on-eof then
+  (def-func-fault! "effects-read-eof" fault input-stream on-eof then
     (expect (sink-text-input-stream? input-stream) #t
-      (cene-err "Expected input-stream to be a text input stream")
+      (cene-err fault "Expected input-stream to be a text input stream")
     #/expect (sink-effects? on-eof) #t
-      (cene-err "Expected on-eof to be an effects value")
-    #/sink-effects-read-eof input-stream on-eof #/fn input-stream
-    #/verify-callback-effects! #/sink-call then input-stream))
+      (cene-err fault "Expected on-eof to be an effects value")
+    #/sink-effects-read-eof fault input-stream on-eof
+    #/fn input-stream
+    #/verify-callback-effects! fault #/sink-call fault then
+      input-stream))
   
   ; TODO BUILTINS: Make sure we have a sufficient set of operations
   ; for manipulating `sink-text-input-stream` values. We don't even
@@ -2757,9 +2943,9 @@
   ; for that one too, at which point this choice we've made will fit
   ; in better.
   ;
-  (def-func! "dex-list" dex-elem
+  (def-func-fault! "dex-list" fault dex-elem
     (expect (sink-dex? dex-elem) #t
-      (cene-err "Expected dex-elem to be a dex")
+      (cene-err fault "Expected dex-elem to be a dex")
     #/sink-dex-list dex-elem))
   
   ; This installs all the built-ins so they're in the appropriate
@@ -2791,16 +2977,16 @@
   ; variant of `effects-put-all-built-in-syntaxes-this-came-with`
   ; which takes the desired UUID as an argument.
   ;
-  (def-func! "effects-put-all-built-in-syntaxes-this-came-with"
-    unique-name qualify
+  (def-func-fault! "effects-put-all-built-in-syntaxes-this-came-with"
+    fault unique-name qualify
     
     (expect (sink-authorized-name? unique-name) #t
-      (cene-err "Expected unique-name to be an authorized name")
+      (cene-err fault "Expected unique-name to be an authorized name")
     #/sink-effects-claim-freshen unique-name #/fn unique-name
     #/sink-effects-init-package unique-name #/fn name
-      (w- qualified-name (sink-call qualify name)
+      (w- qualified-name (sink-call fault qualify name)
       #/expect (sink-authorized-name? qualified-name) #t
-        (cene-err "Expected the result of an effects-put-all-built-in-syntaxes-this-came-with qualify function to be an authorized name")
+        (cene-err fault "Expected the result of an effects-put-all-built-in-syntaxes-this-came-with qualify function to be an authorized name")
         qualified-name)))
   
   
@@ -2834,18 +3020,19 @@
   (def-func-verbose! def-value-for-prelude-for-lang-impl!
     "qualify-for-lang-impl"
     1
-    (fn name
+    (fn fault name
       (expect (sink-name? name) #t
-        (cene-err "Expected name to be a name")
+        (cene-err fault "Expected name to be a name")
       #/sink-name-qualify-for-lang-impl name)))
   
   
   (add-init-package-step! #/fn unique-name qualify-for-package
     (sink-effects-read-top-level
+      (make-fault-internal)
       unique-name
-      (sink-fn-curried 1 #/fn name
+      (sink-fn-curried-fault 1 #/fn fault name
         (expect (sink-name? name) #t
-          (cene-err "Expected the input to the root qualify function to be a name")
+          (cene-err fault "Expected the input to the root qualify function to be a name")
         #/qualify-for-package name))
       (sink-text-input-stream #/box #/just
       #/open-input-file prelude-per-package-path)))
@@ -2859,11 +3046,11 @@
   
   (match-define (list rt-after-prelude prelude-errors)
     (cene-runtime-effects-run rt-before-prelude #/fn
-      (sink-effects-read-top-level
+      (sink-effects-read-top-level (make-fault-internal)
         prelude-for-lang-impl-unique-name
-        (sink-fn-curried 1 #/fn name
+        (sink-fn-curried-fault 1 #/fn fault name
           (expect (sink-name? name) #t
-            (cene-err "Expected the input to the root qualify function to be a name")
+            (cene-err fault "Expected the input to the root qualify function to be a name")
           #/qualify-for-prelude-for-lang-impl name))
         (sink-text-input-stream #/box #/just
         #/open-input-file prelude-for-lang-impl-path))))
