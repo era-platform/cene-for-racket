@@ -66,7 +66,7 @@
     fault unique-name qualify text-input-stream rev-results
     pre-qualify then)
   (->
-    sink?
+    sink-fault?
     sink-authorized-name?
     sink?
     sink-text-input-stream?
@@ -108,7 +108,7 @@
   (sink-effects-read-bounded-ids-and-exprs
     fault unique-name qualify text-input-stream pre-qualify then)
   (->
-    sink?
+    sink-fault?
     sink-authorized-name?
     sink?
     sink-text-input-stream?
@@ -151,7 +151,7 @@
   (sink-effects-read-bounded-cexprs
     fault unique-name qualify text-input-stream then)
   (->
-    sink?
+    sink-fault?
     sink-authorized-name?
     sink?
     sink-text-input-stream?
@@ -176,7 +176,7 @@
   (sink-effects-read-bounded-specific-number-of-cexprs
     fault unique-name qualify text-input-stream n then)
   (->
-    sink?
+    sink-fault?
     sink-authorized-name?
     sink?
     sink-text-input-stream?
@@ -207,7 +207,7 @@
   (sink-effects-read-leading-specific-number-of-ids-and-exprs
     fault unique-name qualify text-input-stream n pre-qualify then)
   (->
-    sink?
+    sink-fault?
     sink-authorized-name?
     sink?
     sink-text-input-stream?
@@ -263,7 +263,7 @@
   (sink-effects-read-leading-specific-number-of-cexprs
     fault unique-name qualify text-input-stream n then)
   (->
-    sink?
+    sink-fault?
     sink-authorized-name?
     sink?
     sink-text-input-stream?
@@ -289,7 +289,7 @@
   (sink-effects-read-leading-specific-number-of-identifiers
     fault qualify text-input-stream n pre-qualify then)
   (->
-    sink?
+    sink-fault?
     sink?
     sink-text-input-stream?
     natural?

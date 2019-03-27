@@ -24,7 +24,7 @@
 (require #/for-syntax #/only-in syntax/parse expr)
 
 (require #/only-in racket/contract/base
-  -> ->* and/c any/c contract? list/c listof or/c parameter/c)
+  -> ->* and/c any/c contract? list/c listof none/c or/c parameter/c)
 (require #/only-in racket/contract/region define/contract)
 (require #/only-in racket/generic define/generic define-generics)
 (require #/only-in racket/math natural?)
@@ -163,7 +163,7 @@
       (cons (hash-ref proj-hash proj-tag) rev-projs))))
 
 
-(struct-easy (sink-fault-internal continuation-marks)
+(struct-easy (sink-fault maybe-continuation-marks)
   #:other #:methods gen:sink [])
 (struct-easy (sink-directive directive)
   #:other #:methods gen:sink [])
@@ -536,11 +536,12 @@
     (define (cexpr-eval fault this env)
       (expect this (cexpr-call-fault fault-arg func arg)
         (error "Expected this to be a cexpr-call-fault")
-      #/sink-call-fault
-        fault
-        (-eval fault fault-arg env)
-        (-eval fault func env)
-        (-eval fault arg env)))
+      #/w- fault-arg (-eval fault fault-arg env)
+      #/w- func (-eval fault func env)
+      #/w- arg (-eval fault arg env)
+      #/expect (sink-fault? fault-arg) #t
+        (cene-err fault "Expected the blame argument to be a blame value")
+      #/sink-call-fault fault fault-arg func arg))
   ])
 
 (struct-easy (cexpr-call func arg)
@@ -579,8 +580,8 @@
       (expect this (cexpr-opaque-fn-fault fault-param param body)
         (error "Expected this to be a cexpr-opaque-fn")
       #/-has-free-vars? body
-      #/table-shadow param (just #/trivial)
       #/table-shadow fault-param (just #/trivial)
+      #/table-shadow param (just #/trivial)
         env))
     
     (define (cexpr-eval caller-fault this env)
@@ -588,8 +589,8 @@
         (error "Expected this to be a cexpr-opaque-fn")
       #/sink-opaque-fn-fault #/dissectfn (list explicit-fault arg)
         (-eval caller-fault body
-          (table-shadow param (just arg)
-          #/table-shadow fault-param (just explicit-fault)
+          (table-shadow fault-param (just explicit-fault)
+          #/table-shadow param (just arg)
             env))))
   ])
 
@@ -887,18 +888,19 @@
 ; TODO: See if we have to use this as often as we do. Maybe some of
 ; those places should be abstracted over a fault value instead.
 (define/contract (make-fault-internal)
-  (-> sink?)
-  (sink-fault-internal #/current-continuation-marks))
+  (-> sink-fault?)
+  (sink-fault #/just #/current-continuation-marks))
 
 (define/contract (raise-cene-err fault clamor)
-  (-> sink? sink? #/or/c)
+  (-> sink-fault? sink? none/c)
   (w- message
     (mat (unmake-sink-struct-maybe s-clamor-err clamor)
       (just #/list #/sink-string message)
       message
     #/format "~s" clamor)
   #/w- marks
-    (mat fault (sink-fault-internal marks) marks
+    (dissect fault (sink-fault maybe-marks)
+    #/mat maybe-marks (just marks) marks
     #/current-continuation-marks)
   #/raise #/exn:fail:cene message marks clamor))
 
@@ -911,7 +913,7 @@
 
 (define/contract
   (sink-call-fault-binary caller-fault explicit-fault func arg)
-  (-> sink? sink? sink? sink? sink?)
+  (-> sink-fault? sink-fault? sink? sink? sink?)
   (begin (assert-can-get-cene-definitions!)
   #/mat func (sink-opaque-fn racket-func)
     (racket-func arg)
@@ -941,14 +943,14 @@
   #/cene-err caller-fault "Tried to call a value that wasn't an opaque function or a struct"))
 
 (define/contract (sink-call-binary caller-fault func arg)
-  (-> sink? sink? sink? sink?)
+  (-> sink-fault? sink? sink? sink?)
   (begin (assert-can-get-cene-definitions!)
   #/sink-call-fault-binary caller-fault caller-fault func arg))
 
 (define/contract
   (sink-call-fault-list
     caller-fault explicit-fault func first-arg args)
-  (-> sink? sink? sink? sink? (listof sink?) sink?)
+  (-> sink-fault? sink-fault? sink? sink? (listof sink?) sink?)
   (begin (assert-can-get-cene-definitions!)
   #/dissect (reverse #/cons first-arg args) (cons last-arg rev-args)
   #/w- func
@@ -957,20 +959,21 @@
   #/sink-call-fault-binary caller-fault explicit-fault func last-arg))
 
 (define/contract (sink-call-list caller-fault func args)
-  (-> sink? sink? (listof sink?) sink?)
+  (-> sink-fault? sink? (listof sink?) sink?)
   (begin (assert-can-get-cene-definitions!)
   #/list-foldl func args #/fn func arg
     (sink-call-binary caller-fault func arg)))
 
 (define/contract
   (sink-call-fault caller-fault explicit-fault func first-arg . args)
-  (->* (sink? sink? sink? sink?) #:rest (listof sink?) sink?)
+  (->* (sink-fault? sink-fault? sink? sink?) #:rest (listof sink?)
+    sink?)
   (begin (assert-can-get-cene-definitions!)
   #/sink-call-fault-list
     caller-fault explicit-fault func first-arg args))
 
 (define/contract (sink-call caller-fault func . args)
-  (->* (sink? sink?) #:rest (listof sink?) sink?)
+  (->* (sink-fault? sink?) #:rest (listof sink?) sink?)
   (begin (assert-can-get-cene-definitions!)
   #/sink-call-list caller-fault func args))
 
@@ -1044,7 +1047,7 @@
 
 (define/contract
   (sink-cexpr-sequence-output-stream-spend! fault stream)
-  (-> sink? sink-cexpr-sequence-output-stream?
+  (-> sink-fault? sink-cexpr-sequence-output-stream?
     (list/c
       any/c
       (-> any/c sink-cexpr? (-> any/c sink-effects?) sink-effects?)))
@@ -1060,7 +1063,7 @@
   (sink-effects-make-cexpr-sequence-output-stream
     fault unique-name state on-cexpr then)
   (->
-    sink?
+    sink-fault?
     sink-authorized-name?
     any/c
     (-> any/c sink-cexpr (-> any/c sink-effects?) sink-effects?)
@@ -1095,7 +1098,7 @@
 (define/contract
   (sink-effects-cexpr-write fault output-stream cexpr then)
   (->
-    sink? sink-cexpr-sequence-output-stream? sink-cexpr?
+    sink-fault? sink-cexpr-sequence-output-stream? sink-cexpr?
     (-> sink-cexpr-sequence-output-stream? sink-effects?)
     sink-effects?)
   (sink-effects-later #/fn
@@ -1109,7 +1112,7 @@
 
 (define/contract
   (sink-text-input-stream-spend! fault text-input-stream)
-  (-> sink? sink-text-input-stream? input-port?)
+  (-> sink-fault? sink-text-input-stream? input-port?)
   (dissect text-input-stream (sink-text-input-stream b)
   ; TODO: See if this should be more thread-safe in some way.
   #/expect (unbox b) (just input-port)
@@ -1121,7 +1124,7 @@
 (define/contract
   (sink-effects-read-eof fault text-input-stream on-eof else)
   (->
-    sink?
+    sink-fault?
     sink-text-input-stream?
     sink-effects?
     (-> sink-text-input-stream? sink-effects?)
@@ -1137,7 +1140,7 @@
   (sink-effects-optimized-textpat-read-located
     fault pattern text-input-stream then)
   (->
-    sink?
+    sink-fault?
     optimized-textpat?
     sink-text-input-stream?
     (-> sink-text-input-stream? (maybe/c sink-located-string?)
@@ -1173,7 +1176,7 @@
 (define/contract
   (sink-effects-peek-whether-eof fault text-input-stream then)
   (->
-    sink?
+    sink-fault?
     sink-text-input-stream?
     (-> sink-text-input-stream? boolean? sink-effects?)
     sink-effects?)
@@ -1191,7 +1194,7 @@
 (define/contract
   (sink-effects-read-whitespace fault text-input-stream then)
   (->
-    sink?
+    sink-fault?
     sink-text-input-stream?
     (-> sink-text-input-stream? sink-located-string? sink-effects?)
     sink-effects?)
@@ -1209,7 +1212,7 @@
 (define/contract
   (sink-effects-read-non-line-breaks fault text-input-stream then)
   (->
-    sink?
+    sink-fault?
     sink-text-input-stream?
     (-> sink-text-input-stream? sink-located-string? sink-effects?)
     sink-effects?)
@@ -1234,7 +1237,7 @@
   (sink-effects-read-maybe-identifier
     fault qualify text-input-stream pre-qualify then)
   (->
-    sink?
+    sink-fault?
     sink?
     sink-text-input-stream?
     (-> sink-name? sink-name?)
@@ -1266,7 +1269,7 @@
 (define/contract
   (sink-effects-read-maybe-op-character fault text-input-stream then)
   (->
-    sink?
+    sink-fault?
     sink-text-input-stream?
     (-> sink-text-input-stream? (maybe/c sink-located-string?)
       sink-effects?)
@@ -1298,7 +1301,7 @@
   (sink-effects-peek-whether-closing-bracket
     fault text-input-stream then)
   (->
-    sink?
+    sink-fault?
     sink-text-input-stream?
     (-> sink-text-input-stream? boolean? sink-effects?)
     sink-effects?)
@@ -1314,7 +1317,7 @@
   (sink-effects-read-op
     fault text-input-stream qualify pre-qualify then)
   (->
-    sink?
+    sink-fault?
     sink-text-input-stream?
     sink?
     (-> sink-name? sink-name?)
@@ -1376,8 +1379,8 @@
     fault op-impl unique-name qualify text-input-stream output-stream
     then)
   (->
-    sink? sink? sink-authorized-name? sink? sink-text-input-stream?
-    sink-cexpr-sequence-output-stream?
+    sink-fault? sink? sink-authorized-name? sink?
+    sink-text-input-stream? sink-cexpr-sequence-output-stream?
     (->
       sink-authorized-name? sink? sink-text-input-stream?
       sink-cexpr-sequence-output-stream?
@@ -1406,7 +1409,7 @@
     fault unique-name qualify text-input-stream output-stream
     pre-qualify then)
   (->
-    sink?
+    sink-fault?
     sink-authorized-name?
     sink?
     sink-text-input-stream?
@@ -1430,7 +1433,7 @@
   (sink-effects-read-and-run-freestanding-cexpr-op
     fault unique-name qualify text-input-stream output-stream then)
   (->
-    sink? sink-authorized-name? sink? sink-text-input-stream?
+    sink-fault? sink-authorized-name? sink? sink-text-input-stream?
     sink-cexpr-sequence-output-stream?
     (->
       sink-authorized-name? sink? sink-text-input-stream?
@@ -1446,7 +1449,7 @@
   (sink-effects-read-and-run-bounded-cexpr-op
     fault unique-name qualify text-input-stream output-stream then)
   (->
-    sink? sink-authorized-name? sink? sink-text-input-stream?
+    sink-fault? sink-authorized-name? sink? sink-text-input-stream?
     sink-cexpr-sequence-output-stream?
     (->
       sink-authorized-name? sink? sink-text-input-stream?
@@ -1462,7 +1465,7 @@
   (sink-effects-run-nameless-op
     fault unique-name qualify text-input-stream output-stream then)
   (->
-    sink? sink-authorized-name? sink? sink-text-input-stream?
+    sink-fault? sink-authorized-name? sink? sink-text-input-stream?
     sink-cexpr-sequence-output-stream?
     (->
       sink-authorized-name? sink? sink-text-input-stream?
@@ -1493,7 +1496,7 @@
   (sink-effects-read-cexprs
     fault unique-name qualify text-input-stream output-stream then)
   (->
-    sink? sink-authorized-name? sink? sink-text-input-stream?
+    sink-fault? sink-authorized-name? sink? sink-text-input-stream?
     sink-cexpr-sequence-output-stream?
     (->
       sink-authorized-name? sink? sink-text-input-stream?
@@ -1704,7 +1707,10 @@
 ; runner (TODO), so this particular version always succeeds.
 ;
 (define/contract (sink-effects-cexpr-eval fault cexpr then)
-  (-> sink? (and/c cexpr? cexpr-can-eval?) (-> sink? sink-effects?)
+  (->
+    sink-fault?
+    (and/c cexpr? cexpr-can-eval?)
+    (-> sink? sink-effects?)
     sink-effects?)
   (sink-effects-later #/fn
   #/then #/cexpr-eval fault cexpr #/table-empty))
@@ -1716,7 +1722,7 @@
 (define/contract
   (sink-effects-read-top-level
     fault unique-name qualify text-input-stream)
-  (-> sink? sink-authorized-name? sink? sink-text-input-stream?
+  (-> sink-fault? sink-authorized-name? sink? sink-text-input-stream?
     sink-effects?)
   (sink-effects-claim-freshen unique-name #/fn unique-name
   #/sink-effects-read-eof fault text-input-stream

@@ -230,7 +230,7 @@
   (cene-struct-metadata tags proj-string-to-name proj-name-to-string))
 
 (define/contract (verify-sink-struct-metadata! fault sink-metadata)
-  (-> sink? sink? cene-struct-metadata?)
+  (-> sink-fault? sink? cene-struct-metadata?)
   (expect (unmake-sink-struct-maybe s-struct-metadata sink-metadata)
     (just #/list main-tag-name projs)
     (cene-err fault "Expected a defined struct metadata entry to be a struct-metadata")
@@ -276,7 +276,7 @@
   (sink-effects-read-maybe-struct-metadata
     fault qualify text-input-stream then)
   (->
-    sink?
+    sink-fault?
     sink?
     sink-text-input-stream?
     (->
@@ -1036,7 +1036,8 @@
   (define/contract (macro-impl body)
     (->
       (->
-        sink? sink-authorized-name? sink? sink-text-input-stream?
+        sink-fault?
+        sink-authorized-name? sink? sink-text-input-stream?
         sink-cexpr-sequence-output-stream?
         (->
           sink-authorized-name? sink? sink-text-input-stream?
@@ -1285,7 +1286,8 @@
     (->
       immutable-string?
       (->
-        sink? sink-authorized-name? sink? sink-text-input-stream?
+        sink-fault?
+        sink-authorized-name? sink? sink-text-input-stream?
         (->
           sink-authorized-name? sink? sink-text-input-stream?
           sink-cexpr?
@@ -1687,7 +1689,7 @@
   
   (define/contract
     (verify-cexpr-struct-args! fault main-tag-name projections)
-    (-> sink? sink? sink?
+    (-> sink-fault? sink? sink?
       (list/c sink-name? #/listof #/list/c name? cexpr?))
     
     (expect main-tag-name (sink-authorized-name main-tag-name)
@@ -1714,14 +1716,10 @@
     (sink-effects-expand-struct-op
       fault unique-name qualify text-input-stream then)
     (->
-      sink?
-      sink-authorized-name?
-      sink?
-      sink-text-input-stream?
+      sink-fault?
+      sink-authorized-name? sink? sink-text-input-stream?
       (->
-        sink-authorized-name?
-        sink?
-        sink-text-input-stream?
+        sink-authorized-name? sink? sink-text-input-stream?
         (maybe/c #/list/c name? #/listof #/list/c name? cexpr?)
         sink-effects?)
       sink-effects?)
@@ -1894,7 +1892,7 @@
     (sink-effects-read-case-pattern
       fault qualify text-input-stream then)
     (->
-      sink?
+      sink-fault?
       sink?
       sink-text-input-stream?
       (->i
@@ -2230,7 +2228,7 @@
   ;   assert-current-mode
   
   (define/contract (verify-callback-effects! fault effects)
-    (-> sink? sink? sink-effects?)
+    (-> sink-fault? sink? sink-effects?)
     (expect (sink-effects? effects) #t
       (cene-err fault "Expected the return value of the callback to be an effects value")
       effects))
