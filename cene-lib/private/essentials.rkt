@@ -2403,14 +2403,17 @@
   ; `eval-cexpr`, and it was a pure function that took a mode
   ; parameter.
   ;
-  (def-func-fault! "effects-expr-eval" fault expr then
+  (def-func-fault! "effects-expr-eval-blame"
+    caller-fault explicit-fault expr then
+    
     (expect expr (sink-cexpr expr)
-      (cene-err fault "Expected expr to be an expression")
+      (cene-err caller-fault "Expected expr to be an expression")
     #/sink-effects-later #/fn
     #/expect (cexpr-can-eval? expr) #t
-      (cene-err fault "Expected expr to be an expression which had all the information it needed for evaluation")
-    #/sink-effects-cexpr-eval expr #/fn result
-    #/verify-callback-effects! fault #/sink-call fault then result))
+      (cene-err caller-fault "Expected expr to be an expression which had all the information it needed for evaluation")
+    #/sink-effects-cexpr-eval explicit-fault expr #/fn result
+    #/verify-callback-effects! caller-fault
+      (sink-call caller-fault then result)))
   
   ; TODO BUILTINS: Consider implementing something like the following
   ; built-ins from the JavaScript version of Cene. We can probably
