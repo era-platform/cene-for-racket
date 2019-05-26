@@ -6,6 +6,7 @@
   (list
     "base"
     "cene-lib"
+    "effection-lib"
     "lathe-comforts-lib"
     "parendown-lib"
     "rackunit-lib"))

@@ -21,47 +21,56 @@
 
 (require rackunit)
 
-(require #/only-in lathe-comforts dissect expect)
+(require #/only-in lathe-comforts dissectfn expect fn w-)
+(require #/only-in lathe-comforts/trivial trivial)
+
+(require #/only-in effection/extensibility/base
+  authorized-name-subname error-definer-from-message
+  extfx-ct-continue)
+(require #/only-in effection/extensibility/unsafe
+  run-extfx! run-extfx-result-success?)
 
 (require cene)
 
 ; (We provide nothing from this module.)
 
 
+; TODO: These tests currently take about 2 minutes to run, and they
+; aren't even very complex. See if we can optimize this. The first
+; thing we should try is to change the `name:rest` subnames so that
+; they increment a number rather than building a huge cons list.
+; That's an optimization that paid off early on in the JavaScript
+; version of Cene.
+
+
 (define (cene-run-string-sample code-string)
-  (dissect
-    (cene-init-package (cene-runtime-essentials)
-      (sink-sample-unique-name-root-1)
-      sink-sample-qualify-root)
-    (list rt errors-a)
-  #/dissect
-    (cene-run-string
-      rt
-      (sink-sample-unique-name-root-2)
-      sink-sample-qualify-root
-      code-string)
-    (list rt errors-b)
-  #/list rt #/append errors-a errors-b))
+  (run-extfx!
+    (error-definer-from-message
+      "Internal error: Expected the cene-run-string-sample continuation ticket to be written to")
+    (fn ds unique-name then
+      (extfx-with-gets-from ds unique-name #/fn unique-name
+      #/sink-effects-run!
+      #/sink-effects-claim-and-split
+        (sink-authorized-name unique-name)
+        3
+      #/dissectfn
+        (list
+          unique-name-root unique-name-essentials unique-name-sample)
+      #/w- qualify
+        (fn name #/sink-authorized-name-subname name unique-name-root)
+      #/sink-effects-fuse
+        (sink-effects-init-essentials unique-name-essentials qualify)
+        (sink-effects-run-string
+          unique-name-sample qualify code-string)
+      #/make-sink-effects #/fn
+        (extfx-ct-continue then
+          (error-definer-from-message
+            "Internal error: Expected the cene-run-string-sample continuation ticket to be written to only once")
+          (trivial))))))
 
 (define (cene-code-works code-string)
-  (expect (cene-run-string-sample code-string)
-    (list cene-runtime #/list)
-    #f
-  #/cene-runtime? cene-runtime))
+  (run-extfx-result-success? #/cene-run-string-sample code-string))
 
-(define (cene-code-get-errors code-string)
-  (dissect (cene-run-string-sample code-string)
-    (list cene-runtime errors)
-    errors))
-
-(define (cene-code-get-single-error code-string)
-  (expect (cene-code-get-errors code-string) (list e)
-    (error "Expected a single error")
-    e))
-
-
-(check-equal? (cene-runtime? #/cene-runtime-essentials) #t
-  "A call to `cene-runtime-essentials` returns successfully")
 
 (check-equal? (cene-code-works "") #t
   "Running nothing works")
@@ -78,8 +87,8 @@
   "Running nothing but line comments works")
 
 ; TODO: Make it so errors like this are actually collected into the
-; list of errors returned by `cene-run-string` rather than letting
-; them escape as Racket exceptions.
+; list of errors returned by `cene-run-string-sample` rather than
+; letting them escape as Racket exceptions.
 (check-exn
   (lambda (e)
     (expect e (exn:fail:cene message marks clamor) #f

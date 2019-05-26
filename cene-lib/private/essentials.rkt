@@ -40,11 +40,13 @@
   list-all list-any list-foldl list-foldr list-kv-map list-map
   list-zip-map)
 (require #/only-in lathe-comforts/maybe
-  just maybe-bind maybe/c maybe-map nothing)
+  just just-value maybe-bind maybe/c maybe-map nothing)
 (require #/only-in lathe-comforts/string immutable-string?)
 (require #/only-in lathe-comforts/struct struct-easy)
 (require #/only-in lathe-comforts/trivial trivial)
 
+(require #/only-in effection/extensibility/base
+  authorized-name-get-name)
 (require #/only-in effection/order
   assocs->table-if-mutually-unique cline-exact-rational
   dex-exact-rational dex-immutable-string fuse-exact-rational-by-plus
@@ -112,7 +114,7 @@
 (define-runtime-path prelude-for-lang-impl-path
   "prelude-for-lang-impl.cene")
 
-(provide cene-runtime-essentials)
+(provide sink-effects-init-essentials)
 
 
 
@@ -121,6 +123,9 @@
 
 (define s-nil (core-sink-struct "nil" #/list))
 (define s-cons (core-sink-struct "cons" #/list "first" "rest"))
+
+(define s-nothing (core-sink-struct "nothing" #/list))
+(define s-just (core-sink-struct "just" #/list "val"))
 
 (define s-assoc (core-sink-struct "assoc" #/list "key" "val"))
 
@@ -133,6 +138,8 @@
 (define s-struct-metadata
   (core-sink-struct "struct-metadata"
   #/list "main-tag-name" "projections"))
+
+(define s-carried (core-sink-struct "carried" #/list "main" "carry"))
 
 (define s-textpat-result-matched
   (core-sink-struct "textpat-result-matched" #/list "stop"))
@@ -177,23 +184,30 @@
 
 (define/contract (racket-boolean->sink racket-boolean)
   (-> boolean? sink?)
-  (if racket-boolean
-    (make-sink-struct s-yep #/list #/make-sink-struct s-nil #/list)
-    (make-sink-struct s-nope #/list #/make-sink-struct s-nil #/list)))
+  (begin (assert-can-get-cene-definitions!)
+  #/if racket-boolean
+    (make-sink-struct (s-yep) #/list
+      (make-sink-struct (s-nil) #/list))
+    (make-sink-struct (s-nope) #/list
+      (make-sink-struct (s-nil) #/list))))
 
 (define/contract (sink-maybe->maybe-racket sink-maybe)
   (-> sink? #/maybe/c #/maybe/c sink?)
-  (mat (unmake-sink-struct-maybe s-nothing sink-maybe) (just #/list)
+  (begin (assert-can-get-cene-definitions!)
+  #/mat (unmake-sink-struct-maybe (s-nothing) sink-maybe)
+    (just #/list)
     (just #/nothing)
-  #/mat (unmake-sink-struct-maybe s-just sink-maybe) (just #/list val)
+  #/mat (unmake-sink-struct-maybe (s-just) sink-maybe)
+    (just #/list val)
     (just #/just val)
   #/nothing))
 
 (define/contract (racket-maybe->sink racket-maybe)
   (-> (maybe/c sink?) sink?)
-  (mat racket-maybe (just val)
-    (make-sink-struct s-just #/list val)
-    (make-sink-struct s-nothing #/list)))
+  (begin (assert-can-get-cene-definitions!)
+  #/mat racket-maybe (just val)
+    (make-sink-struct (s-just) #/list val)
+    (make-sink-struct (s-nothing) #/list)))
 
 (define/contract (sink-list->maybe-racket sink-list)
   (-> sink? #/maybe/c #/listof sink?)
@@ -202,23 +216,26 @@
   ; (`rev-racket-list`) of a recursive helper function (`next`) so
   ; that we keep the call stack at a constant size throughout the list
   ; traversal.
-  (w-loop next sink-list sink-list rev-racket-list (list)
-  #/mat (unmake-sink-struct-maybe s-nil sink-list) (just #/list)
+  (begin (assert-can-get-cene-definitions!)
+  #/w-loop next sink-list sink-list rev-racket-list (list)
+  #/mat (unmake-sink-struct-maybe (s-nil) sink-list) (just #/list)
     (just #/reverse rev-racket-list)
-  #/mat (unmake-sink-struct-maybe s-cons sink-list)
+  #/mat (unmake-sink-struct-maybe (s-cons) sink-list)
     (just #/list elem sink-list)
     (next sink-list #/cons elem rev-racket-list)
   #/nothing))
 
 (define/contract (racket-list->sink racket-list)
   (-> (listof sink?) sink?)
-  (list-foldr racket-list (make-sink-struct s-nil #/list)
+  (begin (assert-can-get-cene-definitions!)
+  #/list-foldr racket-list (make-sink-struct (s-nil) #/list)
   #/fn elem rest
-    (make-sink-struct s-cons #/list elem rest)))
+    (make-sink-struct (s-cons) #/list elem rest)))
 
 (define/contract (sink-valid-dexable->maybe-racket sink-dexable)
   (-> sink? #/unsafe:dexableof-unchecked sink?)
-  (expect (unmake-sink-struct-maybe s-dexable sink-dexable)
+  (begin (assert-can-get-cene-definitions!)
+  #/expect (unmake-sink-struct-maybe (s-dexable) sink-dexable)
     (just #/list dex val)
     (nothing)
   #/expect dex (sink-dex dex) (nothing)
@@ -231,7 +248,9 @@
 
 (define/contract (verify-sink-struct-metadata! fault sink-metadata)
   (-> sink-fault? sink? cene-struct-metadata?)
-  (expect (unmake-sink-struct-maybe s-struct-metadata sink-metadata)
+  (begin (assert-can-get-cene-definitions!)
+  #/expect
+    (unmake-sink-struct-maybe (s-struct-metadata) sink-metadata)
     (just #/list main-tag-name projs)
     (cene-err fault "Expected a defined struct metadata entry to be a struct-metadata")
   #/expect main-tag-name (sink-name main-tag-name)
@@ -240,7 +259,7 @@
     (cene-err fault "Expected a defined struct metadata entry to have a cons list of projections")
   #/w- projs
     (list-map projs #/fn entry
-      (expect (unmake-sink-struct-maybe s-assoc entry)
+      (expect (unmake-sink-struct-maybe (s-assoc) entry)
         (just #/list proj-string proj-name)
         (cene-err fault "Expected a defined struct metadata entry to have a projection list where each entry was an assoc")
       #/expect proj-string (sink-string proj-string)
@@ -396,7 +415,7 @@
       [x any/c])
     #:pre (tags comparators)
       (= (length tags) (add1 #/length comparators))
-    [_ (maybe/c cline-result?)])
+    [_ boolean?])
   (expect (unmake-sink-struct-maybe tags x) (just field-vals) #f
   #/w-loop next field-comparators comparators field-vals field-vals
     (expect field-comparators
@@ -815,8 +834,8 @@
   (fn this dex
     (dissect this (fix-for-sink-dex-list dex-elem)
     #/dex-default
-      (dex-sink-struct s-nil #/list)
-      (dex-sink-struct s-cons #/list dex-elem this))))
+      (dex-sink-struct (s-nil) #/list)
+      (dex-sink-struct (s-cons) #/list dex-elem this))))
 
 (define/contract (sink-dex-list dex-elem)
   (-> sink-dex? sink-dex?)
@@ -979,13 +998,14 @@
 
 
 ; TODO: Use this in some kind of CLI entrypoint or something.
-(define/contract (cene-runtime-essentials)
-  (-> cene-runtime?)
+(define/contract
+  (sink-effects-init-essentials
+    unique-name-for-package qualify-for-package)
+  (-> sink-authorized-name? (-> sink-name? sink-authorized-name?)
+    sink-effects?)
+; TODO: See if we should reindent this.
+#/sink-effects-later #/fn #/let ()
   
-  (assert-cannot-get-cene-definitions!)
-  
-  (define defined-dexes (table-empty))
-  (define defined-values (table-empty))
   (define init-package-steps (list))
   
   (define/contract
@@ -1000,22 +1020,17 @@
     #/fn step unique-name
       (step unique-name qualify-for-package)))
   
-  (define/contract (def-dexable-value-for-lang-impl! name dex value)
-    (-> sink-authorized-name? sink-dex? sink? void?)
-    (dissect name (sink-authorized-name name)
-    #/begin
-      (set! defined-dexes
-        (table-shadow name (just dex) defined-dexes))
-      (set! defined-values
-        (table-shadow name (just value) defined-values))
-    #/void))
-  
   (define/contract (add-init-package-step! step)
     (->
       (-> sink-authorized-name? (-> sink-name? sink-authorized-name?)
         sink-effects?)
       void?)
     (set! init-package-steps (cons step init-package-steps)))
+  
+  (define/contract (def-dexable-value-for-lang-impl! name dex value)
+    (-> sink-authorized-name? sink-dex? sink? void?)
+    (add-init-package-step! #/fn unique-name qualify-for-package
+      (sink-effects-put name dex value)))
   
   (define/contract (def-dexable-value-for-package! name dex value)
     (-> sink-name? sink-dex? sink? void?)
@@ -1103,9 +1118,12 @@
       void?)
     (w- main-tag-name
       (sink-name-for-string #/sink-string main-tag-string)
-    #/w- qualified-main-tag-name
+    #/w- qualified-main-tag-authorized-name
       (sink-name-qualify-for-lang-impl
       #/sink-name-for-struct-main-tag main-tag-name)
+    #/w- qualified-main-tag-name
+      (sink-authorized-name-get-name
+        qualified-main-tag-authorized-name)
       
       ; We define a reader macro so that the user can write code that
       ; compiles into a call to this function.
@@ -1134,7 +1152,7 @@
       ; We define a Cene struct function implementation containing
       ; the function's run time behavior.
       (def-func-impl-reified!
-        qualified-main-tag-name
+        qualified-main-tag-authorized-name
         (sink-table #/table-empty)
         (sink-opaque-fn #/fn struct-value
           (sink-fn-curried-fault n-args racket-func)))
@@ -1158,9 +1176,12 @@
     (-> immutable-string? sink? void?)
     (w- main-tag-name
       (sink-name-for-string #/sink-string main-tag-string)
-    #/w- qualified-main-tag-name
+    #/w- qualified-main-tag-authorized-name
       (sink-name-qualify-for-lang-impl
       #/sink-name-for-struct-main-tag main-tag-name)
+    #/w- qualified-main-tag-name
+      (sink-authorized-name-get-name
+        qualified-main-tag-authorized-name)
       
       ; We define a reader macro so that the user can write code that
       ; compiles into a call to this function.
@@ -1178,15 +1199,15 @@
         (macro-impl-specific-number-of-args 0 #/fn args
           (sink-cexpr-call
             (sink-cexpr-construct qualified-main-tag-name #/list)
-            (make-sink-cexpr-construct s-trivial #/list))))
+            (make-sink-cexpr-construct (s-trivial) #/list))))
       
       ; We define a Cene struct function implementation containing
       ; the function's run time behavior.
       (def-func-impl-reified!
-        qualified-main-tag-name
+        qualified-main-tag-authorized-name
         (sink-table #/table-empty)
         (sink-fn-curried-fault 2 #/fn fault struct-value arg
-          (expect (unmake-sink-struct-maybe s-trivial arg)
+          (expect (unmake-sink-struct-maybe (s-trivial) arg)
             (just #/list)
             (cene-err fault "Expected the argument to a nullary function to be a trivial")
             result)))
@@ -1197,17 +1218,17 @@
     (-> immutable-string? (listof immutable-string?) void?)
     (w- main-tag-name
       (sink-name-for-string #/sink-string main-tag-string)
-    #/w- qualified-main-tag-name
+    #/w- qualified-main-tag-authorized-name
       (sink-name-qualify-for-lang-impl
       #/sink-name-for-struct-main-tag main-tag-name)
-    #/w- qualified-main-tag-unauthorized-name
-      (sink-authorized-name-get-name qualified-main-tag-name)
+    #/w- qualified-main-tag-name
+      (sink-authorized-name-get-name
+        qualified-main-tag-authorized-name)
     #/w- qualified-proj-name-entries
       (list-map proj-strings #/fn proj-string
         (list proj-string
         #/sink-name-qualify-for-lang-impl
-        #/sink-name-for-struct-proj
-          qualified-main-tag-unauthorized-name
+        #/sink-name-for-struct-proj qualified-main-tag-name
         #/sink-name-for-string #/sink-string proj-string))
     #/w- qualified-proj-names
       (list-map qualified-proj-name-entries
@@ -1215,9 +1236,11 @@
         qualified-proj-name)
     #/expect
       (assocs->table-if-mutually-unique
-      #/list-map qualified-proj-names
-      #/dissectfn (sink-authorized-name proj-name)
-        (cons proj-name #/sink-authorized-name proj-name))
+        (list-map qualified-proj-names #/fn proj-authorized-name
+          (dissect
+            (sink-authorized-name-get-name proj-authorized-name)
+            (sink-name proj-name)
+          #/cons proj-name proj-authorized-name)))
       (just qualified-proj-names-table)
       (error "Expected the projection strings to be mutually unique")
     #/begin
@@ -1252,7 +1275,7 @@
       ; invariant that comes in handy. (TODO: See if it does.)
       ;
       (def-func-impl-reified!
-        qualified-main-tag-name
+        qualified-main-tag-authorized-name
         (sink-table qualified-proj-names-table)
         (sink-opaque-fn-fault #/dissectfn (list fault struct-value)
           (cene-err fault "Called a struct that wasn't intended for calling")))
@@ -1267,16 +1290,16 @@
       ;
       (def-dexable-value-for-package!
         (sink-name-for-struct-metadata main-tag-name)
-        (sink-dex-struct s-struct-metadata #/list
+        (sink-dex-struct (s-struct-metadata) #/list
           (sink-dex-name)
-          (sink-dex-list #/sink-dex-struct s-assoc #/list
+          (sink-dex-list #/sink-dex-struct (s-assoc) #/list
             (sink-dex-string)
             (sink-dex-name)))
-        (make-sink-struct s-struct-metadata #/list
-          qualified-main-tag-unauthorized-name
+        (make-sink-struct (s-struct-metadata) #/list
+          qualified-main-tag-name
           (racket-list->sink #/list-map qualified-proj-name-entries
           #/dissectfn (list proj-string qualified-proj-name)
-            (make-sink-struct s-assoc #/list
+            (make-sink-struct (s-assoc) #/list
               (sink-string proj-string)
               (sink-authorized-name-get-name qualified-proj-name)))))
       
@@ -1420,7 +1443,7 @@
       (if (ordering-private? dex-result)
         (sink-ordering-private dex-result)
       #/dissect dex-result (ordering-eq)
-      #/make-sink-struct s-ordering-eq #/list)))
+      #/make-sink-struct (s-ordering-eq) #/list)))
   
   (def-data-struct! "dexable" #/list "dex" "val")
   
@@ -1495,11 +1518,11 @@
       (if (ordering-private? cline-result)
         (sink-ordering-private cline-result)
       #/mat cline-result (ordering-lt)
-        (make-sink-struct s-ordering-lt #/list)
+        (make-sink-struct (s-ordering-lt) #/list)
       #/mat cline-result (ordering-gt)
-        (make-sink-struct s-ordering-gt #/list)
+        (make-sink-struct (s-ordering-gt) #/list)
       #/dissect cline-result (ordering-eq)
-      #/make-sink-struct s-ordering-eq #/list)))
+      #/make-sink-struct (s-ordering-eq) #/list)))
   
   (def-nullary-func! "dex-cline"
     (sink-dex #/dex-struct sink-cline #/dex-cline))
@@ -1666,15 +1689,21 @@
       (cene-err fault "Expected name to be an authorized name")
     #/sink-authorized-name-get-name name))
   
-  (def-func-fault! "name-subname" fault name
-    (expect (sink-name? name) #t
-      (cene-err fault "Expected name to be a name")
-    #/sink-name-subname name))
+  (def-func-fault! "name-subname" fault index-name inner-name
+    (expect (sink-name? index-name) #t
+      (cene-err fault "Expected index-name to be a name")
+    #/expect (sink-name? inner-name) #t
+      (cene-err fault "Expected inner-name to be a name")
+    #/sink-name-subname index-name inner-name))
   
-  (def-func-fault! "authorized-name-subname" fault name
-    (expect (sink-authorized-name? name) #t
-      (cene-err fault "Expected name to be an authorized name")
-    #/sink-authorized-name-subname name))
+  (def-func-fault! "authorized-name-subname"
+    fault index-name inner-name
+    
+    (expect (sink-name? index-name) #t
+      (cene-err fault "Expected index-name to be a name")
+    #/expect (sink-authorized-name? inner-name) #t
+      (cene-err fault "Expected inner-name to be an authorized name")
+    #/sink-authorized-name-subname index-name inner-name))
   
   
   ; Structs and function calls
@@ -1690,27 +1719,28 @@
   (define/contract
     (verify-cexpr-struct-args! fault main-tag-name projections)
     (-> sink-fault? sink? sink?
-      (list/c sink-name? #/listof #/list/c name? cexpr?))
+      (list/c name? (listof #/list/c name? cexpr?)))
     
-    (expect main-tag-name (sink-authorized-name main-tag-name)
+    (begin (assert-can-get-cene-definitions!)
+    #/expect main-tag-name (sink-authorized-name main-tag-name)
       (cene-err fault "Expected main-tag-name to be an authorized name")
     #/expect (sink-list->maybe-racket projections) (just projections)
       (cene-err fault "Expected projections to be a list made up of cons and nil values")
     #/w- projections
       (list-map projections #/fn projection
-        (expect (unmake-sink-struct-maybe s-assoc projection)
+        (expect (unmake-sink-struct-maybe (s-assoc) projection)
           (just #/list k v)
           (cene-err fault "Expected projections to be a list of assoc values")
         #/expect k (sink-authorized-name k)
           (cene-err fault "Expected projections to be an association list with authorized names as keys")
         #/expect v (sink-cexpr v)
           (cene-err fault "Expected projections to be an association list with expressions as values")
-        #/list k v))
+        #/list (authorized-name-get-name k) v))
     #/if
       (names-have-duplicate?
-      #/list-map projections #/dissectfn (list k v) k)
+        (list-map projections #/dissectfn (list k v) k))
       (cene-err fault "Expected projections to be an association list with mutually unique names as keys")
-    #/list main-tag-name projections))
+    #/list (authorized-name-get-name main-tag-name) projections))
   
   (define/contract
     (sink-effects-expand-struct-op
@@ -1859,7 +1889,7 @@
       (cene-err fault "Expected projections to be a list made up of cons and nil values")
     #/w- projections
       (list-map projections #/fn projection
-        (expect (unmake-sink-struct-maybe s-assoc projection)
+        (expect (unmake-sink-struct-maybe (s-assoc) projection)
           (just #/list k v)
           (cene-err fault "Expected projections to be a list of assoc values")
         #/expect k (sink-authorized-name k)
@@ -1869,22 +1899,23 @@
         #/list k v))
     #/if
       (names-have-duplicate?
-      #/list-map projections #/dissectfn (list k v) k)
+        (list-map projections #/dissectfn (list k v)
+          (authorized-name-get-name k)))
       (cene-err fault "Expected projections to be an association list with mutually unique authorized names as keys")
     #/if
       (names-have-duplicate?
-      #/list-map projections #/dissectfn (list k v) v)
+        (list-map projections #/dissectfn (list k v) v))
       (cene-err fault "Expected projections to be an association list with mutually unique names as values")
     #/expect then-expr (sink-cexpr then-expr)
       (cene-err fault "Expected then-expr to be an expression")
     #/expect else-expr (sink-cexpr else-expr)
       (cene-err fault "Expected else-expr to be an expression")
     #/sink-cexpr #/cexpr-case subject-expr
-      (cons main-tag-name
+      (cons (authorized-name-get-name main-tag-name)
       #/list-map projections #/dissectfn (list proj-name var)
-        var)
+        (authorized-name-get-name proj-name))
       (list-map projections #/dissectfn (list proj-name var)
-        proj-name)
+        var)
       then-expr
       else-expr))
   
@@ -2241,7 +2272,7 @@
     (sink-effects-later #/fn
     #/verify-callback-effects! fault
     #/sink-call fault get-effects
-      (make-sink-struct s-trivial #/list)))
+      (make-sink-struct (s-trivial) #/list)))
   
   ; TODO BUILTINS: Consider implementing the following.
   ;
@@ -2346,7 +2377,7 @@
       (cene-err fault "Expected bindings to be a list")
     #/w- bindings
       (list-map bindings #/fn binding
-        (expect (unmake-sink-struct-maybe binding s-assoc)
+        (expect (unmake-sink-struct-maybe (s-assoc) binding)
           (just #/list var val)
           (cene-err fault "Expected bindings to be an assoc list")
         #/expect (sink-name? var) #t
@@ -2454,15 +2485,15 @@
       (cene-err fault "Expected dividend to be an int")
     #/expect divisor (sink-int divisor)
       (cene-err fault "Expected divisor to be an int")
-    #/mat divisor 0 (make-sink-struct s-nothing #/list)
-    #/make-sink-struct s-just #/list
+    #/mat divisor 0 (make-sink-struct (s-nothing) #/list)
+    #/make-sink-struct (s-just) #/list
     #/let-values ([(q r) (quotient/remainder dividend divisor)])
     #/if (<= 0 r)
-      (make-sink-struct s-carried #/list (sink-int q) (sink-int r))
+      (make-sink-struct (s-carried) #/list (sink-int q) (sink-int r))
     #/if (<= 0 divisor)
-      (make-sink-struct s-carried
+      (make-sink-struct (s-carried)
       #/list (sink-int #/- q 1) (sink-int #/+ r divisor))
-      (make-sink-struct s-carried
+      (make-sink-struct (s-carried)
       #/list (sink-int #/+ q 1) (sink-int #/- r divisor))))
   
   (def-data-struct! "carried" #/list "main" "carry")
@@ -2668,12 +2699,12 @@
     #/verify-callback-effects! fault #/sink-call fault then
     #/w- result (optimized-textpat-match ot str start stop)
     #/mat result (textpat-result-matched stop)
-      (make-sink-struct s-textpat-result-matched #/list
+      (make-sink-struct (s-textpat-result-matched) #/list
       #/sink-int stop)
     #/mat result (textpat-result-failed)
-      (make-sink-struct s-textpat-result-failed #/list)
+      (make-sink-struct (s-textpat-result-failed) #/list)
     #/dissect result (textpat-result-passed-end)
-      (make-sink-struct s-textpat-result-passed-end #/list)))
+      (make-sink-struct (s-textpat-result-passed-end) #/list)))
   
   (def-data-struct! "textpat-result-matched" #/list "stop")
   (def-data-struct! "textpat-result-failed" #/list)
@@ -2733,15 +2764,13 @@
   (def-func! "directive" directive
     (sink-directive directive))
   
-  (def-func-fault! "name-for-claim" fault name
-    (expect (sink-name? name) #t
-      (cene-err fault "Expected name to be a name")
-    #/sink-name-for-claim name))
-  
-  (def-func-fault! "authorized-name-for-claim" fault name
+  (def-func-fault! "effects-claim" fault name on-success
     (expect (sink-authorized-name? name) #t
       (cene-err fault "Expected name to be an authorized name")
-    #/sink-authorized-name-for-claim name))
+    #/sink-effects-claim name #/fn
+    #/verify-callback-effects! fault
+      (sink-call fault on-success
+        (make-sink-struct (s-trivial) #/list))))
   
   (def-func-fault! "name-for-function-implementation-code"
     fault main-tag-name proj-tag-names
@@ -2749,10 +2778,12 @@
     (expect (sink-name? main-tag-name) #t
       (cene-err fault "Expected main-tag-name to be a name")
     #/expect
-      (in-dex? (sink-dex-table #/sink-dex-struct s-trivial #/list)
+      (in-dex? (sink-dex-table #/sink-dex-struct (s-trivial) #/list)
         proj-tag-names)
       #t
       (cene-err fault "Expected proj-tag-names to be a table of trivial values")
+    #/dissect proj-tag-names (sink-table proj-tag-names)
+    #/w- proj-tag-names (table-v-map proj-tag-names #/fn v #/trivial)
     #/sink-name-for-function-implementation-code
       main-tag-name proj-tag-names))
   
@@ -2762,31 +2793,34 @@
     (expect (sink-name? main-tag-name) #t
       (cene-err fault "Expected main-tag-name to be a name")
     #/expect
-      (in-dex? (sink-dex-table #/sink-dex-struct s-trivial #/list)
+      (in-dex? (sink-dex-table #/sink-dex-struct (s-trivial) #/list)
         proj-tag-names)
       #t
       (cene-err fault "Expected proj-tag-names to be a table of trivial values")
+    #/dissect proj-tag-names (sink-table proj-tag-names)
+    #/w- proj-tag-names (table-v-map proj-tag-names #/fn v #/trivial)
     #/sink-name-for-function-implementation-value
       main-tag-name proj-tag-names))
   
   (define (verify-proj-tag-authorized-names! fault proj-tag-names)
     (expect proj-tag-names (sink-table proj-tag-names)
       (cene-err fault "Expected proj-tag-names to be a table")
-    #/begin
-      (table-kv-map proj-tag-names #/fn k v
-        (expect v (sink-authorized-name name)
-          (cene-err fault "Expected each value of proj-tag-names to be an authorized name")
-        #/expect (eq-by-dex? (dex-name) k name) #t
-          (cene-err fault "Expected each value of proj-tag-names to be an authorized name where the name authorized is the same as the name it's filed under")
-          v))
-    #/void))
+    #/table-kv-map proj-tag-names #/fn k v
+      (expect v (sink-authorized-name name)
+        (cene-err fault "Expected each value of proj-tag-names to be an authorized name")
+      #/expect
+        (eq-by-dex? (dex-name) k (authorized-name-get-name name))
+        #t
+        (cene-err fault "Expected each value of proj-tag-names to be an authorized name where the name authorized is the same as the name it's filed under")
+        name)))
   
   (def-func-fault! "authorized-name-for-function-implementation-code"
     fault main-tag-name proj-tag-names
     
     (expect (sink-authorized-name? main-tag-name) #t
       (cene-err fault "Expected main-tag-name to be an authorized name")
-    #/begin (verify-proj-tag-authorized-names! fault proj-tag-names)
+    #/w- proj-tag-names
+      (verify-proj-tag-authorized-names! fault proj-tag-names)
     #/sink-authorized-name-for-function-implementation-code
       main-tag-name proj-tag-names))
   
@@ -2795,7 +2829,8 @@
     
     (expect (sink-authorized-name? main-tag-name) #t
       (cene-err fault "Expected main-tag-name to be an authorized name")
-    #/begin (verify-proj-tag-authorized-names! fault proj-tag-names)
+    #/w- proj-tag-names
+      (verify-proj-tag-authorized-names! fault proj-tag-names)
     #/sink-authorized-name-for-function-implementation-value
       main-tag-name proj-tag-names))
   
@@ -2993,27 +3028,23 @@
   
   
   (define prelude-for-lang-impl-unique-name
-    (sink-authorized-name #/unsafe:name
-      'name:prelude-for-lang-impl-unique-name))
-  (define prelude-for-lang-impl-qualify-root
-    (sink-authorized-name #/unsafe:name
-      'name:prelude-for-lang-impl-qualify-root))
+    (sink-authorized-name-subname
+      (sink-name #/just-value #/name-of (dex-immutable-string)
+        "prelude-for-lang-impl-unique-name")
+      (cene-definition-lang-impl-qualify-root)))
   (define/contract (qualify-for-prelude-for-lang-impl name)
     (-> sink-name? sink-authorized-name?)
-    (sink-authorized-name-subname
-      name prelude-for-lang-impl-qualify-root))
+    (sink-authorized-name-subname name
+    #/sink-authorized-name-subname
+      (sink-name #/just-value #/name-of (dex-immutable-string)
+        "prelude-for-lang-impl-qualify-root")
+      (cene-definition-lang-impl-qualify-root)))
   
   (define/contract (def-value-for-prelude-for-lang-impl! name value)
     (-> sink-name? sink? void?)
-    (dissect (qualify-for-prelude-for-lang-impl name)
-      (sink-authorized-name name)
-    #/begin
-      (set! defined-dexes
-        (table-shadow name (just #/sink-dex #/dex-give-up)
-          defined-dexes))
-      (set! defined-values
-        (table-shadow name (just value) defined-values))
-    #/void))
+    (w- name (qualify-for-prelude-for-lang-impl name)
+    #/add-init-package-step! #/fn unique-name qualify-for-package
+      (sink-effects-put name (sink-dex #/dex-give-up) value)))
   
   ; We define `qualify-for-lang-impl` built-in only in the scope of
   ; prelude-for-lang-impl.cene.
@@ -3039,27 +3070,14 @@
       #/open-input-file prelude-per-package-path)))
   
   
-  (define rt-before-prelude
-    (cene-runtime
-      (sink-table defined-dexes)
-      (sink-table defined-values)
-      sink-effects-init-package))
-  
-  (match-define (list rt-after-prelude prelude-errors)
-    (cene-runtime-effects-run rt-before-prelude #/fn
-      (sink-effects-read-top-level (make-fault-internal)
-        prelude-for-lang-impl-unique-name
-        (sink-fn-curried-fault 1 #/fn fault name
-          (expect (sink-name? name) #t
-            (cene-err fault "Expected the input to the root qualify function to be a name")
-          #/qualify-for-prelude-for-lang-impl name))
-        (sink-text-input-stream #/box #/just
-        #/open-input-file prelude-for-lang-impl-path))))
-  
-  (expect prelude-errors (list)
-    (error "Internal error: Errors occurred in prelude-for-lang-impl")
-  #/void)
-  
-  
-  
-  rt-after-prelude)
+  (sink-effects-fuse
+    (sink-effects-init-package
+      unique-name-for-package qualify-for-package)
+    (sink-effects-read-top-level (make-fault-internal)
+      prelude-for-lang-impl-unique-name
+      (sink-fn-curried-fault 1 #/fn fault name
+        (expect (sink-name? name) #t
+          (cene-err fault "Expected the input to the root qualify function to be a name")
+        #/qualify-for-prelude-for-lang-impl name))
+      (sink-text-input-stream #/box #/just
+      #/open-input-file prelude-for-lang-impl-path))))

@@ -26,6 +26,7 @@
 (require #/only-in racket/contract/base
   -> ->* and/c any/c contract? list/c listof none/c or/c parameter/c)
 (require #/only-in racket/contract/region define/contract)
+(require #/only-in racket/control reset-at shift-at)
 (require #/only-in racket/generic define/generic define-generics)
 (require #/only-in racket/math natural?)
 (require #/only-in syntax/parse/define define-simple-macro)
@@ -35,19 +36,25 @@
 (require #/only-in lathe-comforts/list
   list-any list-foldl list-foldr list-map list-zip-map nat->maybe)
 (require #/only-in lathe-comforts/maybe
-  just maybe/c maybe-map nothing nothing?)
+  just just-value maybe/c maybe-map nothing nothing?)
 (require #/only-in lathe-comforts/string immutable-string?)
 (require #/only-in lathe-comforts/struct
   auto-write define-imitation-simple-struct struct-easy)
 (require #/only-in lathe-comforts/trivial trivial)
 
+(require #/only-in effection/extensibility/base
+  authorized-name? authorized-name-get-name authorized-name-subname
+  dspace? error-definer-from-message error-definer-uninformative
+  extfx? extfx-claim-unique extfx-ct-continue extfx-get extfx-noop
+  extfx-put extfx-split-list fuse-extfx optionally-dexable-dexable
+  optionally-dexable-once success-or-error-definer)
 (require #/only-in effection/order
-  assocs->table-if-mutually-unique dex-immutable-string)
+  assocs->table-if-mutually-unique dex-immutable-string dex-trivial)
 (require #/only-in effection/order/base
-  compare-by-dex dex? dex-give-up dex-dex dex-name dex-struct
-  dex-table fuse-by-merge merge-by-dex merge-table name? name-of
-  ordering-eq? table? table-empty table-get table-map-fuse
-  table-shadow)
+  call-fuse compare-by-dex dex? dexable dex-give-up dex-dex dex-name
+  dex-struct dex-table fuse-by-merge in-dex? merge-by-dex merge-table
+  name? name-of ordering-eq? table? table-empty table-get
+  table-map-fuse table-shadow)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe name)
 
 (require #/only-in cene/private/textpat
@@ -88,13 +95,6 @@
 (define/contract (table-v-map table v-to-v)
   (-> table? (-> any/c any/c) table?)
   (table-kv-map table #/fn k v #/v-to-v v))
-
-; TODO: Since Lathe Comforts isn't specifically designed around
-; Effection, its `trivial?` values doesn't expose struct info
-; Effection's `dex-struct` can use. We work around that here by
-; defining another structure type to use in place of `trivial?`. If
-; there ever gets to be a better way to do this, let's use that.
-(struct-easy (effection-trivial) #:equal)
 
 
 (define-generics sink)
@@ -139,15 +139,20 @@
   #/dissect s-tags (cons s-main-tag s-proj-tags)
   #/expect (eq-by-dex? (dex-name) main-tag s-main-tag) #t (nothing)
   #/expect
-    (w-loop next proj-tags proj-tags s-projs s-projs proj-hash (hash)
-      (expect proj-tags (cons proj-tag proj-tags)
+    (w-loop next
+      s-proj-tags s-proj-tags
+      s-projs s-projs
+      proj-hash (hash)
+      
+      (expect s-proj-tags (cons s-proj-tag s-proj-tags)
         (expect s-projs (list)
           (error "Encountered a sink-struct with more projection values than projection tags")
         #/just proj-hash)
-      #/expect s-projs (list s-proj s-projs)
+      #/expect s-projs (cons s-proj s-projs)
         (error "Encountered a sink-struct with more projection tags than projection values")
-      #/if (hash-has-key? proj-hash proj-tag) (nothing)
-      #/next proj-tags s-projs #/hash-set proj-hash proj-tag s-proj))
+      #/if (hash-has-key? proj-hash s-proj-tag) (nothing)
+      #/next s-proj-tags s-projs
+        (hash-set proj-hash s-proj-tag s-proj)))
     (just proj-hash)
     (nothing)
   #/w-loop next
@@ -171,7 +176,7 @@
   #:other #:methods gen:sink [])
 (struct-easy (sink-name name)
   #:other #:methods gen:sink [])
-(struct-easy (sink-authorized-name name)
+(struct-easy (sink-authorized-name authorized-name)
   #:other #:methods gen:sink [])
 (struct-easy (sink-effects go!)
   #:other #:methods gen:sink [])
@@ -228,7 +233,7 @@
   (dissect name (sink-name #/unsafe:name name)
   #/sink-name #/unsafe:name #/func name))
 
-; NOTE: Once we have the ability to import names, we should make sure
+; TODO: Once we have the ability to import names, we should make sure
 ; this produces an authorized name whose name is importable from a
 ; UUID-identified import. Modules identified by UUID can only be
 ; implemented by the language implementation. And since that's the
@@ -237,40 +242,11 @@
 ;
 (define/contract (sink-name-qualify-for-lang-impl unqualified-name)
   (-> sink-name? sink-authorized-name?)
-  (dissect unqualified-name (sink-name #/unsafe:name n)
-  #/sink-authorized-name #/unsafe:name
-    (list 'name:qualified-for-lang-impl n)))
-
-(define/contract (sink-name-for-claim inner-name)
-  (-> sink-name? sink-name?)
-  (sink-name-rep-map inner-name #/fn n #/list 'name:claim n))
-
-(define/contract (sink-authorized-name-for-claim inner-name)
-  (-> sink-authorized-name? sink-authorized-name?)
-  (dissect inner-name (sink-authorized-name #/unsafe:name inner-name)
-  #/sink-authorized-name #/unsafe:name #/list 'name:claim inner-name))
-
-(struct-easy (cene-process-error message))
-(struct-easy (cene-process-get name then))
-(struct-easy (cene-process-put name dex value))
-(struct-easy (cene-process-noop))
-(struct-easy (cene-process-fuse a b))
-
-(define/contract (cene-process? v)
-  (-> any/c boolean?)
-  (or
-    (cene-process-error? v)
-    (cene-process-get? v)
-    (cene-process-put? v)
-    (cene-process-noop? v)
-    (cene-process-fuse? v)))
-
-(define-imitation-simple-struct
-  (cene-runtime?
-    cene-runtime-defined-dexes
-    cene-runtime-defined-values
-    cene-runtime-init-package)
-  cene-runtime 'cene-runtime (current-inspector) (auto-write))
+  (sink-authorized-name-subname unqualified-name
+  #/sink-authorized-name-subname
+    (sink-name #/just-value #/name-of (dex-immutable-string)
+      "qualify")
+    (cene-definition-lang-impl-qualify-root)))
 
 (define/contract (sink-table-get-maybe table name)
   (-> sink-table? sink-name? #/maybe/c sink?)
@@ -285,168 +261,86 @@
   #/sink-table #/table-shadow name maybe-value table))
 
 (define/contract cene-definition-get-param
-  (parameter/c #/maybe/c #/-> sink-name? sink?)
+  (parameter/c
+    (maybe/c
+      (list/c dspace? sink-authorized-name? (-> sink-name? sink?))))
   (make-parameter #/nothing))
 
 (define/contract (assert-can-get-cene-definitions!)
   (-> void?)
-  (expect (cene-definition-get-param) (just get)
+  (expect (cene-definition-get-param)
+    (just #/list ds lang-impl-qualify-root get)
     (error "Expected an implementation of `cene-definition-get` to be available in the dynamic scope")
   #/void))
 
 (define/contract (assert-cannot-get-cene-definitions!)
   (-> void?)
-  (mat (cene-definition-get-param) (just get)
+  (mat (cene-definition-get-param)
+    (just #/list ds lang-impl-qualify-root get)
     ; TODO: Make this error message more visually distinct from the
     ; `assert-can-get-cene-definitions!` error message.
     (error "Expected no implementation of `cene-definition-get` to be available in the dynamic scope")
   #/void))
 
+(define/contract (cene-definition-dspace)
+  (-> dspace?)
+  (expect (cene-definition-get-param)
+    (just #/list ds lang-impl-qualify-root get)
+    (error "Expected every call to `cene-definition-dspace` to occur with an implementation in the dynamic scope")
+    ds))
+
+(define/contract (cene-definition-lang-impl-qualify-root)
+  (-> sink-authorized-name?)
+  (expect (cene-definition-get-param)
+    (just #/list ds lang-impl-qualify-root get)
+    (error "Expected every call to `cene-definition-lang-impl-qualify-root` to occur with an implementation in the dynamic scope")
+    lang-impl-qualify-root))
+
 (define/contract (cene-definition-get name)
   (-> sink-name? sink?)
-  (expect (cene-definition-get-param) (just get)
+  (expect (cene-definition-get-param)
+    (just #/list ds lang-impl-qualify-root get)
     (error "Expected every call to `cene-definition-get` to occur with an implementation in the dynamic scope")
   #/get name))
 
-(struct-easy (with-gets-suspended name then))
-(struct-easy (with-gets-finished result))
+(define cene-definition-get-prompt-tag (make-continuation-prompt-tag))
 
-(define/contract (with-gets-from table thunk)
-  (-> sink-table? (-> any/c)
-    (or/c with-gets-suspended? with-gets-finished?))
+(define/contract (extfx-with-cene-definition-restorer body)
+  (-> (-> (-> (-> extfx?) extfx?) extfx?) extfx?)
+  (begin (assert-can-get-cene-definitions!)
+  #/w- val (cene-definition-get-param)
+  #/body #/fn body
+    (parameterize ([cene-definition-get-param val])
+    #/reset-at cene-definition-get-prompt-tag
+      (body))))
+
+(define/contract (extfx-with-gets-from ds unique-name body)
+  (-> dspace? authorized-name? (-> authorized-name? extfx?) extfx?)
   (begin (assert-cannot-get-cene-definitions!)
-  #/call-with-current-continuation #/fn suspend-k
-  #/with-gets-finished
+  #/extfx-claim-and-split unique-name 2
+  #/dissectfn (list unique-name lang-impl-qualify-root)
   #/parameterize
     (
       [
         cene-definition-get-param
-        (just #/fn name
-          (mat (sink-table-get-maybe table name) (just value) value
-          #/call-with-current-continuation #/fn resume-k
-          #/suspend-k #/with-gets-suspended name resume-k))])
-    (thunk)))
-
-(define/contract
-  (with-gets-from-as-process table body body-result-to-process)
-  (-> sink-table? (-> any/c) (-> any/c cene-process?) cene-process?)
-  (begin (assert-cannot-get-cene-definitions!)
-  #/w- with-gets-result (with-gets-from table body)
-  #/mat with-gets-result (with-gets-suspended name then)
-    (cene-process-get name #/fn value
-    #/with-gets-from-as-process
-      table (fn #/then value) body-result-to-process)
-  #/dissect with-gets-result (with-gets-finished body-result)
-  #/body-result-to-process body-result))
+        (just
+          (list ds (sink-authorized-name lang-impl-qualify-root)
+            (dissectfn (sink-name name)
+              (shift-at cene-definition-get-prompt-tag k
+              #/extfx-with-cene-definition-restorer #/fn restore
+              #/extfx-get ds name
+                #;on-stall (error-definer-uninformative)
+              #/fn value
+              #/restore #/fn
+              #/k value))))])
+  #/reset-at cene-definition-get-prompt-tag
+    (body unique-name)))
 
 (define/contract (sink-effects-run! effects)
-  (-> sink-effects? cene-process?)
+  (-> sink-effects? extfx?)
   (begin (assert-can-get-cene-definitions!)
   #/dissect effects (sink-effects go!)
   #/go!))
-
-(define/contract (cene-process-run rt process)
-  (-> cene-runtime? cene-process?
-    (list/c cene-runtime? #/listof string?))
-  (begin (assert-cannot-get-cene-definitions!)
-  #/dissect rt
-    (cene-runtime defined-dexes defined-values init-package)
-  #/w-loop next-full
-    processes (list process)
-    rev-next-processes (list)
-    defined-dexes defined-dexes
-    defined-values defined-values
-    rev-errors (list)
-    did-something #f
-  #/expect processes (cons process processes)
-    (mat rev-next-processes (list)
-      ; If there are no processes left, we're done. We return the
-      ; updated Cene runtime and the list of errors.
-      (list
-        (cene-runtime defined-dexes defined-values init-package)
-        (reverse rev-errors))
-    #/if (not did-something)
-      ; The processes are stalled. We log errors corresponding to all
-      ; the processes.
-      (next-full (list) (list) defined-dexes defined-values
-        (append
-          (list-map rev-next-processes #/fn process
-            "Read from a name that was never defined")
-          rev-errors)
-        #t)
-    #/next-full (reverse rev-next-processes) (list)
-      defined-dexes defined-values rev-errors #f)
-  #/w- next-simple
-    (fn rev-next-processes
-      (next-full
-        processes rev-next-processes defined-dexes defined-values
-        rev-errors #t))
-  #/w- next-with-error
-    (fn error
-      (next-full
-        processes rev-next-processes defined-dexes defined-values
-        (cons error rev-errors)
-        #t))
-  #/mat process (cene-process-error message)
-    (next-with-error message)
-  #/mat process (cene-process-noop)
-    (next-simple rev-next-processes)
-  #/mat process (cene-process-fuse a b)
-    (next-simple #/list* b a rev-next-processes)
-  #/mat process (cene-process-put name cene-dex value)
-    ; If there has already been a definition installed at this name,
-    ; this checks that the proposed `dex` matches the stored dex and
-    ; that the proposed `value` matches the stored value according to
-    ; that dex. Otherwise, it stores the proposed `dex` and `value`
-    ; without question.
-    (w- name (sink-authorized-name-get-name name)
-    #/mat (sink-table-get-maybe defined-dexes name)
-      (just existing-cene-dex)
-      (dissect cene-dex (sink-dex dex)
-      #/dissect existing-cene-dex (sink-dex existing-dex)
-      #/expect (eq-by-dex? (dex-dex) dex existing-dex) #t
-        (next-with-error "Wrote to the same name with inequal dexes")
-      #/dissect (sink-table-get-maybe defined-values name)
-        (just existing-value)
-      #/next-simple #/cons
-        ; NOTE: Since Cene dexes can potentially invoke
-        ; `cene-definition-get` on a not-yet-defined name, we use this
-        ; this `with-gets-...` operation here so that it can properly
-        ; suspend the dex comparison computation as a Cene process.
-        (with-gets-from-as-process defined-values
-          (fn #/eq-by-dex? existing-dex value existing-value)
-        #/fn is-eq
-          (expect is-eq #t
-            (cene-process-error
-              "Wrote to the same name with inequal values")
-          #/cene-process-noop))
-        rev-next-processes)
-    #/next-full
-      processes
-      rev-next-processes
-      (sink-table-put-maybe defined-dexes name #/just cene-dex)
-      (sink-table-put-maybe defined-values name #/just value)
-      rev-errors
-      #t)
-  #/mat process (cene-process-get name then)
-    ; If there has not yet been a definition installed at this name,
-    ; we set this process aside and come back to it later. If there
-    ; has, we call `then` with that defined value and set aside its
-    ; result as a process to come back to later.
-    (expect (sink-table-get-maybe defined-values name) (just value)
-      (next-full
-        processes
-        (cons process rev-next-processes)
-        defined-dexes
-        defined-values
-        rev-errors
-        did-something)
-    #/next-simple #/cons
-      (with-gets-from-as-process defined-values
-        (fn #/sink-effects-run! #/then value)
-      #/fn process process)
-      rev-next-processes)
-  #/error "Encountered an unrecognized kind of Cene process"))
 
 (define-generics cexpr
   (cexpr-has-free-vars? cexpr env)
@@ -672,30 +566,72 @@
       #/-eval fault body))
   ])
 
+; TODO: Put this in Effection.
+(define/contract (extfx-fuse-binary a b)
+  (-> extfx? extfx? extfx?)
+  (dissect (call-fuse (fuse-extfx) a b) (just result)
+    result))
+
+; TODO: Put this in Effection.
+(define/contract (extfx-fuse-list lst)
+  (-> (listof extfx?) extfx?)
+  (list-foldl (extfx-noop) lst #/fn a b
+    (extfx-fuse-binary a b)))
+
+; TODO: Put this in Effection.
+(define/contract (extfx-fuse . lst)
+  (->* () #:rest (listof extfx?) extfx?)
+  (extfx-fuse-list lst))
+
 ; NOTE: The only purpose of this is to help track down a common kind
 ; of error where the result of `go!` is mistakenly a `sink-effects?`
-; instead of a `cene-process?`.
+; instead of an `extfx?`.
 (define/contract (make-sink-effects go!)
-  (-> (-> cene-process?) sink-effects?)
+  (-> (-> extfx?) sink-effects?)
   (sink-effects go!))
 
 (define/contract (sink-effects-get name then)
   (-> sink-name? (-> sink? sink-effects?) sink-effects?)
-  (make-sink-effects #/fn #/cene-process-get name then))
+  (dissect name (sink-name name)
+  #/make-sink-effects #/fn
+  #/extfx-with-cene-definition-restorer #/fn restore
+  #/extfx-get (cene-definition-dspace) name
+    #;on-stall (error-definer-uninformative)
+  #/fn result
+  #/restore #/fn
+  #/sink-effects-run!
+  #/then result))
 
 (define/contract (sink-effects-put name dex value)
   (-> sink-authorized-name? sink-dex? sink? sink-effects?)
-  (make-sink-effects #/fn #/cene-process-put name dex value))
+  (dissect name (sink-authorized-name name)
+  #/dissect dex (sink-dex dex)
+  #/make-sink-effects #/fn
+  #/extfx-put (cene-definition-dspace) name
+    (error-definer-from-message
+      "Internal error: Expected the sink-effects-put continuation ticket to be written to")
+    (fn then
+      (extfx-ct-continue then
+        (error-definer-from-message
+          "Internal error: Expected the sink-effects-put continuation ticket to be written to only once")
+        (list
+          #;on-conflict
+          (success-or-error-definer
+            (error-definer-uninformative)
+            (extfx-noop))
+          (if (in-dex? dex value)
+            (optionally-dexable-dexable #/dexable dex value)
+            (optionally-dexable-once value)))))))
 
 (define/contract (sink-effects-noop)
   (-> sink-effects?)
-  (make-sink-effects #/fn #/cene-process-noop))
+  (make-sink-effects #/fn #/extfx-noop))
 
 (define/contract (sink-effects-fuse-binary a b)
   (-> sink-effects? sink-effects? sink-effects?)
   (dissect a (sink-effects a-go!)
   #/dissect b (sink-effects b-go!)
-  #/make-sink-effects #/fn #/cene-process-fuse (a-go!) (b-go!)))
+  #/make-sink-effects #/fn #/extfx-fuse (a-go!) (b-go!)))
 
 (define/contract (sink-effects-fuse-list effects)
   (-> (listof sink-effects?) sink-effects?)
@@ -737,19 +673,15 @@
   #/list-map names #/dissectfn (sink-name name) name))
 
 (define/contract (sink-cexpr-construct main-tag-name projs)
-  (->
-    sink-authorized-name?
-    (listof #/list/c sink-authorized-name? sink-cexpr?)
-    sink-cexpr?)
-  (dissect main-tag-name (sink-authorized-name main-tag-name)
+  (-> sink-name? (listof #/list/c sink-name? sink-cexpr?) sink-cexpr?)
+  (dissect main-tag-name (sink-name main-tag-name)
   #/if
-    (sink-names-have-duplicate? #/list-map projs
-    #/dissectfn (list proj-name proj-cexpr)
-      (sink-authorized-name-get-name proj-name))
+    (sink-names-have-duplicate?
+      (list-map projs #/dissectfn (list proj-name proj-cexpr)
+        proj-name))
     (error "Encountered a duplicate projection name")
   #/sink-cexpr #/cexpr-construct main-tag-name #/list-map projs
-  #/dissectfn
-    (list (sink-authorized-name proj-name) (sink-cexpr proj-cexpr))
+  #/dissectfn (list (sink-name proj-name) (sink-cexpr proj-cexpr))
     (list proj-name proj-cexpr)))
 
 ; NOTE: Since this creates authorized names out of unauthorized names,
@@ -761,9 +693,9 @@
   (dissect tags (cons main-tag-name proj-names)
   #/expect (= (length proj-names) (length proj-cexprs)) #t
     (error "Expected tags to have one more entry than proj-cexprs")
-  #/sink-cexpr-construct (sink-authorized-name main-tag-name)
+  #/sink-cexpr-construct (sink-name main-tag-name)
   #/list-zip-map proj-names proj-cexprs #/fn proj-name proj-cexpr
-    (list (sink-authorized-name proj-name) proj-cexpr)))
+    (list (sink-name proj-name) proj-cexpr)))
 
 (define/contract (sink-cexpr-call func arg)
   (-> sink-cexpr? sink-cexpr? sink-cexpr?)
@@ -805,65 +737,83 @@
 (define/contract
   (sink-name-for-function-implementation
     result-tag main-tag-name proj-tag-names)
-  (-> symbol? sink-name? sink-table? sink-name?)
-  (dissect main-tag-name (sink-name #/unsafe:name main-tag)
-  #/dissect proj-tag-names (sink-table proj-tag-names)
-  #/dissect
-    (name-of (dex-table #/dex-struct effection-trivial)
-    #/table-v-map proj-tag-names #/dissectfn _ #/effection-trivial)
-    (just #/unsafe:name proj-table-name)
-  #/sink-name #/unsafe:name
-  #/list result-tag main-tag proj-table-name))
+  (-> immutable-string? sink-name? sink-table? sink-name?)
+  (dissect proj-tag-names (sink-table proj-tag-names)
+  #/sink-authorized-name-get-name
+  #/sink-authorized-name-subname
+    (sink-name #/just-value #/name-of (dex-immutable-string)
+      result-tag)
+  #/sink-authorized-name-subname
+    (sink-name #/just-value #/name-of (dex-table #/dex-trivial)
+      proj-tag-names)
+  #/sink-authorized-name-subname main-tag-name
+  #/sink-authorized-name-subname
+    (sink-name #/just-value #/name-of (dex-immutable-string)
+      "function-implementation")
+    (cene-definition-lang-impl-qualify-root)))
 
 (define/contract
   (sink-name-for-function-implementation-code
     main-tag-name proj-tag-names)
   (-> sink-name? sink-table? sink-name?)
   (sink-name-for-function-implementation
-    'name:function-implementation-code
-    main-tag-name
-    proj-tag-names))
+    "code" main-tag-name proj-tag-names))
 
 (define/contract
   (sink-name-for-function-implementation-value
     main-tag-name proj-tag-names)
   (-> sink-name? sink-table? sink-name?)
   (sink-name-for-function-implementation
-    'name:function-implementation-value
-    main-tag-name
-    proj-tag-names))
+    "value" main-tag-name proj-tag-names))
 
 (define/contract (sink-proj-tag-authorized-names->trivial proj-tag-names)
   (-> sink-table? sink-table?)
   (dissect proj-tag-names (sink-table proj-tag-names)
   #/sink-table #/table-kv-map proj-tag-names #/fn k v
-    (expect v (sink-authorized-name name)
+    (expect v (sink-authorized-name authorized-name)
       (error "Expected each value of proj-tag-names to be an authorized name")
-    #/expect (eq-by-dex? (dex-name) k name) #t
+    #/expect
+      (eq-by-dex? (dex-name)
+        k
+        (authorized-name-get-name authorized-name))
+      #t
       (error "Expected each value of proj-tag-names to be an authorized name where the name authorized is the same as the name it's filed under")
     #/trivial)))
+
+(define/contract
+  (sink-authorized-name-for-function-implementation
+    result-tag main-tag-name proj-tag-names)
+  (-> immutable-string? sink-authorized-name? sink-table?
+    sink-authorized-name?)
+  (dissect
+    (sink-proj-tag-authorized-names->trivial proj-tag-names)
+    (sink-table proj-tag-names)
+  #/sink-authorized-name-subname
+    (sink-name #/just-value #/name-of (dex-immutable-string)
+      result-tag)
+  #/sink-authorized-name-subname
+    (sink-name #/just-value #/name-of (dex-table #/dex-trivial)
+      proj-tag-names)
+  #/sink-authorized-name-subname
+    (sink-authorized-name-get-name main-tag-name)
+  #/sink-authorized-name-subname
+    (sink-name #/just-value #/name-of (dex-immutable-string)
+      "function-implementation")
+    (cene-definition-lang-impl-qualify-root)))
 
 (define/contract
   (sink-authorized-name-for-function-implementation-code
     main-tag-name proj-tag-names)
   (-> sink-authorized-name? sink-table? sink-authorized-name?)
-  (dissect
-    (sink-name-for-function-implementation-code
-      (sink-authorized-name-get-name main-tag-name)
-      (sink-proj-tag-authorized-names->trivial proj-tag-names))
-    (sink-name name)
-  #/sink-authorized-name name))
+  (sink-authorized-name-for-function-implementation
+    "code" main-tag-name proj-tag-names))
 
 (define/contract
   (sink-authorized-name-for-function-implementation-value
     main-tag-name proj-tag-names)
   (-> sink-authorized-name? sink-table? sink-authorized-name?)
-  (dissect
-    (sink-name-for-function-implementation-value
-      (sink-authorized-name-get-name main-tag-name)
-      (sink-proj-tag-authorized-names->trivial proj-tag-names))
-    (sink-name name)
-  #/sink-authorized-name name))
+  (sink-authorized-name-for-function-implementation
+    "value" main-tag-name proj-tag-names))
 
 (define/contract (sink-fn-curried-fault n-args racket-func)
   (-> exact-positive-integer? procedure? sink?)
@@ -893,8 +843,9 @@
 
 (define/contract (raise-cene-err fault clamor)
   (-> sink-fault? sink? none/c)
-  (w- message
-    (mat (unmake-sink-struct-maybe s-clamor-err clamor)
+  (begin (assert-can-get-cene-definitions!)
+  #/w- message
+    (mat (unmake-sink-struct-maybe (s-clamor-err) clamor)
       (just #/list #/sink-string message)
       message
     #/format "~s" clamor)
@@ -908,8 +859,9 @@
   ; TODO: See if there's a way we can either stop depending on
   ; `s-clamor-err` here or move this code after the place where
   ; `s-clamor-err` is defined.
-  (raise-cene-err fault
-    (make-sink-struct s-clamor-err #/list #/sink-string message)))
+  (begin (assert-can-get-cene-definitions!)
+  #/raise-cene-err fault
+    (make-sink-struct (s-clamor-err) #/list #/sink-string message)))
 
 (define/contract
   (sink-call-fault-binary caller-fault explicit-fault func arg)
@@ -935,7 +887,7 @@
           ; TODO: See if there's a way we can either stop depending on
           ; `s-trivial` here or move this code after the place where
           ; `s-trivial` is defined.
-          #/just #/make-sink-struct s-trivial #/list)))
+          #/just #/make-sink-struct (s-trivial) #/list)))
     
     #/sink-call-fault-binary caller-fault explicit-fault
       (sink-call-fault-binary caller-fault caller-fault impl func)
@@ -991,10 +943,9 @@
 
 (define/contract (name-for-sink-string string)
   (-> sink-string? name?)
-  (dissect
-    (name-of (dex-struct sink-string #/dex-immutable-string) string)
-    (just result)
-    result))
+  (just-value #/name-of
+    (dex-struct sink-string #/dex-immutable-string)
+    string))
 
 (define/contract (sink-name-for-string string)
   (-> sink-string? sink-name?)
@@ -1002,8 +953,8 @@
 
 (define/contract (sink-authorized-name-get-name name)
   (-> sink-authorized-name? sink-name?)
-  (dissect name (sink-authorized-name effection-name)
-  #/sink-name effection-name))
+  (dissect name (sink-authorized-name effection-authorized-name)
+  #/sink-name #/authorized-name-get-name effection-authorized-name))
 
 (define/contract (sink-name-subname index-name inner-name)
   (-> sink-name? sink-name? sink-name?)
@@ -1013,10 +964,10 @@
 
 (define/contract (sink-authorized-name-subname index-name inner-name)
   (-> sink-name? sink-authorized-name? sink-authorized-name?)
-  (dissect index-name (sink-name #/unsafe:name index-name)
-  #/dissect inner-name (sink-authorized-name #/unsafe:name inner-name)
-  #/sink-authorized-name #/unsafe:name
-    (list 'name:subname index-name inner-name)))
+  (dissect index-name (sink-name index-name)
+  #/dissect inner-name (sink-authorized-name inner-name)
+  #/sink-authorized-name
+    (authorized-name-subname index-name inner-name)))
 
 (define/contract (sink-name-for-freestanding-cexpr-op inner-name)
   (-> sink-name? sink-name?)
@@ -1051,7 +1002,8 @@
     (list/c
       any/c
       (-> any/c sink-cexpr? (-> any/c sink-effects?) sink-effects?)))
-  (dissect stream (sink-cexpr-sequence-output-stream id b)
+  (begin (assert-can-get-cene-definitions!)
+  #/dissect stream (sink-cexpr-sequence-output-stream id b)
   ; TODO: See if this should be more thread-safe in some way.
   #/expect (unbox b) (just state-and-handler)
     (cene-err fault "Tried to spend an expression output stream that was already spent")
@@ -1113,7 +1065,8 @@
 (define/contract
   (sink-text-input-stream-spend! fault text-input-stream)
   (-> sink-fault? sink-text-input-stream? input-port?)
-  (dissect text-input-stream (sink-text-input-stream b)
+  (begin (assert-can-get-cene-definitions!)
+  #/dissect text-input-stream (sink-text-input-stream b)
   ; TODO: See if this should be more thread-safe in some way.
   #/expect (unbox b) (just input-port)
     (cene-err fault "Tried to spend a text input stream that was already spent")
@@ -1233,6 +1186,17 @@
     (textpat-one-in-range #\a #\z)
     (textpat-one-in-range #\A #\Z)))
 
+; TODO: In each case where it's actually possible for this error to
+; appear, use a more specific error message.
+(define/contract (sink-call-qualify fault qualify pre-qualified-name)
+  (-> sink-fault? sink? sink-name? sink-authorized-name?)
+  (begin (assert-can-get-cene-definitions!)
+  #/w- qualified-name (sink-call fault qualify pre-qualified-name)
+  #/expect (sink-authorized-name? qualified-name) #t
+    (cene-err fault
+      "Expected the result of a qualify function to be an authorized name")
+    qualified-name))
+
 (define/contract
   (sink-effects-read-maybe-identifier
     fault qualify text-input-stream pre-qualify then)
@@ -1254,8 +1218,8 @@
   #/sink-effects-string-from-located-string located-string #/fn string
   #/then text-input-stream
     (just #/list located-string
-    #/sink-call fault qualify
-      (pre-qualify #/sink-name-for-string string))))
+      (sink-call-qualify fault qualify
+        (pre-qualify #/sink-name-for-string string)))))
 
 (define sink-effects-read-maybe-op-character-pat
   ; TODO: Support a more Unicode-aware notion here, maybe the
@@ -1340,7 +1304,7 @@
     (sink-effects-string-from-located-string identifier
     #/fn identifier
     #/then text-input-stream
-      (sink-call fault qualify
+      (sink-call-qualify fault qualify
         (pre-qualify #/sink-name-for-string identifier)))
   
   #/w- then
@@ -1475,7 +1439,7 @@
   (sink-effects-claim-freshen unique-name #/fn unique-name
   #/sink-effects-get
     (sink-authorized-name-get-name
-    #/sink-call fault qualify
+    #/sink-call-qualify fault qualify
       (sink-name-for-nameless-bounded-cexpr-op))
   #/fn op-impl
   #/sink-effects-run-op
@@ -1629,36 +1593,81 @@
 
 (define/contract (core-sink-struct main-tag-string proj-strings)
   (-> immutable-string? (listof immutable-string?)
-    (and/c pair? #/listof name?))
-  (w- main-tag-authorized-name
-    (sink-name-qualify-for-lang-impl #/sink-name-for-struct-main-tag
-    #/sink-name-for-string #/sink-string main-tag-string)
-  #/w- main-tag-name
-    (sink-authorized-name-get-name main-tag-authorized-name)
-  #/list-map
-    (cons main-tag-authorized-name
-    #/list-map proj-strings #/fn proj-string
-      (sink-name-qualify-for-lang-impl
-      #/sink-name-for-struct-proj main-tag-name
-      #/sink-name-for-string #/sink-string proj-string))
-  #/dissectfn (sink-authorized-name name)
-    name))
+    (-> #/and/c pair? #/listof name?))
+  
+  ; TODO: Currently, we return a function that computes the tags each
+  ; and every time. Memoize this. The computation can be perfrmed in
+  ; `extfx-with-gets-from` once, and then the function returned here
+  ; can look it up from the dynamically scoped binding that
+  ; `extfx-with-gets-from` sets up.
+  ;
+  (fn
+    (begin (assert-can-get-cene-definitions!)
+    #/w- main-tag-authorized-name
+      (sink-name-qualify-for-lang-impl #/sink-name-for-struct-main-tag
+      #/sink-name-for-string #/sink-string main-tag-string)
+    #/w- main-tag-name
+      (sink-authorized-name-get-name main-tag-authorized-name)
+    #/list-map
+      (cons main-tag-name
+      #/list-map proj-strings #/fn proj-string
+        (sink-authorized-name-get-name
+        #/sink-name-qualify-for-lang-impl
+        #/sink-name-for-struct-proj main-tag-name
+        #/sink-name-for-string #/sink-string proj-string))
+    #/dissectfn (sink-name name)
+      name)))
 
 (define s-trivial (core-sink-struct "trivial" #/list))
-
-(define s-nothing (core-sink-struct "nothing" #/list))
-(define s-just (core-sink-struct "just" #/list "val"))
-
-(define s-carried (core-sink-struct "carried" #/list "main" "carry"))
-
 (define s-clamor-err (core-sink-struct "clamor-err" #/list "message"))
 
-(define/contract (sink-effects-claim name)
-  (-> sink-authorized-name? sink-effects?)
-  (sink-effects-put
-    (sink-authorized-name-for-claim name)
-    (sink-dex #/dex-give-up)
-    (make-sink-struct s-trivial #/list)))
+(define/contract (extfx-claim name on-success)
+  (-> authorized-name? (-> extfx?) extfx?)
+  (extfx-claim-unique name
+    (error-definer-from-message
+      "Tried to claim a name unique more than once")
+    (error-definer-from-message
+      "Internal error: Expected the sink-effects-claim familiarity ticket to be spent")
+  #/fn fresh-authorized-name familiarity-ticket
+  #/extfx-split-list familiarity-ticket 0
+    (error-definer-from-message
+      "Internal error: Expected the sink-effects-claim familiarity ticket to be spent only once")
+  #/dissectfn (list)
+  #/on-success))
+
+(define/contract (extfx-claim-and-split unique-name n then)
+  (-> authorized-name? natural? (-> (listof authorized-name?) extfx?)
+    extfx?)
+  (extfx-claim unique-name #/fn
+  #/w-loop next n n next-name unique-name names (list)
+    (expect (nat->maybe n) (just n) (then names)
+    
+    ; NOTE: We do not want these to be names that Cene code can
+    ; recreate. If we were implementing `extfx-claim-and-split` in a
+    ; Cene package, we could do this by using
+    ; `authorized-name-subname` with a key name made out of a
+    ; `dex-struct` of a struct tag that was made out of unique names
+    ; known only to that package. In this implementation, we don't
+    ; have to go to all that trouble.
+    ;
+    #/w- first
+      (authorized-name-subname (unsafe:name #/list 'name:first)
+        next-name)
+    #/w- rest
+      (authorized-name-subname (unsafe:name #/list 'name:rest)
+        next-name)
+    
+    #/next n rest #/cons first names)))
+
+(define/contract (sink-effects-claim name on-success)
+  (-> sink-authorized-name? (-> sink-effects?) sink-effects?)
+  (dissect name (sink-authorized-name name)
+  #/make-sink-effects #/fn
+    (extfx-with-cene-definition-restorer #/fn restore
+    #/extfx-claim name #/fn
+    #/restore #/fn
+    #/sink-effects-run!
+    #/on-success)))
 
 (define/contract (sink-effects-claim-and-split unique-name n then)
   (->
@@ -1666,30 +1675,16 @@
     natural?
     (-> (listof sink-authorized-name?) sink-effects?)
     sink-effects?)
-  (sink-effects-fuse (sink-effects-claim unique-name)
-  #/w-loop next n n next-name unique-name names (list)
-    (expect (nat->maybe n) (just n) (then names)
-    
-    ; NOTE: We do not want these to be names that Cene code can
-    ; recreate. If we were implementing `sink-effects-claim-and-split`
-    ; in a Cene package, we could do this by using
-    ; `sink-authorized-name-subname` with a key name made out of a
-    ; `dex-struct` of a struct tag that was made out of unique names
-    ; known only to that package. In this implementation, we don't
-    ; have to go to all that trouble.
-    ;
-    #/dissect next-name (sink-authorized-name #/unsafe:name next-name)
-    #/w- first
-      (sink-authorized-name #/unsafe:name
-        (list 'name:first next-name))
-    #/w- rest
-      (sink-authorized-name #/unsafe:name
-        (list 'name:rest next-name))
-    
-    #/next n rest #/cons first names)))
+  (dissect unique-name (sink-authorized-name unique-name)
+  #/make-sink-effects #/fn
+    (extfx-with-cene-definition-restorer #/fn restore
+    #/extfx-claim-and-split unique-name n #/fn names
+    #/restore #/fn
+    #/sink-effects-run! #/then #/list-map names #/fn name
+      (sink-authorized-name name))))
 
 (define/contract (sink-effects-claim-freshen unique-name then)
-  (-> sink-authorized-name? (-> sink-authorized-name sink-effects?)
+  (-> sink-authorized-name? (-> sink-authorized-name? sink-effects?)
     sink-effects?)
   (sink-effects-claim-and-split unique-name 1
   #/dissectfn (list unique-name)
@@ -1729,7 +1724,7 @@
     ; If we're at the end of the file, we're done. We claim the
     ; `unique-name` to stay in the habit, even though it's clear no
     ; one else can be using it.
-    (sink-effects-claim unique-name)
+    (sink-effects-claim unique-name #/fn #/sink-effects-noop)
   #/fn text-input-stream
   #/sink-effects-claim-and-split unique-name 3
   #/dissectfn
@@ -1772,72 +1767,17 @@
   #/sink-effects-read-top-level
     fault unique-name-main qualify text-input-stream))
 
-(define/contract (cene-runtime-effects-run rt get-effects)
-  (-> cene-runtime? (-> sink-effects?)
-    (list/c cene-runtime? #/listof string?))
-  (begin (assert-cannot-get-cene-definitions!)
-  #/dissect rt
-    (cene-runtime defined-dexes defined-values init-package)
-  #/cene-process-run rt #/with-gets-from-as-process defined-values
-    (fn #/sink-effects-run! #/get-effects)
-    (fn process process)))
-
-(define/contract (cene-init-package rt unique-name qualify)
+(define/contract (sink-effects-run-string unique-name qualify string)
   (->
-    cene-runtime?
-    sink-authorized-name?
-    (-> sink-name? sink-authorized-name?)
-    (list/c cene-runtime? #/listof string?))
-  (begin (assert-cannot-get-cene-definitions!)
-  #/dissect rt
-    (cene-runtime defined-dexes defined-values init-package)
-  #/cene-runtime-effects-run rt #/fn
-    (init-package unique-name qualify)))
-
-(define/contract (cene-run-string rt unique-name qualify string)
-  (->
-    cene-runtime?
     sink-authorized-name?
     (-> sink-name? sink-authorized-name?)
     string?
-    (list/c cene-runtime? #/listof string?))
-  (begin (assert-cannot-get-cene-definitions!)
-  #/cene-runtime-effects-run rt #/fn
-    (sink-effects-read-top-level
-      (make-fault-internal)
-      unique-name
-      (sink-fn-curried-fault 1 #/fn fault name
-        (expect (sink-name? name) #t
-          (cene-err fault "Expected the input to the root qualify function to be a name")
-        #/qualify name))
-      (sink-text-input-stream #/box #/just
-      #/open-input-string string))))
-
-; TODO: See if there's a more elegant approach here than just defining
-; two separate roots. Note that these are only used in the `cene-test`
-; package. We probably won't actually need these `...-sample-...`
-; things in the long run, once we have a module system.
-(define/contract (sink-sample-unique-name-root-1)
-  (-> sink-authorized-name?)
-  (sink-authorized-name #/unsafe:name
-    'name:sample-unique-name-root-1))
-(define/contract (sink-sample-unique-name-root-2)
-  (-> sink-authorized-name?)
-  (sink-authorized-name #/unsafe:name
-    'name:sample-unique-name-root-2))
-
-(define/contract (sink-sample-qualify-root name)
-  (-> sink-name? sink-authorized-name?)
-  (dissect name (sink-name #/unsafe:name name)
-  #/sink-authorized-name #/unsafe:name
-    (list 'name:sample-qualify-root name)))
-
-; TODO: See if we'll use this.
-(define/contract (cene-runtime-empty)
-  (-> cene-runtime?)
-  (cene-runtime
-    (sink-table #/table-empty)
-    (sink-table #/table-empty)
-    (fn unique-name qualify-for-package
-      (sink-effects-claim-and-split unique-name 0 #/dissectfn (list)
-      #/sink-effects-noop))))
+    sink-effects?)
+  (sink-effects-read-top-level
+    (make-fault-internal)
+    unique-name
+    (sink-fn-curried-fault 1 #/fn fault name
+      (expect (sink-name? name) #t
+        (cene-err fault "Expected the input to the root qualify function to be a name")
+      #/qualify name))
+    (sink-text-input-stream #/box #/just #/open-input-string string)))
