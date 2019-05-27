@@ -35,14 +35,6 @@
 ; (We provide nothing from this module.)
 
 
-; TODO: These tests currently take about 2 minutes to run, and they
-; aren't even very complex. See if we can optimize this. The first
-; thing we should try is to change the `name:rest` subnames so that
-; they increment a number rather than building a huge cons list.
-; That's an optimization that paid off early on in the JavaScript
-; version of Cene.
-
-
 (define (cene-run-string-sample code-string)
   (run-extfx!
     (error-definer-from-message
