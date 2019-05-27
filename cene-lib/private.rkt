@@ -33,6 +33,7 @@
 
 (require #/only-in lathe-comforts
   dissect dissectfn expect fn mat w- w-loop)
+(require #/only-in lathe-comforts/hash hash-ref-maybe)
 (require #/only-in lathe-comforts/list
   list-any list-foldl list-foldr list-map list-zip-map nat->maybe)
 (require #/only-in lathe-comforts/maybe
@@ -263,20 +264,21 @@
 (define/contract cene-definition-get-param
   (parameter/c
     (maybe/c
-      (list/c dspace? sink-authorized-name? (-> sink-name? sink?))))
+      (list/c dspace? sink-authorized-name? hash?
+        (-> sink-name? sink?))))
   (make-parameter #/nothing))
 
 (define/contract (assert-can-get-cene-definitions!)
   (-> void?)
   (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root get)
+    (just #/list ds lang-impl-qualify-root memo get)
     (error "Expected an implementation of `cene-definition-get` to be available in the dynamic scope")
   #/void))
 
 (define/contract (assert-cannot-get-cene-definitions!)
   (-> void?)
   (mat (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root get)
+    (just #/list ds lang-impl-qualify-root memo get)
     ; TODO: Make this error message more visually distinct from the
     ; `assert-can-get-cene-definitions!` error message.
     (error "Expected no implementation of `cene-definition-get` to be available in the dynamic scope")
@@ -285,21 +287,28 @@
 (define/contract (cene-definition-dspace)
   (-> dspace?)
   (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root get)
+    (just #/list ds lang-impl-qualify-root memo get)
     (error "Expected every call to `cene-definition-dspace` to occur with an implementation in the dynamic scope")
     ds))
 
 (define/contract (cene-definition-lang-impl-qualify-root)
   (-> sink-authorized-name?)
   (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root get)
+    (just #/list ds lang-impl-qualify-root memo get)
     (error "Expected every call to `cene-definition-lang-impl-qualify-root` to occur with an implementation in the dynamic scope")
     lang-impl-qualify-root))
+
+(define/contract (cene-definition-memo)
+  (-> hash?)
+  (expect (cene-definition-get-param)
+    (just #/list ds lang-impl-qualify-root memo get)
+    (error "Expected every call to `cene-definition-memo` to occur with an implementation in the dynamic scope")
+    memo))
 
 (define/contract (cene-definition-get name)
   (-> sink-name? sink?)
   (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root get)
+    (just #/list ds lang-impl-qualify-root memo get)
     (error "Expected every call to `cene-definition-get` to occur with an implementation in the dynamic scope")
   #/get name))
 
@@ -325,6 +334,7 @@
         cene-definition-get-param
         (just
           (list ds (sink-authorized-name lang-impl-qualify-root)
+            (make-hash)
             (dissectfn (sink-name name)
               (shift-at cene-definition-get-prompt-tag k
               #/extfx-with-cene-definition-restorer #/fn restore
@@ -607,11 +617,13 @@
   (dissect name (sink-authorized-name name)
   #/dissect dex (sink-dex dex)
   #/make-sink-effects #/fn
+  #/extfx-with-cene-definition-restorer #/fn restore
   #/extfx-put (cene-definition-dspace) name
     (error-definer-from-message
       "Internal error: Expected the sink-effects-put continuation ticket to be written to")
     (fn then
-      (extfx-ct-continue then
+      (restore #/fn
+      #/extfx-ct-continue then
         (error-definer-from-message
           "Internal error: Expected the sink-effects-put continuation ticket to be written to only once")
         (list
@@ -1595,28 +1607,32 @@
   (-> immutable-string? (listof immutable-string?)
     (-> #/and/c pair? #/listof name?))
   
-  ; TODO: Currently, we return a function that computes the tags each
-  ; and every time. Memoize this. The computation can be perfrmed in
-  ; `extfx-with-gets-from` once, and then the function returned here
-  ; can look it up from the dynamically scoped binding that
-  ; `extfx-with-gets-from` sets up.
+  ; TODO: Currently, we compute this when it's needed and then memoize
+  ; it. See if we should do this in a more thread-safe way. See if we
+  ; should perform this computation as early as `extfx-with-gets-from`
+  ; rather than having inconsistent run time performance like this.
   ;
   (fn
     (begin (assert-can-get-cene-definitions!)
+    #/w- memo (cene-definition-memo)
+    #/mat (hash-ref-maybe memo main-tag-string) (just result) result
     #/w- main-tag-authorized-name
       (sink-name-qualify-for-lang-impl #/sink-name-for-struct-main-tag
       #/sink-name-for-string #/sink-string main-tag-string)
     #/w- main-tag-name
       (sink-authorized-name-get-name main-tag-authorized-name)
-    #/list-map
-      (cons main-tag-name
-      #/list-map proj-strings #/fn proj-string
-        (sink-authorized-name-get-name
-        #/sink-name-qualify-for-lang-impl
-        #/sink-name-for-struct-proj main-tag-name
-        #/sink-name-for-string #/sink-string proj-string))
-    #/dissectfn (sink-name name)
-      name)))
+    #/w- result
+      (list-map
+        (cons main-tag-name
+        #/list-map proj-strings #/fn proj-string
+          (sink-authorized-name-get-name
+          #/sink-name-qualify-for-lang-impl
+          #/sink-name-for-struct-proj main-tag-name
+          #/sink-name-for-string #/sink-string proj-string))
+      #/dissectfn (sink-name name)
+        name)
+      (hash-set! memo main-tag-string result)
+      result)))
 
 (define s-trivial (core-sink-struct "trivial" #/list))
 (define s-clamor-err (core-sink-struct "clamor-err" #/list "message"))
