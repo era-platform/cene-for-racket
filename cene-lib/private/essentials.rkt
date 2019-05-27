@@ -835,7 +835,7 @@
     (dissect this (fix-for-sink-dex-list dex-elem)
     #/dex-default
       (dex-sink-struct (s-nil) #/list)
-      (dex-sink-struct (s-cons) #/list dex-elem this))))
+      (dex-sink-struct (s-cons) #/list dex-elem dex))))
 
 (define/contract (sink-dex-list dex-elem)
   (-> sink-dex? sink-dex?)
