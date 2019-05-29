@@ -766,7 +766,8 @@
   (sink-name-for-function-implementation
     "value" main-tag-name proj-tag-names))
 
-(define/contract (sink-proj-tag-authorized-names->trivial proj-tag-names)
+(define/contract
+  (sink-proj-tag-authorized-names->trivial proj-tag-names)
   (-> sink-table? sink-table?)
   (dissect proj-tag-names (sink-table proj-tag-names)
   #/sink-table #/table-kv-map proj-tag-names #/fn k v

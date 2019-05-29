@@ -1540,7 +1540,8 @@
     
     (expect cline-for-trying-first (sink-cline cline-for-trying-first)
       (cene-err fault "Expected cline-for-trying-first to be a cline")
-    #/expect cline-for-trying-second (sink-cline cline-for-trying-second)
+    #/expect cline-for-trying-second
+      (sink-cline cline-for-trying-second)
       (cene-err fault "Expected cline-for-trying-second to be a cline")
     #/sink-cline
     #/cline-default cline-for-trying-first cline-for-trying-second))
