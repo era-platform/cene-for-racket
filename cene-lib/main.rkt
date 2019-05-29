@@ -26,6 +26,7 @@
 
 ; TODO: Document these exports.
 (provide extfx-with-gets-from)
+(provide make-fault-internal)
 (provide make-sink-effects)
 (provide sink-authorized-name)
 (provide sink-authorized-name-subname)

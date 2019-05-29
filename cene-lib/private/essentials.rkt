@@ -1000,8 +1000,11 @@
 ; TODO: Use this in some kind of CLI entrypoint or something.
 (define/contract
   (sink-effects-init-essentials
-    unique-name-for-package qualify-for-package)
-  (-> sink-authorized-name? (-> sink-name? sink-authorized-name?)
+    fault-root unique-name-for-package qualify-for-package)
+  (->
+    sink-fault?
+    sink-authorized-name?
+    (-> sink-name? sink-authorized-name?)
     sink-effects?)
   
   (define init-package-steps (list))
@@ -3058,7 +3061,7 @@
   
   (add-init-package-step! #/fn unique-name qualify-for-package
     (sink-effects-read-top-level
-      (make-fault-internal)
+      fault-root
       unique-name
       (sink-fn-curried-fault 1 #/fn fault name
         (expect (sink-name? name) #t
@@ -3071,7 +3074,8 @@
   (sink-effects-fuse
     (sink-effects-init-package
       unique-name-for-package qualify-for-package)
-    (sink-effects-read-top-level (make-fault-internal)
+    (sink-effects-read-top-level
+      fault-root
       prelude-for-lang-impl-unique-name
       (sink-fn-curried-fault 1 #/fn fault name
         (expect (sink-name? name) #t

@@ -36,7 +36,8 @@
 
 
 (define (cene-run-string-sample code-string)
-  (run-extfx!
+  (w- fault (make-fault-internal)
+  #/run-extfx!
     (error-definer-from-message
       "Internal error: Expected the cene-run-string-sample continuation ticket to be written to")
     (fn ds unique-name then
@@ -51,9 +52,10 @@
       #/w- qualify
         (fn name #/sink-authorized-name-subname name unique-name-root)
       #/sink-effects-fuse
-        (sink-effects-init-essentials unique-name-essentials qualify)
+        (sink-effects-init-essentials
+          fault unique-name-essentials qualify)
         (sink-effects-run-string
-          unique-name-sample qualify code-string)
+          fault unique-name-sample qualify code-string)
       #/make-sink-effects #/fn
         (extfx-ct-continue then
           (error-definer-from-message

@@ -1767,14 +1767,16 @@
   #/sink-effects-read-top-level
     fault unique-name-main qualify text-input-stream))
 
-(define/contract (sink-effects-run-string unique-name qualify string)
+(define/contract
+  (sink-effects-run-string fault unique-name qualify string)
   (->
+    sink-fault?
     sink-authorized-name?
     (-> sink-name? sink-authorized-name?)
     string?
     sink-effects?)
   (sink-effects-read-top-level
-    (make-fault-internal)
+    fault
     unique-name
     (sink-fn-curried-fault 1 #/fn fault name
       (expect (sink-name? name) #t
