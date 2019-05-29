@@ -1003,8 +1003,6 @@
     unique-name-for-package qualify-for-package)
   (-> sink-authorized-name? (-> sink-name? sink-authorized-name?)
     sink-effects?)
-; TODO: See if we should reindent this.
-#/sink-effects-later #/fn #/let ()
   
   (define init-package-steps (list))
   
