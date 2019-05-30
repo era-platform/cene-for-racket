@@ -109,12 +109,9 @@
   textpat-result-passed-end textpat-star textpat-until textpat-while
   optimized-textpat? optimized-textpat-match optimize-textpat)
 
-(define-runtime-path prelude-per-package-path
-  "prelude-per-package.cene")
-(define-runtime-path prelude-for-lang-impl-path
-  "prelude-for-lang-impl.cene")
+(define-runtime-path prelude-path "prelude.cene")
 
-(provide sink-effects-init-essentials)
+(provide sink-effects-init-essentials sink-effects-init-package)
 
 
 
@@ -128,6 +125,13 @@
 (define s-just (core-sink-struct "just" #/list "val"))
 
 (define s-assoc (core-sink-struct "assoc" #/list "key" "val"))
+
+; NOTE: Unlike the other struct tags here, this one is not exposed to
+; Cene with `def-data-struct!`. Instead, we expose the related
+; functionality as the built-in
+; `effects-put-all-built-in-syntaxes-this-came-with`.
+(define s-command-init-package
+  (core-sink-struct "command-init-package" #/list "key" "qualify"))
 
 (define s-ordering-lt (core-sink-struct "ordering-lt" #/list))
 (define s-ordering-eq (core-sink-struct "ordering-eq" #/list))
@@ -997,40 +1001,81 @@
   #/textpat-star #/textpat-one-not-in-string "[]()"))
 
 
-; TODO: Use this in some kind of CLI entrypoint or something.
 (define/contract
-  (sink-effects-init-essentials
-    fault-root unique-name-for-package qualify-for-package)
+  (sink-effects-add-init-package-step fault unique-name step)
+  (->
+    sink-fault?
+    sink-authorized-name?
+    (-> sink-authorized-name? (-> sink-name? sink-authorized-name?)
+      sink-effects?)
+    sink-effects?)
+  (sink-effects-claim-and-split unique-name 2
+  #/dissectfn (list unique-name-for-sub-write unique-name-for-step)
+  #/sink-effects-establish-init-package-pubsub #/fn p s
+  #/sink-effects-sub-write s unique-name-for-sub-write #/fn entry
+    (expect (unmake-sink-struct-maybe (s-command-init-package) entry)
+      (just #/list key qualify)
+      (cene-err fault "Expected each package initialization command to be a command-init-package")
+    #/expect (sink-name? key) #t
+      (cene-err fault "Expected each package initialization command to have a name as its key")
+    #/step (sink-authorized-name-subname key unique-name-for-step)
+      (fn name #/sink-call-qualify fault qualify name))))
+
+; TODO: Use `sink-effects-init-package` and
+; `sink-effects-init-essentials` in some kind of CLI entrypoint or
+; something.
+
+(define/contract
+  (sink-effects-init-package fault unique-name qualify-for-package)
   (->
     sink-fault?
     sink-authorized-name?
     (-> sink-name? sink-authorized-name?)
     sink-effects?)
+  (sink-effects-claim-and-split unique-name 2
+  #/dissectfn (list unique-name-for-pub-write unique-name-for-step)
+  #/sink-effects-establish-init-package-pubsub #/fn p s
+  #/sink-effects-pub-write p unique-name-for-pub-write
+    (make-sink-struct (s-command-init-package) #/list
+      (sink-authorized-name-get-name unique-name-for-step)
+      (sink-fn-curried-fault 1 #/fn fault name
+        (expect (sink-name? name) #t
+          (cene-err fault "Expected the input to an effects-put-all-built-in-syntaxes-this-came-with qualify function to be a name")
+        #/qualify-for-package name)))))
+
+(define/contract
+  (sink-effects-init-essentials root-fault root-unique-name)
+  (-> sink-fault? sink-authorized-name? sink-effects?)
   
-  (define init-package-steps (list))
+  (define init-essentials-steps (list))
   
   (define/contract
-    (sink-effects-init-package unique-name qualify-for-package)
-    (-> sink-authorized-name? (-> sink-name? sink-authorized-name?)
-      sink-effects?)
+    (sink-effects-run-init-essentials-steps unique-name)
+    (-> sink-authorized-name? sink-effects?)
     (sink-effects-claim-and-split unique-name
-      (length init-package-steps)
+      (length init-essentials-steps)
     #/fn unique-names
     #/sink-effects-fuse-list
-    #/list-zip-map init-package-steps unique-names
+    #/list-zip-map init-essentials-steps unique-names
     #/fn step unique-name
-      (step unique-name qualify-for-package)))
+      (step unique-name)))
+  
+  (define/contract (add-init-essentials-step! step)
+    (-> (-> sink-authorized-name? sink-effects?) void?)
+    (set! init-essentials-steps (cons step init-essentials-steps)))
   
   (define/contract (add-init-package-step! step)
     (->
       (-> sink-authorized-name? (-> sink-name? sink-authorized-name?)
         sink-effects?)
       void?)
-    (set! init-package-steps (cons step init-package-steps)))
+    (add-init-essentials-step! #/fn unique-name
+      (sink-effects-add-init-package-step
+        root-fault unique-name step)))
   
   (define/contract (def-dexable-value-for-lang-impl! name dex value)
     (-> sink-authorized-name? sink-dex? sink? void?)
-    (add-init-package-step! #/fn unique-name qualify-for-package
+    (add-init-essentials-step! #/fn unique-name
       (sink-effects-put name dex value)))
   
   (define/contract (def-dexable-value-for-package! name dex value)
@@ -1395,8 +1440,7 @@
   
   ; TODO BUILTINS: Implement the macro `err`, probably in a Cene
   ; prelude. In the prelude, before we define `err`, we can still
-  ; report errors using using
-  ; `[follow-heart/clamor-err/str-prim ...]`.
+  ; report errors using `[follow-heart/clamor-err/str-prim ...]`.
   
   
   ; Order
@@ -2298,6 +2342,30 @@
       (cene-err fault "Expected dex to be a dex")
     #/sink-effects-put name dex value))
   
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func-fault! "effects-establish-pubsub" fault name then
+    (expect (sink-authorized-name? name) #t
+      (cene-err fault "Expected name to be an authorized name")
+    #/sink-effects-establish-pubsub name #/fn p s
+    #/verify-callback-effects! fault #/sink-call fault then p s))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func-fault! "effects-pub-write" fault p unique-name arg
+    (expect (sink-pub? p) #t
+      (cene-err fault "Expected p to be a pub")
+    #/expect (sink-authorized-name? unique-name) #t
+      (cene-err fault "Expected unique-name to be an authorized name")
+    #/sink-effects-pub-write p unique-name arg))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func-fault! "effects-sub-write" fault s unique-name func
+    (expect (sink-pub? s) #t
+      (cene-err fault "Expected s to be a sub")
+    #/expect (sink-authorized-name? unique-name) #t
+      (cene-err fault "Expected unique-name to be an authorized name")
+    #/sink-effects-sub-write s unique-name #/fn arg
+      (verify-callback-effects! fault #/sink-call fault func arg)))
+  
   
   ; Unit tests
   
@@ -3021,7 +3089,7 @@
     (expect (sink-authorized-name? unique-name) #t
       (cene-err fault "Expected unique-name to be an authorized name")
     #/sink-effects-claim-freshen unique-name #/fn unique-name
-    #/sink-effects-init-package unique-name #/fn name
+    #/sink-effects-init-package fault unique-name #/fn name
       (w- qualified-name (sink-call fault qualify name)
       #/expect (sink-authorized-name? qualified-name) #t
         (cene-err fault "Expected the result of an effects-put-all-built-in-syntaxes-this-came-with qualify function to be an authorized name")
@@ -3029,58 +3097,67 @@
   
   
   
-  (define prelude-for-lang-impl-unique-name
+  (define prelude-unique-name
     (sink-authorized-name-subname
       (sink-name #/just-value #/name-of (dex-immutable-string)
-        "prelude-for-lang-impl-unique-name")
+        "prelude-unique-name")
       (cene-definition-lang-impl-qualify-root)))
-  (define/contract (qualify-for-prelude-for-lang-impl name)
+  (define/contract (qualify-for-prelude name)
     (-> sink-name? sink-authorized-name?)
     (sink-authorized-name-subname name
     #/sink-authorized-name-subname
       (sink-name #/just-value #/name-of (dex-immutable-string)
-        "prelude-for-lang-impl-qualify-root")
+        "prelude-qualify-root")
       (cene-definition-lang-impl-qualify-root)))
   
-  (define/contract (def-value-for-prelude-for-lang-impl! name value)
+  (define/contract (def-value-for-prelude! name value)
     (-> sink-name? sink? void?)
-    (w- name (qualify-for-prelude-for-lang-impl name)
-    #/add-init-package-step! #/fn unique-name qualify-for-package
+    (w- name (qualify-for-prelude name)
+    #/add-init-essentials-step! #/fn unique-name
       (sink-effects-put name (sink-dex #/dex-give-up) value)))
   
-  ; We define `qualify-for-lang-impl` built-in only in the scope of
-  ; prelude-for-lang-impl.cene.
   
-  (def-func-verbose! def-value-for-prelude-for-lang-impl!
-    "qualify-for-lang-impl"
-    1
+  ; We define these built-ins only in the scope of prelude.cene.
+  
+  (def-func-verbose! def-value-for-prelude! "qualify-for-lang-impl" 1
     (fn fault name
       (expect (sink-name? name) #t
         (cene-err fault "Expected name to be a name")
       #/sink-name-qualify-for-lang-impl name)))
   
+  (def-func-verbose! def-value-for-prelude!
+    "effects-add-init-package-step"
+    2
+    (fn fault unique-name step
+      (expect (sink-authorized-name? unique-name) #t
+        (cene-err fault "Expected unique-name to be an authorized name")
+      #/sink-effects-add-init-package-step fault unique-name
+        (fn unique-name qualify
+          (verify-callback-effects! fault
+            (sink-call fault step unique-name
+              (sink-fn-curried-fault 1 #/fn fault name
+                (expect (sink-name? name) #t
+                  (cene-err fault "Expected the input to an effects-add-init-package-step qualify function to be a name")
+                #/qualify name))))))))
   
-  (add-init-package-step! #/fn unique-name qualify-for-package
-    (sink-effects-read-top-level
-      fault-root
-      unique-name
+  
+  ; Define the other built-ins where the prelude code can see them.
+  ; Note that if the prelude uses `effects-add-init-package-step`,
+  ; this will automatically cause that step to run for the prelude
+  ; itself, so the prelude can use it right away.
+  (add-init-essentials-step! #/fn unique-name
+    (sink-effects-init-package root-fault unique-name
+      (fn name #/qualify-for-prelude name)))
+  
+  ; Run the prelude code.
+  (add-init-essentials-step! #/fn unique-name
+    (sink-effects-read-top-level root-fault unique-name
       (sink-fn-curried-fault 1 #/fn fault name
         (expect (sink-name? name) #t
-          (cene-err fault "Expected the input to the root qualify function to be a name")
-        #/qualify-for-package name))
+          (cene-err fault "Expected the input to the prelude qualify function to be a name")
+        #/qualify-for-prelude name))
       (sink-text-input-stream #/box #/just
-      #/open-input-file prelude-per-package-path)))
+        (open-input-file prelude-path))))
   
   
-  (sink-effects-fuse
-    (sink-effects-init-package
-      unique-name-for-package qualify-for-package)
-    (sink-effects-read-top-level
-      fault-root
-      prelude-for-lang-impl-unique-name
-      (sink-fn-curried-fault 1 #/fn fault name
-        (expect (sink-name? name) #t
-          (cene-err fault "Expected the input to the root qualify function to be a name")
-        #/qualify-for-prelude-for-lang-impl name))
-      (sink-text-input-stream #/box #/just
-      #/open-input-file prelude-for-lang-impl-path))))
+  (sink-effects-run-init-essentials-steps root-unique-name))

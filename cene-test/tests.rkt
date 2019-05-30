@@ -45,15 +45,18 @@
       #/sink-effects-run!
       #/sink-effects-claim-and-split
         (sink-authorized-name unique-name)
-        3
+        4
       #/dissectfn
         (list
-          unique-name-root unique-name-essentials unique-name-sample)
+          unique-name-root
+          unique-name-essentials
+          unique-name-package
+          unique-name-sample)
       #/w- qualify
         (fn name #/sink-authorized-name-subname name unique-name-root)
       #/sink-effects-fuse
-        (sink-effects-init-essentials
-          fault unique-name-essentials qualify)
+        (sink-effects-init-essentials fault unique-name-essentials)
+        (sink-effects-init-package fault unique-name-package qualify)
         (sink-effects-run-string
           fault unique-name-sample qualify code-string)
       #/make-sink-effects #/fn

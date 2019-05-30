@@ -36,7 +36,7 @@
 (require #/only-in lathe-comforts/list
   list-any list-foldl list-foldr list-map list-zip-map nat->maybe)
 (require #/only-in lathe-comforts/maybe
-  just just-value maybe/c maybe-map nothing nothing?)
+  just just-value maybe-bind maybe/c maybe-map nothing nothing?)
 (require #/only-in lathe-comforts/string immutable-string?)
 (require #/only-in lathe-comforts/struct
   auto-write define-imitation-simple-struct struct-easy)
@@ -45,15 +45,16 @@
 (require #/only-in effection/extensibility/base
   authorized-name? authorized-name-get-name authorized-name-subname
   dspace? error-definer-from-message error-definer-uninformative
-  extfx? extfx-claim-unique extfx-ct-continue extfx-get extfx-noop
-  extfx-put extfx-split-list fuse-extfx optionally-dexable-dexable
+  extfx? extfx-claim-unique extfx-ct-continue extfx-establish-pubsub
+  extfx-get extfx-noop extfx-pub-write extfx-put extfx-split-list
+  extfx-sub-write fuse-extfx optionally-dexable-dexable
   optionally-dexable-once success-or-error-definer)
 (require #/only-in effection/order
   assocs->table-if-mutually-unique dex-immutable-string dex-trivial)
 (require #/only-in effection/order/base
   call-fuse compare-by-dex dex? dexable dex-give-up dex-dex dex-name
   dex-struct dex-table fuse-by-merge in-dex? merge-by-dex merge-table
-  name? name-of ordering-eq? table? table-empty table-get
+  name? name-of ordering-eq? table? table-empty? table-empty table-get
   table-map-fuse table-shadow)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe name)
 
@@ -142,30 +143,30 @@
     (w-loop next
       s-proj-tags s-proj-tags
       s-projs s-projs
-      proj-hash (hash)
+      proj-table (table-empty)
       
       (expect s-proj-tags (cons s-proj-tag s-proj-tags)
         (expect s-projs (list)
           (error "Encountered a sink-struct with more projection values than projection tags")
-        #/just proj-hash)
+        #/just proj-table)
       #/expect s-projs (cons s-proj s-projs)
         (error "Encountered a sink-struct with more projection tags than projection values")
-      #/if (hash-has-key? proj-hash s-proj-tag) (nothing)
+      #/expect (table-get s-proj-tag proj-table) (nothing) (nothing)
       #/next s-proj-tags s-projs
-        (hash-set proj-hash s-proj-tag s-proj)))
-    (just proj-hash)
+        (table-shadow s-proj-tag (just s-proj) proj-table)))
+    (just proj-table)
     (nothing)
   #/w-loop next
-    proj-hash proj-hash
+    proj-table proj-table
     proj-tags proj-tags
     rev-projs (list)
     
     (expect proj-tags (cons proj-tag proj-tags)
-      (expect (hash-empty? proj-hash) #t (nothing)
+      (expect (table-empty? proj-table) #t (nothing)
       #/just #/reverse rev-projs)
-    #/if (not #/hash-has-key? proj-hash proj-tag) (nothing)
-    #/next (hash-remove proj-hash proj-tag) proj-tags
-      (cons (hash-ref proj-hash proj-tag) rev-projs))))
+    #/maybe-bind (table-get proj-tag proj-table) #/fn s-proj
+    #/next (table-shadow proj-tag (nothing) proj-table) proj-tags
+      (cons s-proj rev-projs))))
 
 
 (struct-easy (sink-fault maybe-continuation-marks)
@@ -177,6 +178,10 @@
 (struct-easy (sink-name name)
   #:other #:methods gen:sink [])
 (struct-easy (sink-authorized-name authorized-name)
+  #:other #:methods gen:sink [])
+(struct-easy (sink-pub pub)
+  #:other #:methods gen:sink [])
+(struct-easy (sink-sub sub)
   #:other #:methods gen:sink [])
 (struct-easy (sink-effects go!)
   #:other #:methods gen:sink [])
@@ -607,21 +612,26 @@
   (dissect name (sink-authorized-name name)
   #/dissect dex (sink-dex dex)
   #/make-sink-effects #/fn
-  #/extfx-put (cene-definition-dspace) name
-    (error-definer-from-message
-      "Internal error: Expected the sink-effects-put continuation ticket to be written to")
-    (fn then
-      (extfx-ct-continue then
-        (error-definer-from-message
-          "Internal error: Expected the sink-effects-put continuation ticket to be written to only once")
-        (list
-          #;on-conflict
-          (success-or-error-definer
-            (error-definer-uninformative)
-            (extfx-noop))
-          (if (in-dex? dex value)
-            (optionally-dexable-dexable #/dexable dex value)
-            (optionally-dexable-once value)))))))
+    ; NOTE: We need this restorer because the `in-dex?` call can
+    ; invoke Cene code (or even Racket code like the implementation of
+    ; `sink-dex-list`) that can depend on `cene-definition-get-param`.
+    (extfx-with-cene-definition-restorer #/fn restore
+    #/extfx-put (cene-definition-dspace) name
+      (error-definer-from-message
+        "Internal error: Expected the sink-effects-put continuation ticket to be written to")
+      (fn then
+        (restore #/fn
+        #/extfx-ct-continue then
+          (error-definer-from-message
+            "Internal error: Expected the sink-effects-put continuation ticket to be written to only once")
+          (list
+            #;on-conflict
+            (success-or-error-definer
+              (error-definer-uninformative)
+              (extfx-noop))
+            (if (in-dex? dex value)
+              (optionally-dexable-dexable #/dexable dex value)
+              (optionally-dexable-once value))))))))
 
 (define/contract (sink-effects-noop)
   (-> sink-effects?)
@@ -648,6 +658,54 @@
 (define/contract (sink-effects-later then)
   (-> (-> sink-effects?) sink-effects?)
   (make-sink-effects #/fn #/sink-effects-run! #/then))
+
+(define/contract (sink-effects-establish-pubsub pubsub-name then)
+  (-> sink-authorized-name? (-> sink-pub? sink-sub? sink-effects?)
+    sink-effects?)
+  (dissect pubsub-name (sink-authorized-name pubsub-name)
+  #/make-sink-effects #/fn
+    (extfx-with-cene-definition-restorer #/fn restore
+    #/extfx-establish-pubsub (cene-definition-dspace) pubsub-name
+    #/fn p s
+    #/restore #/fn
+    #/sink-effects-run! #/then (sink-pub p) (sink-sub s))))
+
+(define/contract (sink-effects-pub-write p unique-name arg)
+  (-> sink-pub? sink-authorized-name? sink? sink-effects?)
+  (dissect p (sink-pub p)
+  #/dissect unique-name (sink-authorized-name unique-name)
+  #/make-sink-effects #/fn
+    (extfx-pub-write (cene-definition-dspace) p unique-name
+      #;on-conflict
+      (success-or-error-definer
+        (error-definer-uninformative)
+        (extfx-noop))
+      arg)))
+
+(define/contract (sink-effects-sub-write s unique-name func)
+  (-> sink-sub? sink-authorized-name? (-> sink? sink-effects?)
+    sink-effects?)
+  (dissect s (sink-sub s)
+  #/dissect unique-name (sink-authorized-name unique-name)
+  #/make-sink-effects #/fn
+    (extfx-with-cene-definition-restorer #/fn restore
+    #/extfx-sub-write (cene-definition-dspace) s unique-name
+      #;on-conflict
+      (success-or-error-definer
+        (error-definer-uninformative)
+        (extfx-noop))
+      (fn arg
+        (restore #/fn
+        #/sink-effects-run! #/func arg)))))
+
+(define/contract (sink-effects-establish-init-package-pubsub then)
+  (-> (-> sink-pub? sink-sub? sink-effects?) sink-effects?)
+  (sink-effects-establish-pubsub
+    (sink-authorized-name-subname
+      (sink-name #/just-value #/name-of (dex-immutable-string)
+        "init-package-pubsub")
+      (cene-definition-lang-impl-qualify-root))
+    then))
 
 (struct exn:fail:cene exn:fail (clamor))
 

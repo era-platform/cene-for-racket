@@ -21,7 +21,7 @@
 
 (require cene/private)
 (require #/only-in cene/private/essentials
-  sink-effects-init-essentials)
+  sink-effects-init-essentials sink-effects-init-package)
 
 
 ; TODO: Document these exports.
@@ -33,6 +33,7 @@
 (provide sink-effects-claim-and-split)
 (provide sink-effects-fuse)
 (provide sink-effects-init-essentials)
+(provide sink-effects-init-package)
 (provide sink-effects-run!)
 (provide sink-effects-run-string)
 
