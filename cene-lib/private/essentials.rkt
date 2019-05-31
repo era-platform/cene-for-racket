@@ -2131,11 +2131,13 @@
     (sink-effects-read-leading-specific-number-of-cexprs
       fault unique-name qualify text-input-stream 1
     #/fn unique-name qualify text-input-stream args-func
-    #/dissect args-func (list func-expr)
+    #/dissect args-func (list (sink-cexpr func-expr))
     
     #/sink-effects-read-bounded-cexprs
       fault unique-name qualify text-input-stream
     #/fn unique-name qualify text-input-stream args-args
+    #/w- args-args
+      (list-map args-args #/dissectfn (sink-cexpr arg-arg) arg-arg)
     
     #/then unique-name qualify text-input-stream
     #/sink-cexpr #/list-foldl func-expr args-args #/fn func arg
