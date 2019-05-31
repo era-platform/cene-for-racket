@@ -312,11 +312,12 @@
   #/fn text-input-stream maybe-metadata-name
   #/expect maybe-metadata-name
     (just #/list located-string metadata-name)
-    (then #/nothing)
+    (then text-input-stream (nothing))
   #/sink-effects-get (sink-authorized-name-get-name metadata-name)
   #/fn metadata
   ; TODO FAULT: Make this `fault` more specific.
-  #/then #/just #/verify-sink-struct-metadata! fault metadata))
+  #/then text-input-stream
+    (just #/verify-sink-struct-metadata! fault metadata)))
 
 (define/contract (struct-metadata-tags metadata)
   (-> cene-struct-metadata? #/listof name?)
@@ -1276,13 +1277,18 @@
         #/sink-name-qualify-for-lang-impl
         #/sink-name-for-struct-proj qualified-main-tag-name
         #/sink-name-for-string #/sink-string proj-string))
-    #/w- qualified-proj-names
+    #/w- qualified-proj-authorized-names
       (list-map qualified-proj-name-entries
       #/dissectfn (list proj-string qualified-proj-name)
         qualified-proj-name)
+    #/w- qualified-proj-names
+      (list-map qualified-proj-authorized-names
+      #/fn proj-authorized-name
+        (sink-authorized-name-get-name proj-authorized-name))
     #/expect
       (assocs->table-if-mutually-unique
-        (list-map qualified-proj-names #/fn proj-authorized-name
+        (list-map qualified-proj-authorized-names
+        #/fn proj-authorized-name
           (dissect
             (sink-authorized-name-get-name proj-authorized-name)
             (sink-name proj-name)
@@ -1433,14 +1439,14 @@
   ; Errors and conscience
   
   ; TODO: Test this.
-  (def-func-fault! "follow-heart" fault clamor
-    (raise-cene-err fault clamor))
+  (def-func! "follow-heart" clamor
+    (raise-cene-err clamor))
   
-  (def-data-struct! "clamor-err" #/list "message")
+  (def-data-struct! "clamor-err" #/list "blame" "message")
   
   ; TODO BUILTINS: Implement the macro `err`, probably in a Cene
   ; prelude. In the prelude, before we define `err`, we can still
-  ; report errors using `[follow-heart/clamor-err/str-prim ...]`.
+  ; report errors using `[follow-heart/clamor-err bl /str-prim ...]`.
   
   
   ; Order

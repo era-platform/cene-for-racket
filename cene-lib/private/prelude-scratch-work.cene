@@ -1,0 +1,202 @@
+\= prelude-scratch-work.cene
+\=
+\= A "commented out" part of prelude.cene. See that file for more
+\= information.
+
+\=   Copyright 2019 The Era Authors
+\=
+\=   Licensed under the Apache License, Version 2.0 (the "License");
+\=   you may not use this file except in compliance with the License.
+\=   You may obtain a copy of the License at
+\=
+\=       http://www.apache.org/licenses/LICENSE-2.0
+\=
+\=   Unless required by applicable law or agreed to in writing,
+\=   software distributed under the License is distributed on an
+\=   "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+\=   either express or implied. See the License for the specific
+\=   language governing permissions and limitations under the License.
+
+
+  /let maybe-bind
+    \= TODO: See if we'll use this.
+    \= TODO: See if this should verify its output is a maybe as well.
+    (fn-blame bl m then
+      (case m nothing (nothing)
+      /cast m just s
+        [c-blame bl err /str-prim Expected m to be a nothing or a just]
+      /c-blame bl then s))
+  /let not
+    (fn-blame bl b
+      (case b yep b (nope b)
+      /case b nope b (yep b)
+        [c-blame bl err /str-prim Expected b to be a yep or a nope]))
+  /let and
+    \= NOTE: We could also call this `either-bind`.
+    \= TODO: See if this should verify its output is an either as
+    \= well.
+    (fn-blame bl a get-b
+      (case a nope s (nope s)
+      /cast a yep s
+        [c-blame bl err /str-prim Expected a to be a yep or a nope]
+      /c-blame bl get-b s))
+  /let is-dex
+    (fn x
+      (in-dex (dex-dex) x))
+  /let is-cline
+    (fn x
+      (in-dex (dex-cline) x))
+  /let compare-by-cline-force
+    (fn-blame bl cline a b
+      (cast (c is-cline cline) yep -
+        [c-blame bl err /str-prim Expected cline to be a cline]
+      /cast (compare-by-cline cline a b) just result
+        [c-blame bl err /str-prim Expected a and b to be elements of the given cline]
+        result))
+  /let is-lt
+    (fn-blame bl cline a b
+      (case (c-blame bl compare-by-cline-force cline a b) ordering-lt
+        (yep/nil)
+        (nope/nil)))
+  /let is-gt
+    (fn-blame bl cline a b
+      (c-blame bl is-lt cline b a))
+  /let is-lte
+    (fn-blame bl cline a b
+      (c not /c-blame bl is-gt cline a b))
+  /let is-gte
+    (fn-blame bl cline a b
+      (c-blame bl is-lte cline b a))
+  /let in-fuse
+    \= TODO: See if this is really the way we want to implement this.
+    \= What if calling the fuse is expensive?
+    (fn fuse x
+      (case (call-fuse fuse x x) just -
+        (yep/nil)
+        (nope/nil)))
+  /let is-effects
+    (fn x
+      (c in-fuse (fuse-effects) x))
+  /let is-int
+    (fn x
+      (in-dex (dex-int) x))
+  /let is-nat
+    (fn x
+      (c and (c is-int x) /fn - /c is-lte (cline-int) (int-zero) x))
+  /let self-app
+    (fn-blame bl f
+      (c-blame bl f f))
+  /let nat-to-maybe
+    (fn-blame bl n
+      (cast (c is-nat n) yep -
+        [c-blame bl err /str-prim Expected n to be a natural number]
+      /cast (c is-lt (cline-int) (int-zero) x) yep - (nothing)
+      /just /int-minus x /int-one))
+  /let name-of-string
+    (fn-blame bl string
+      (cast (name-of (dex-string) string) just result
+        [c-blame bl err /str-prim Expected string to be a string]
+        result))
+  /let fix
+    (c self-app /fn make-fix
+    /fn-blame bl-f f
+      (let fix (c make-fix make-fix)
+      /fn-blame bl-arg arg
+        (c-blame bl-arg (c-blame bl-f f /c-blame bl-f fix f) arg)))
+  /let give3
+    (fn-blame bl a1 a2 a3 f
+      (c-blame bl f a1 a2 a3))
+  /let loop3
+    (fn-blame bl s1 s2 s3 body
+      (c-blame bl give3 s1 s2 s3 /c-blame bl fix body))
+  /let unique-name-for-split-first
+    (authorized-name-get-name/authorized-name-subname
+      [c name-of-string /str-prim first]
+      root-unique-name)
+  /let unique-name-for-split-rest
+    (authorized-name-get-name/authorized-name-subname
+      [c name-of-string /str-prim rest]
+      root-unique-name)
+  /let effects-claim-and-split
+    (fn-blame bl unique-name n then
+      (cast (is-authorized-name unique-name) yep -
+        [c-blame bl err /str-prim Expected unique-name to be an authorized name]
+      /cast (c is-nat n) yep -
+        [c-blame bl err /str-prim Expected n to be a natural number]
+      /effects-claim unique-name /fn -
+      /c loop3 n unique-name (nil) /fn next n next-name names
+        (cast (nat-to-maybe n) just n (c-blame bl then names)
+        /let first
+          (authorized-name-subname unique-name-for-split-first
+            next-name)
+        /let rest
+          (authorized-name-subname unique-name-for-split-rest
+            next-name)
+        /c next n rest /cons first names)))
+  /let effects-claim-freshen
+    (fn-blame bl unique-name then
+      (cast (is-authorized-name unique-name) yep -
+        [c-blame bl err /str-prim Expected unique-name to be an authorized name]
+      /effects-claim-and-split unique-name (int-one) /fn unique-names
+      /cast unique-names cons unique-name -
+        [c err /str-prim Internal error: Expected the list resulting from effects-claim-and-split to be a list of the requested length]
+      /c-blame bl then unique-name))
+  /let effects-def-dexable-value-for-lang-impl
+    (fn-blame bl unique-name target-name dex value
+      (cast (is-authorized-name unique-name) yep -
+        [c-blame bl err /str-prim Expected unique-name to be an authorized name]
+      /cast (is-authorized-name target-name) yep -
+        [c-blame bl err /str-prim Expected target-name to be an authorized name]
+      /cast (c is-dex dex) yep -
+        [c-blame bl err /str-prim Expected dex to be a dex]
+      /effects-claim unique-name /fn -
+      /effects-put name dex value))
+  /let effects-def-dexable-value-for-package
+    (fn-blame bl unique-name target-name dex value
+      (cast (is-authorized-name unique-name) yep -
+        [c-blame bl err /str-prim Expected unique-name to be an authorized name]
+      /cast (is-authorized-name target-name) yep -
+        [c-blame bl err /str-prim Expected target-name to be an authorized name]
+      /cast (c is-dex dex) yep -
+        [c-blame bl err /str-prim Expected dex to be a dex]
+      /effects-claim-freshen unique-name /fn unique-name
+      /effects-add-init-package-step unique-name
+      /fn unique-name qualify-for-package
+        (effects-claim unique-name /fn -
+        /effects-put (c qualify-for-package target-name) dex value)))
+  /let effects-def-value-for-lang-impl
+    (fn-blame bl unique-name target-name value
+      (cast (is-authorized-name unique-name) yep -
+        [c-blame bl err /str-prim Expected unique-name to be an authorized name]
+      /cast (is-authorized-name target-name) yep -
+        [c-blame bl err /str-prim Expected target-name to be an authorized name]
+      /effects-def-dexable-value-for-lang-impl
+        unique-name target-name (dex-give-up) value))
+  /let effects-def-value-for-package
+    (fn-blame bl unique-name target-name value
+      (cast (is-authorized-name unique-name) yep -
+        [c-blame bl err /str-prim Expected unique-name to be an authorized name]
+      /cast (is-authorized-name target-name) yep -
+        [c-blame bl err /str-prim Expected target-name to be an authorized name]
+      /effects-def-dexable-value-for-package
+        unique-name target-name (dex-give-up) value))
+  /let macro-impl
+    (fn-blame bl-body body
+      (fn-blame bl-macro
+        unique-name qualify text-input-stream output-stream then
+        
+        (cast (is-authorized-name unique-name) yep -
+          [c-blame bl-macro err /str-prim Expected unique-name to be an authorized name]
+        /cast (is-text-input-stream text-input-stream) yep -
+          [c-blame bl-macro err /str-prim Expected text-input-stream to be a text input stream]
+        /cast (is-expr-sequence-output-stream output-stream) yep -
+          [c-blame bl-macro err /str-prim Expected output-stream to be an expression sequence output stream]
+        /c body
+          bl-macro unique-name qualify text-input-stream output-stream
+        /fn unique-name qualify text-input-stream output-stream
+        /w- effects
+          (c-blame bl-macro then
+            unique-name qualify text-input-stream utput-stream)
+        /cast (c is-effects effects) yep -
+          [c-blame bl-macro err /str-prim Expected the return value of a macro's callback to be an effectful computation]
+          effects)))

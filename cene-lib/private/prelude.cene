@@ -1,0 +1,46 @@
+\= prelude.cene
+\=
+\= Cene built-ins that can be defined in terms of a (mostly) smaller
+\= set of built-ins.
+
+\=   Copyright 2019 The Era Authors
+\=
+\=   Licensed under the Apache License, Version 2.0 (the "License");
+\=   you may not use this file except in compliance with the License.
+\=   You may obtain a copy of the License at
+\=
+\=       http://www.apache.org/licenses/LICENSE-2.0
+\=
+\=   Unless required by applicable law or agreed to in writing,
+\=   software distributed under the License is distributed on an
+\=   "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+\=   either express or implied. See the License for the specific
+\=   language governing permissions and limitations under the License.
+
+
+\= TODO SCRATCH: We're currently "commenting out" a large portion of
+\= this file by putting it in a separate file,
+\= prelude-scratch-work.cene. Gradually uncomment this code as we
+\= verify that it doesn't cause errors. The place it should appear is
+\= marked by another TODO SCRATCH comment.
+
+\= TODO: Work up to defining `defn` and `def-macro`. In order to do
+\= that, we've been porting things to Cene local variables that we've
+\= already implemented on the Racket side. Once we use these local
+\= variables to define `defn` and `def-macro`, we'll want to repeat a
+\= number of these ported definitions in `defn` form as well. It may
+\= be possible to reuse the definitions rather than copying and
+\= pasting, but let's regard copying and pasting as a serious option
+\= here.
+
+\= TODO: Make sure we make most of the things we define in the prelude
+\= visible to user-supplied Cene code by using
+\= `effects-add-init-package-step`.
+
+(directive /fn root-unique-name root-qualify
+  (let err
+    (fn-blame bl str
+      (follow-heart/clamor-err bl str))
+  \= TODO SCRATCH: Once it doesn't cause errors, put the code from
+  \= prelude-scratch-work.cene here.
+  /effects-noop))

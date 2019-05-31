@@ -22,6 +22,7 @@
 (require rackunit)
 
 (require #/only-in lathe-comforts dissectfn expect fn w-)
+(require #/only-in lathe-comforts/maybe just nothing)
 (require #/only-in lathe-comforts/trivial trivial)
 
 (require #/only-in effection/extensibility/base
@@ -65,22 +66,24 @@
             "Internal error: Expected the cene-run-string-sample continuation ticket to be written to only once")
           (trivial))))))
 
-(define (cene-code-works code-string)
-  (run-extfx-result-success? #/cene-run-string-sample code-string))
+(define (cene-code-failure code-string)
+  (w- result (cene-run-string-sample code-string)
+  #/if (run-extfx-result-success? result) (nothing)
+  #/just result))
 
 
-(check-equal? (cene-code-works "") #t
+(check-equal? (cene-code-failure "") (nothing)
   "Running nothing works")
 
 (check-equal?
-  (cene-code-works
+  (cene-code-failure
     "
     \\= This is a comment.
     
     \\= This is another comment.
     
     ")
-  #t
+  (nothing)
   "Running nothing but line comments works")
 
 ; TODO: Make it so errors like this are actually collected into the
@@ -91,12 +94,13 @@
     (expect e (exn:fail:cene message marks clamor) #f
     #/not #/not #/regexp-match #px"trivial" message))
   (lambda ()
-    (cene-code-works "(follow-heart/trivial)"))
+    (cene-code-failure "(follow-heart/trivial)"))
   "Calling Cene's `follow-heart` raises an `exn:fail:cene` exception in Racket")
 
 (check-equal?
-  (cene-code-works "(directive/fn unique-name qualify /effects-noop)")
-  #t
+  (cene-code-failure
+    "(directive/fn unique-name qualify /effects-noop)")
+  (nothing)
   "Running a single top-level command that does nothing works")
 
 ; TODO: Write more unit tests.

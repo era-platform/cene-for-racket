@@ -900,17 +900,17 @@
   (-> sink-fault?)
   (sink-fault #/just #/current-continuation-marks))
 
-(define/contract (raise-cene-err fault clamor)
-  (-> sink-fault? sink? none/c)
+(define/contract (raise-cene-err clamor)
+  (-> sink? none/c)
   (begin (assert-can-get-cene-definitions!)
-  #/w- message
-    (mat (unmake-sink-struct-maybe (s-clamor-err) clamor)
-      (just #/list #/sink-string message)
-      message
-    #/format "~s" clamor)
+  #/dissect
+    (expect (unmake-sink-struct-maybe (s-clamor-err) clamor)
+      (just #/list (sink-fault maybe-marks) (sink-string message))
+      (list (nothing) (format "~s" clamor))
+      (list maybe-marks message))
+    (list maybe-marks message)
   #/w- marks
-    (dissect fault (sink-fault maybe-marks)
-    #/mat maybe-marks (just marks) marks
+    (mat maybe-marks (just marks) marks
     #/current-continuation-marks)
   #/raise #/exn:fail:cene message marks clamor))
 
@@ -919,8 +919,10 @@
   ; `s-clamor-err` here or move this code after the place where
   ; `s-clamor-err` is defined.
   (begin (assert-can-get-cene-definitions!)
-  #/raise-cene-err fault
-    (make-sink-struct (s-clamor-err) #/list #/sink-string message)))
+  #/raise-cene-err
+    (make-sink-struct (s-clamor-err) #/list
+      fault
+      (sink-string message))))
 
 (define/contract
   (sink-call-fault-binary caller-fault explicit-fault func arg)
@@ -1678,7 +1680,8 @@
       name)))
 
 (define s-trivial (core-sink-struct "trivial" #/list))
-(define s-clamor-err (core-sink-struct "clamor-err" #/list "message"))
+(define s-clamor-err
+  (core-sink-struct "clamor-err" #/list "blame" "message"))
 
 (define/contract (extfx-claim name on-success)
   (-> authorized-name? (-> extfx?) extfx?)
