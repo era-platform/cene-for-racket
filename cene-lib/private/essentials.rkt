@@ -302,12 +302,12 @@
     sink-fault?
     sink?
     sink-text-input-stream?
-    (->
-      sink-text-input-stream?
-      (maybe/c #/list/c sink-located-string? sink-name?)
+    (-> sink-text-input-stream? (maybe/c cene-struct-metadata?)
       sink-effects?)
     sink-effects?)
-  (sink-effects-read-maybe-identifier
+  (sink-effects-read-whitespace fault text-input-stream
+  #/fn text-input-stream whitespace
+  #/sink-effects-read-maybe-identifier
     fault qualify text-input-stream sink-name-for-struct-metadata
   #/fn text-input-stream maybe-metadata-name
   #/expect maybe-metadata-name
@@ -325,7 +325,7 @@
     tags))
 
 (define/contract (struct-metadata-n-projs metadata)
-  (-> cene-struct-metadata? #/listof name?)
+  (-> cene-struct-metadata? natural?)
   (dissect metadata
     (cene-struct-metadata (cons main-tag-name proj-names) _ _)
   #/length proj-names))
@@ -1993,7 +1993,6 @@
     #/expect maybe-metadata (just metadata)
       ; TODO FAULT: Make this `fault` more specific.
       (cene-err fault "Expected the first part of a case pattern to designate a struct metadata name")
-    #/maybe-bind maybe-metadata #/fn metadata
     #/w- tags (struct-metadata-tags metadata)
     #/w- n-projs (struct-metadata-n-projs metadata)
     
@@ -2096,11 +2095,14 @@
     (sink-effects-read-leading-specific-number-of-cexprs
       fault unique-name qualify text-input-stream 2
     #/fn unique-name qualify text-input-stream args-func
-    #/dissect args-func (list fault-arg-expr func-expr)
+    #/dissect args-func
+      (list (sink-cexpr fault-arg-expr) (sink-cexpr func-expr))
     
     #/sink-effects-read-bounded-cexprs
       fault unique-name qualify text-input-stream
     #/fn unique-name qualify text-input-stream args-args
+    #/w- args-args
+      (list-map args-args #/dissectfn (sink-cexpr arg-arg) arg-arg)
     
     #/expect (reverse args-args)
       (cons last-arg-arg rev-past-args-args)
@@ -2110,8 +2112,9 @@
     #/then unique-name qualify text-input-stream
       (sink-cexpr #/cexpr-call-fault fault-arg-expr
         (list-foldl func-expr (reverse rev-past-args-args)
-        #/fn func arg
-          (cexpr-call func arg)))))
+          (fn func arg
+            (cexpr-call func arg)))
+        last-arg-arg)))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-call`.
