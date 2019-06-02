@@ -29,6 +29,7 @@
 (require #/only-in lathe-comforts/list list-map nat->maybe)
 (require #/only-in lathe-comforts/maybe just)
 (require #/only-in lathe-comforts/struct struct-easy)
+(require #/only-in lathe-comforts/trivial trivial)
 
 (require cene/private)
 
@@ -283,36 +284,63 @@
   #/list-map ids-and-exprs #/fn id-or-expr
     (id-or-expr->cexpr id-or-expr)))
 
-; This reads precisely `n` whitespace-separated identifiers, and it
-; causes an error if it runs out of identifiers to read too soon.
+; This reads precisely `n` whitespace-and-comment-separated
+; identifiers, and it causes an error if it reaches a closing bracket
+; first or if it encounters a cexpr when it's trying to skip comments.
 (define/contract
   (sink-effects-read-leading-specific-number-of-identifiers
-    fault qualify text-input-stream n pre-qualify then)
+    fault unique-name qualify text-input-stream n pre-qualify then)
   (->
     sink-fault?
+    sink-authorized-name?
     sink?
     sink-text-input-stream?
     natural?
     (-> sink-name? sink-name?)
     (->
+      sink-authorized-name?
+      sink?
       sink-text-input-stream?
       (listof #/list/c sink-located-string? sink-authorized-name?)
       sink-effects?)
     sink-effects?)
-  (sink-effects-later #/fn
+  (sink-effects-claim-freshen unique-name #/fn unique-name
   #/w-loop next
+    unique-name unique-name
+    qualify qualify
     text-input-stream text-input-stream
     n n
     rev-results (list)
     
-    (expect (nat->maybe n) (just n)
-      (then text-input-stream #/reverse rev-results)
+    (expect (nat->maybe n) (just next-n)
+      (then unique-name qualify text-input-stream
+        (reverse rev-results))
     #/sink-effects-read-whitespace fault text-input-stream
     #/fn text-input-stream whitespace
     #/sink-effects-read-maybe-identifier
       fault qualify text-input-stream pre-qualify
     #/fn text-input-stream maybe-id
-    #/expect maybe-id (just id)
-      ; TODO FAULT: Make this `fault` more specific.
-      (cene-err fault "Expected an identifier")
-    #/next text-input-stream n #/cons id rev-results)))
+    #/mat maybe-id (just id)
+      (next unique-name qualify text-input-stream next-n
+        (cons id rev-results))
+    
+    ; We skip comments, and if there's a closing bracket, we cause an
+    ; error. We do this by calling `sink-effects-read-cexprs` with an
+    ; output stream that causes errors if any expressions are actually
+    ; found.
+    #/sink-effects-claim-and-split unique-name 2
+    #/dissectfn (list unique-name-stream unique-name)
+    #/sink-effects-make-cexpr-sequence-output-stream
+      fault
+      unique-name-stream
+      (trivial)
+      (fn state cexpr then
+        (dissect state (trivial)
+        #/cene-err fault "Expected an identifier but found an expression"))
+    #/fn output-stream unwrap
+    #/sink-effects-read-cexprs
+      fault unique-name qualify text-input-stream output-stream
+    #/fn unique-name qualify text-input-stream output-stream
+    #/unwrap output-stream #/dissectfn (trivial)
+    
+    #/next unique-name qualify text-input-stream n rev-results)))

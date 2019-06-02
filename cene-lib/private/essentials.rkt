@@ -296,28 +296,29 @@
     (list 'name:struct-metadata n)))
 
 (define/contract
-  (sink-effects-read-maybe-struct-metadata
-    fault qualify text-input-stream then)
+  (sink-effects-read-struct-metadata
+    fault unique-name qualify text-input-stream then)
   (->
     sink-fault?
-    sink?
-    sink-text-input-stream?
-    (-> sink-text-input-stream? (maybe/c cene-struct-metadata?)
+    sink-authorized-name? sink? sink-text-input-stream?
+    (->
+      sink-authorized-name? sink? sink-text-input-stream?
+      cene-struct-metadata?
       sink-effects?)
     sink-effects?)
-  (sink-effects-read-whitespace fault text-input-stream
+  (sink-effects-claim-freshen unique-name #/fn unique-name
+  #/sink-effects-read-whitespace fault text-input-stream
   #/fn text-input-stream whitespace
-  #/sink-effects-read-maybe-identifier
-    fault qualify text-input-stream sink-name-for-struct-metadata
-  #/fn text-input-stream maybe-metadata-name
-  #/expect maybe-metadata-name
-    (just #/list located-string metadata-name)
-    (then text-input-stream (nothing))
+  #/sink-effects-read-leading-specific-number-of-identifiers
+    fault unique-name qualify text-input-stream 1
+    sink-name-for-struct-metadata
+  #/fn unique-name qualify text-input-stream metadata-names
+  #/dissect metadata-names (list #/list located-string metadata-name)
   #/sink-effects-get (sink-authorized-name-get-name metadata-name)
   #/fn metadata
   ; TODO FAULT: Make this `fault` more specific.
-  #/then text-input-stream
-    (just #/verify-sink-struct-metadata! fault metadata)))
+  #/then unique-name qualify text-input-stream
+    (verify-sink-struct-metadata! fault metadata)))
 
 (define/contract (struct-metadata-tags metadata)
   (-> cene-struct-metadata? #/listof name?)
@@ -1802,16 +1803,15 @@
       sink-authorized-name? sink? sink-text-input-stream?
       (->
         sink-authorized-name? sink? sink-text-input-stream?
-        (maybe/c #/list/c name? #/listof #/list/c name? cexpr?)
+        name?
+        (listof #/list/c name? cexpr?)
         sink-effects?)
       sink-effects?)
     
     (sink-effects-claim-freshen unique-name #/fn unique-name
-    #/sink-effects-read-maybe-struct-metadata
-      fault qualify text-input-stream
-    #/fn text-input-stream maybe-metadata
-    #/expect maybe-metadata (just metadata)
-      (then unique-name qualify text-input-stream #/nothing)
+    #/sink-effects-read-struct-metadata
+      fault unique-name qualify text-input-stream
+    #/fn unique-name qualify text-input-stream metadata
     #/dissect (struct-metadata-tags metadata)
       (cons main-tag-name proj-names)
     
@@ -1820,8 +1820,8 @@
       (length proj-names)
     #/fn unique-name qualify text-input-stream proj-exprs
     
-    #/then unique-name qualify text-input-stream
-    #/just #/list main-tag-name #/map list proj-names proj-exprs))
+    #/then unique-name qualify text-input-stream main-tag-name
+      (map list proj-names proj-exprs)))
   
   ; NOTE: The JavaScript version of Cene makes this functionality
   ; possible using a combination of `cexpr-cline-struct`,
@@ -1841,10 +1841,8 @@
     
     (sink-effects-expand-struct-op
       fault unique-name qualify text-input-stream
-    #/fn unique-name qualify text-input-stream maybe-pieces
-    #/expect maybe-pieces (just #/list main-tag-name projections)
-      ; TODO FAULT: Make this `fault` more specific.
-      (cene-err fault "Expected a dex-struct form to designate a struct metadata name")
+    #/fn
+      unique-name qualify text-input-stream main-tag-name projections
     #/then unique-name qualify text-input-stream
     #/sink-cexpr #/cexpr-dex-struct main-tag-name projections))
   
@@ -1861,10 +1859,8 @@
     
     (sink-effects-expand-struct-op
       fault unique-name qualify text-input-stream
-    #/fn unique-name qualify text-input-stream maybe-pieces
-    #/expect maybe-pieces (just #/list main-tag-name projections)
-      ; TODO FAULT: Make this `fault` more specific.
-      (cene-err fault "Expected a cline-struct form to designate a struct metadata name")
+    #/fn
+      unique-name qualify text-input-stream main-tag-name projections
     #/then unique-name qualify text-input-stream
     #/sink-cexpr #/cexpr-cline-struct main-tag-name projections))
   
@@ -1881,10 +1877,8 @@
     
     (sink-effects-expand-struct-op
       fault unique-name qualify text-input-stream
-    #/fn unique-name qualify text-input-stream maybe-pieces
-    #/expect maybe-pieces (just #/list main-tag-name projections)
-      ; TODO FAULT: Make this `fault` more specific.
-      (cene-err fault "Expected a merge-struct form to designate a struct metadata name")
+    #/fn
+      unique-name qualify text-input-stream main-tag-name projections
     #/then unique-name qualify text-input-stream
     #/sink-cexpr #/cexpr-merge-struct main-tag-name projections))
   
@@ -1901,10 +1895,8 @@
     
     (sink-effects-expand-struct-op
       fault unique-name qualify text-input-stream
-    #/fn unique-name qualify text-input-stream maybe-pieces
-    #/expect maybe-pieces (just #/list main-tag-name projections)
-      ; TODO FAULT: Make this `fault` more specific.
-      (cene-err fault "Expected a fuse-struct form to designate a struct metadata name")
+    #/fn
+      unique-name qualify text-input-stream main-tag-name projections
     #/then unique-name qualify text-input-stream
     #/sink-cexpr #/cexpr-fuse-struct main-tag-name projections))
   
@@ -1922,9 +1914,8 @@
     
     (sink-effects-expand-struct-op
       fault unique-name qualify text-input-stream
-    #/fn unique-name qualify text-input-stream maybe-pieces
-    #/expect maybe-pieces (just #/list main-tag-name projections)
-      (cene-err fault "Expected a construct form to designate a struct metadata name")
+    #/fn
+      unique-name qualify text-input-stream main-tag-name projections
     #/then unique-name qualify text-input-stream
     #/sink-cexpr #/cexpr-construct main-tag-name projections))
   
@@ -1973,13 +1964,16 @@
   
   (define/contract
     (sink-effects-read-case-pattern
-      fault qualify text-input-stream then)
+      fault unique-name qualify text-input-stream then)
     (->
       sink-fault?
+      sink-authorized-name?
       sink?
       sink-text-input-stream?
       (->i
         (
+          [unique-name sink-authorized-name?]
+          [qualify sink?]
           [text-input-stream sink-text-input-stream?]
           [tags (listof name?)]
           [vars (listof sink-name?)])
@@ -1987,19 +1981,17 @@
         [_ sink-effects?])
       sink-effects?)
     
-    (sink-effects-read-maybe-struct-metadata
-      fault qualify text-input-stream
-    #/fn text-input-stream maybe-metadata
-    #/expect maybe-metadata (just metadata)
-      ; TODO FAULT: Make this `fault` more specific.
-      (cene-err fault "Expected the first part of a case pattern to designate a struct metadata name")
+    (sink-effects-claim-freshen unique-name #/fn unique-name
+    #/sink-effects-read-struct-metadata
+      fault unique-name qualify text-input-stream
+    #/fn unique-name qualify text-input-stream metadata
     #/w- tags (struct-metadata-tags metadata)
     #/w- n-projs (struct-metadata-n-projs metadata)
     
     #/sink-effects-read-leading-specific-number-of-identifiers
-      fault qualify text-input-stream n-projs
+      fault unique-name qualify text-input-stream n-projs
       sink-name-for-local-variable
-    #/fn text-input-stream vars
+    #/fn unique-name qualify text-input-stream vars
     #/w- vars
       (list-map vars #/dissectfn (list located-string var)
         (sink-authorized-name-get-name var))
@@ -2007,7 +1999,7 @@
       ; TODO FAULT: Make this `fault` more specific.
       (cene-err fault "Expected the variables of a case pattern to be mutually unique")
     
-    #/then text-input-stream tags vars))
+    #/then unique-name qualify text-input-stream tags vars))
   
   (def-macro! "case" #/fn
     fault unique-name qualify text-input-stream then
@@ -2017,8 +2009,9 @@
     #/fn unique-name qualify text-input-stream args-subject
     #/dissect args-subject (list subject-expr)
     
-    #/sink-effects-read-case-pattern fault qualify text-input-stream
-    #/fn text-input-stream tags vars
+    #/sink-effects-read-case-pattern
+      fault unique-name qualify text-input-stream
+    #/fn unique-name qualify text-input-stream tags vars
     
     #/sink-effects-read-bounded-specific-number-of-cexprs
       fault unique-name qualify text-input-stream 2
@@ -2036,8 +2029,9 @@
     #/fn unique-name qualify text-input-stream args-subject
     #/dissect args-subject (list subject-expr)
     
-    #/sink-effects-read-case-pattern fault qualify text-input-stream
-    #/fn text-input-stream tags vars
+    #/sink-effects-read-case-pattern
+      fault unique-name qualify text-input-stream
+    #/fn unique-name qualify text-input-stream tags vars
     
     #/sink-effects-read-bounded-specific-number-of-cexprs
       fault unique-name qualify text-input-stream 2
@@ -2051,8 +2045,9 @@
     fault unique-name qualify text-input-stream then
     
     (sink-effects-read-leading-specific-number-of-identifiers
-      fault qualify text-input-stream 1 sink-name-for-local-variable
-    #/fn text-input-stream args-subject-var
+      fault unique-name qualify text-input-stream 1
+      sink-name-for-local-variable
+    #/fn unique-name qualify text-input-stream args-subject-var
     #/dissect args-subject-var (list #/list _ subject-var)
     #/w- subject-var (sink-authorized-name-get-name subject-var)
     
@@ -2061,8 +2056,9 @@
     #/fn unique-name qualify text-input-stream args-subject-expr
     #/dissect args-subject-expr (list subject-expr)
     
-    #/sink-effects-read-case-pattern fault qualify text-input-stream
-    #/fn text-input-stream tags vars
+    #/sink-effects-read-case-pattern
+      fault unique-name qualify text-input-stream
+    #/fn unique-name qualify text-input-stream tags vars
     
     #/sink-effects-read-bounded-specific-number-of-cexprs
       fault unique-name qualify text-input-stream 2

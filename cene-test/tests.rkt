@@ -103,4 +103,25 @@
   (nothing)
   "Running a single top-level command that does nothing works")
 
+(check-equal?
+  (cene-code-failure
+    "
+    (directive/fn unique-name qualify
+      (let ignored
+        (fn x
+          (case x
+            \\= This comment makes sure comments are allowed before
+            \\= the struct metadata tag of a case pattern.
+            just
+            \\= This comment makes sure comments are allowed before a
+            \\= variable binding of a case pattern.
+            v
+            v
+            x))
+      /effects-noop))
+    
+    ")
+  (nothing)
+  "Comments are allowed in case patterns")
+
 ; TODO: Write more unit tests.
