@@ -185,10 +185,6 @@
   #:other #:methods gen:sink [])
 (struct-easy (sink-effects go!)
   #:other #:methods gen:sink [])
-(struct-easy
-  (sink-cexpr-sequence-output-stream
-    id box-of-maybe-state-and-handler)
-  #:other #:methods gen:sink [])
 (struct-easy (sink-text-input-stream box-of-maybe-input)
   #:other #:methods gen:sink [])
 
@@ -346,6 +342,24 @@
   (begin (assert-can-get-cene-definitions!)
   #/dissect effects (sink-effects go!)
   #/go!))
+
+(define/contract (sink-maybe->maybe-racket sink-maybe)
+  (-> sink? #/maybe/c #/maybe/c sink?)
+  (begin (assert-can-get-cene-definitions!)
+  #/mat (unmake-sink-struct-maybe (s-nothing) sink-maybe)
+    (just #/list)
+    (just #/nothing)
+  #/mat (unmake-sink-struct-maybe (s-just) sink-maybe)
+    (just #/list val)
+    (just #/just val)
+  #/nothing))
+
+(define/contract (racket-maybe->sink racket-maybe)
+  (-> (maybe/c sink?) sink?)
+  (begin (assert-can-get-cene-definitions!)
+  #/mat racket-maybe (just val)
+    (make-sink-struct (s-just) #/list val)
+    (make-sink-struct (s-nothing) #/list)))
 
 (define-generics cexpr
   (cexpr-has-free-vars? cexpr env)
@@ -1058,72 +1072,6 @@
     (list 'name:struct-proj qualified-main-tag-name n)))
 
 (define/contract
-  (sink-cexpr-sequence-output-stream-spend! fault stream)
-  (-> sink-fault? sink-cexpr-sequence-output-stream?
-    (list/c
-      any/c
-      (-> any/c sink-cexpr? (-> any/c sink-effects?) sink-effects?)))
-  (begin (assert-can-get-cene-definitions!)
-  #/dissect stream (sink-cexpr-sequence-output-stream id b)
-  ; TODO: See if this should be more thread-safe in some way.
-  #/expect (unbox b) (just state-and-handler)
-    (cene-err fault "Tried to spend an expression output stream that was already spent")
-  #/begin
-    (set-box! b (nothing))
-    state-and-handler))
-
-(define/contract
-  (sink-effects-make-cexpr-sequence-output-stream
-    fault unique-name state on-cexpr then)
-  (->
-    sink-fault?
-    sink-authorized-name?
-    any/c
-    (-> any/c sink-cexpr (-> any/c sink-effects?) sink-effects?)
-    (-> sink-cexpr-sequence-output-stream?
-      (-> sink-cexpr-sequence-output-stream?
-        (-> any/c sink-effects?)
-        sink-effects?)
-      sink-effects?)
-    sink-effects?)
-  (sink-effects-claim-and-split unique-name 0 #/dissectfn (list)
-  #/w- identity (box #/trivial)
-  #/then
-    (sink-cexpr-sequence-output-stream identity #/box #/just
-    #/list state on-cexpr)
-    (fn output-stream then
-      (dissect output-stream
-        (sink-cexpr-sequence-output-stream found-id _)
-      #/expect (eq? identity found-id) #t
-        ; TODO: See if we can tweak the design of
-        ; `sink-effects-make-cexpr-sequence-output-stream` in such a
-        ; way that its clients can specify their own error messages to
-        ; take the place of this one. Since we don't currently support
-        ; that, we're reporting this error message in such a way that
-        ; it makes sense for Cene's
-        ; `effects-make-expr-sequence-output-stream` built-in.
-        (cene-err fault "Expected the expression sequence output stream given to an effects-make-expr-sequence-output-stream unwrapper to be a descendant of the same one created by that call")
-      #/dissect
-        (sink-cexpr-sequence-output-stream-spend! fault output-stream)
-        (list state on-cexpr)
-      #/then state))))
-
-(define/contract
-  (sink-effects-cexpr-write fault output-stream cexpr then)
-  (->
-    sink-fault? sink-cexpr-sequence-output-stream? sink-cexpr?
-    (-> sink-cexpr-sequence-output-stream? sink-effects?)
-    sink-effects?)
-  (sink-effects-later #/fn
-  #/dissect output-stream (sink-cexpr-sequence-output-stream id _)
-  #/dissect
-    (sink-cexpr-sequence-output-stream-spend! fault output-stream)
-    (list state on-cexpr)
-  #/on-cexpr state cexpr #/fn state
-  #/then #/sink-cexpr-sequence-output-stream id #/box #/just #/list
-    state on-cexpr))
-
-(define/contract
   (sink-text-input-stream-spend! fault text-input-stream)
   (-> sink-fault? sink-text-input-stream? input-port?)
   (begin (assert-can-get-cene-definitions!)
@@ -1401,48 +1349,47 @@
 
 (define/contract
   (sink-effects-run-op
-    fault op-impl unique-name qualify text-input-stream output-stream
-    then)
+    fault op-impl unique-name qualify text-input-stream then)
   (->
     sink-fault? sink? sink-authorized-name? sink?
-    sink-text-input-stream? sink-cexpr-sequence-output-stream?
+    sink-text-input-stream?
     (->
       sink-authorized-name? sink? sink-text-input-stream?
-      sink-cexpr-sequence-output-stream?
+      (maybe/c sink-cexpr?)
       sink-effects?)
     sink-effects?)
   (sink-effects-claim-freshen unique-name #/fn unique-name
   #/w- result
-    (sink-call fault op-impl
-      unique-name qualify text-input-stream output-stream
+    (sink-call fault op-impl unique-name qualify text-input-stream
     #/sink-fn-curried-fault 4
-    #/fn fault unique-name qualify text-input-stream output-stream
+    #/fn fault unique-name qualify text-input-stream maybe-result
     #/expect (sink-authorized-name? unique-name) #t
       (cene-err fault "Expected the unique name of a macro's callback results to be an authorized name")
     #/expect (sink-text-input-stream? text-input-stream) #t
       (cene-err fault "Expected the text input stream of a macro's callback results to be a text input stream")
-    #/expect (sink-cexpr-sequence-output-stream? output-stream) #t
-      (cene-err fault "Expected the expression sequence output stream of a macro's callback results to be an expression sequence output stream")
+    #/expect (sink-maybe->maybe-racket maybe-result)
+      (just maybe-result)
+      (cene-err fault "Expected the read-in value of a macro to be a nothing or a just")
+    #/begin
+      (expect maybe-result (just result) (void)
+      #/expect (sink-cexpr? result) #t
+        (cene-err fault "Expected the read-in value of a macro to be a nothing or a just of an expression")
+      #/void)
     #/sink-effects-claim-freshen unique-name #/fn unique-name
-    #/then unique-name qualify text-input-stream output-stream)
+    #/then unique-name qualify text-input-stream maybe-result)
   #/expect (sink-effects? result) #t
     (cene-err fault "Expected the return value of a macro to be an effectful computation")
     result))
 
 (define/contract
   (sink-effects-read-and-run-op
-    fault unique-name qualify text-input-stream output-stream
-    pre-qualify then)
+    fault unique-name qualify text-input-stream pre-qualify then)
   (->
-    sink-fault?
-    sink-authorized-name?
-    sink?
-    sink-text-input-stream?
-    sink-cexpr-sequence-output-stream?
+    sink-fault? sink-authorized-name? sink? sink-text-input-stream?
     (-> sink-name? sink-name?)
     (->
       sink-authorized-name? sink? sink-text-input-stream?
-      sink-cexpr-sequence-output-stream?
+      (maybe/c sink-cexpr?)
       sink-effects?)
     sink-effects?)
   (sink-effects-claim-freshen unique-name #/fn unique-name
@@ -1451,50 +1398,46 @@
   #/sink-effects-get (sink-authorized-name-get-name op-name)
   #/fn op-impl
   #/sink-effects-run-op
-    fault op-impl unique-name qualify text-input-stream output-stream
-    then))
+    fault op-impl unique-name qualify text-input-stream then))
 
 (define/contract
   (sink-effects-read-and-run-freestanding-cexpr-op
-    fault unique-name qualify text-input-stream output-stream then)
+    fault unique-name qualify text-input-stream then)
   (->
     sink-fault? sink-authorized-name? sink? sink-text-input-stream?
-    sink-cexpr-sequence-output-stream?
     (->
       sink-authorized-name? sink? sink-text-input-stream?
-      sink-cexpr-sequence-output-stream?
+      (maybe/c sink-cexpr?)
       sink-effects?)
     sink-effects?)
   (sink-effects-read-and-run-op
-    fault unique-name qualify text-input-stream output-stream
+    fault unique-name qualify text-input-stream
     sink-name-for-freestanding-cexpr-op
     then))
 
 (define/contract
   (sink-effects-read-and-run-bounded-cexpr-op
-    fault unique-name qualify text-input-stream output-stream then)
+    fault unique-name qualify text-input-stream then)
   (->
     sink-fault? sink-authorized-name? sink? sink-text-input-stream?
-    sink-cexpr-sequence-output-stream?
     (->
       sink-authorized-name? sink? sink-text-input-stream?
-      sink-cexpr-sequence-output-stream?
+      (maybe/c sink-cexpr?)
       sink-effects?)
     sink-effects?)
   (sink-effects-read-and-run-op
-    fault unique-name qualify text-input-stream output-stream
+    fault unique-name qualify text-input-stream
     sink-name-for-bounded-cexpr-op
     then))
 
 (define/contract
   (sink-effects-run-nameless-op
-    fault unique-name qualify text-input-stream output-stream then)
+    fault unique-name qualify text-input-stream then)
   (->
     sink-fault? sink-authorized-name? sink? sink-text-input-stream?
-    sink-cexpr-sequence-output-stream?
     (->
       sink-authorized-name? sink? sink-text-input-stream?
-      sink-cexpr-sequence-output-stream?
+      (maybe/c sink-cexpr?)
       sink-effects?)
     sink-effects?)
   (sink-effects-claim-freshen unique-name #/fn unique-name
@@ -1504,8 +1447,7 @@
       (sink-name-for-nameless-bounded-cexpr-op))
   #/fn op-impl
   #/sink-effects-run-op
-    fault op-impl unique-name qualify text-input-stream output-stream
-    then))
+    fault op-impl unique-name qualify text-input-stream then))
 
 ; TODO: See if we should keep this around. We just use it for
 ; debugging.
@@ -1518,14 +1460,13 @@
 ; TODO CEXPR-LOCATED: For every cexpr read this way, wrap that cexpr
 ; in a `cexpr-located`.
 (define/contract
-  (sink-effects-read-cexprs
-    fault unique-name qualify text-input-stream output-stream then)
+  (sink-effects-read-cexpr-tentative
+    fault unique-name qualify text-input-stream then)
   (->
     sink-fault? sink-authorized-name? sink? sink-text-input-stream?
-    sink-cexpr-sequence-output-stream?
     (->
       sink-authorized-name? sink? sink-text-input-stream?
-      sink-cexpr-sequence-output-stream?
+      (maybe/c sink-cexpr?)
       sink-effects?)
     sink-effects?)
   
@@ -1557,8 +1498,7 @@
   #/fn text-input-stream whitespace
   #/sink-effects-peek-whether-eof fault text-input-stream
   #/fn text-input-stream is-eof
-  #/if is-eof
-    (then unique-name qualify text-input-stream output-stream)
+  #/if is-eof (then unique-name qualify text-input-stream (nothing))
   
   #/sink-effects-optimized-textpat-read-located
     fault |pat ")"| text-input-stream
@@ -1578,76 +1518,73 @@
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     (sink-effects-read-and-run-freestanding-cexpr-op
-      fault unique-name qualify text-input-stream output-stream then)
+      fault unique-name qualify text-input-stream then)
   
   #/sink-effects-optimized-textpat-read-located
     fault |pat "("| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     (w- then
-      (fn unique-name qualify text-input-stream output-stream
+      (fn unique-name qualify text-input-stream maybe-result
         (sink-effects-optimized-textpat-read-located
           fault |pat ")"| text-input-stream
         #/fn text-input-stream maybe-str
         #/expect maybe-str (just _)
           ; TODO FAULT: Make this `fault` more specific.
           (cene-err fault "Encountered a syntax that began with ( or (. and did not end with )")
-        #/then unique-name qualify text-input-stream output-stream))
+        #/then unique-name qualify text-input-stream maybe-result))
     #/sink-effects-optimized-textpat-read-located
       fault |pat "."| text-input-stream
     #/fn text-input-stream maybe-str
     #/mat maybe-str (just _)
       (sink-effects-read-and-run-bounded-cexpr-op
-        fault unique-name qualify text-input-stream output-stream
-        then)
+        fault unique-name qualify text-input-stream then)
     #/sink-effects-run-nameless-op
-      fault unique-name qualify text-input-stream output-stream then)
+      fault unique-name qualify text-input-stream then)
   
   #/sink-effects-optimized-textpat-read-located
     fault |pat "["| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     (w- then
-      (fn unique-name qualify text-input-stream output-stream
+      (fn unique-name qualify text-input-stream maybe-result
         (sink-effects-optimized-textpat-read-located
           fault |pat "]"| text-input-stream
         #/fn text-input-stream maybe-str
         #/expect maybe-str (just _)
           ; TODO FAULT: Make this `fault` more specific.
           (cene-err fault "Encountered a syntax that began with [ or [. and did not end with ]")
-        #/then unique-name qualify text-input-stream output-stream))
+        #/then unique-name qualify text-input-stream maybe-result))
     #/sink-effects-optimized-textpat-read-located
       fault |pat "."| text-input-stream
     #/fn text-input-stream maybe-str
     #/mat maybe-str (just _)
       (sink-effects-read-and-run-bounded-cexpr-op
-        fault unique-name qualify text-input-stream output-stream
-        then)
+        fault unique-name qualify text-input-stream then)
     #/sink-effects-run-nameless-op
-      fault unique-name qualify text-input-stream output-stream then)
+      fault unique-name qualify text-input-stream then)
   
   #/sink-effects-optimized-textpat-read-located
     fault |pat "/"| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     (w- then
-      (fn unique-name qualify text-input-stream output-stream
+      (fn unique-name qualify text-input-stream maybe-result
         (sink-effects-peek-whether-closing-bracket
           fault text-input-stream
         #/fn text-input-stream is-closing-bracket
         #/if (not is-closing-bracket)
           ; TODO FAULT: Make this `fault` more specific.
           (cene-err fault "Encountered a syntax that began with /. and did not end at ) or ]")
-        #/then unique-name qualify text-input-stream output-stream))
+        #/then unique-name qualify text-input-stream maybe-result))
     #/sink-effects-optimized-textpat-read-located
       fault |pat "."| text-input-stream
     #/fn text-input-stream maybe-str
     #/mat maybe-str (just _)
       (sink-effects-read-and-run-bounded-cexpr-op
-        fault unique-name qualify text-input-stream output-stream
-        then)
+        fault unique-name qualify text-input-stream then)
     #/sink-effects-run-nameless-op
-      fault unique-name qualify text-input-stream output-stream then)
+      fault unique-name qualify text-input-stream then)
   
   ; TODO FAULT: Make this `fault` more specific.
   #/cene-err fault "Encountered an unrecognized case of the expression syntax"))
@@ -1680,6 +1617,10 @@
       name)))
 
 (define s-trivial (core-sink-struct "trivial" #/list))
+
+(define s-nothing (core-sink-struct "nothing" #/list))
+(define s-just (core-sink-struct "just" #/list "val"))
+
 (define s-clamor-err
   (core-sink-struct "clamor-err" #/list "blame" "message"))
 
@@ -1788,46 +1729,35 @@
     ; one else can be using it.
     (sink-effects-claim unique-name #/fn #/sink-effects-noop)
   #/fn text-input-stream
-  #/sink-effects-claim-and-split unique-name 3
-  #/dissectfn
-    (list unique-name-stream unique-name-writer unique-name-main)
-  #/sink-effects-make-cexpr-sequence-output-stream
-    fault
-    unique-name-stream
-    unique-name-writer
-    (fn unique-name-writer cexpr then
-      ; If we encounter an expression, we evaluate it and call the
-      ; result, passing in the current scope information.
-      (sink-effects-claim-and-split unique-name-writer 2
-      #/dissectfn (list unique-name-first unique-name-rest)
-      #/expect cexpr (sink-cexpr cexpr)
-        ; TODO: Test that we can actually get this error. We might
-        ; already be checking for this condition elsewhere.
-        ; TODO FAULT: Make this `fault` more specific.
-        (cene-err fault "Encountered a top-level expression that compiled to a non-expression value")
-      #/expect (cexpr-has-free-vars? cexpr #/table-empty) #f
-        ; TODO FAULT: Make this `fault` more specific.
-        (cene-err fault "Encountered a top-level expression with at least one free variable")
-      #/sink-effects-fuse (then unique-name-rest)
-      #/sink-effects-cexpr-eval fault cexpr #/fn directive
-      #/expect directive (sink-directive directive)
-        ; TODO FAULT: Make this `fault` more specific.
-        (cene-err fault "Expected every top-level expression to evaluate to a directive")
-      #/w- effects
-        (sink-call fault directive unique-name-first qualify)
-      #/expect (sink-effects? effects) #t
-        ; TODO FAULT: Make this `fault` more specific.
-        (cene-err fault "Expected every top-level expression to evaluate to a directive made from a callable value that takes two arguments and returns side effects")
-        effects))
-  #/fn output-stream unwrap
-  #/sink-effects-read-cexprs
-    fault unique-name-main qualify text-input-stream output-stream
-  #/fn unique-name-main qualify text-input-stream output-stream
-  #/unwrap output-stream #/fn unique-name-writer
-  #/sink-effects-claim-and-split unique-name-writer 0
-  #/dissectfn (list)
-  #/sink-effects-read-top-level
-    fault unique-name-main qualify text-input-stream))
+  #/sink-effects-read-cexpr-tentative
+    fault unique-name qualify text-input-stream
+  #/fn unique-name qualify text-input-stream maybe-result
+  #/sink-effects-claim-and-split unique-name 2
+  #/dissectfn (list unique-name-first unique-name-rest)
+  #/sink-effects-fuse
+    (sink-effects-read-top-level
+      fault unique-name-rest qualify text-input-stream)
+  #/expect maybe-result (just cexpr)
+    ; NOTE: We claim the `unique-name-first` to stay in the habit,
+    ; even though it's clear no one else can be using it.
+    (sink-effects-claim unique-name-first #/fn #/sink-effects-noop)
+  #/expect cexpr (sink-cexpr cexpr)
+    ; TODO: Test that we can actually get this error. We might already
+    ; be checking for this condition elsewhere.
+    ; TODO FAULT: Make this `fault` more specific.
+    (cene-err fault "Encountered a top-level expression that compiled to a non-expression value")
+  #/expect (cexpr-has-free-vars? cexpr #/table-empty) #f
+    ; TODO FAULT: Make this `fault` more specific.
+    (cene-err fault "Encountered a top-level expression with at least one free variable")
+  #/sink-effects-cexpr-eval fault cexpr #/fn directive
+  #/expect directive (sink-directive directive)
+    ; TODO FAULT: Make this `fault` more specific.
+    (cene-err fault "Expected every top-level expression to evaluate to a directive")
+  #/w- effects (sink-call fault directive unique-name-first qualify)
+  #/expect (sink-effects? effects) #t
+    ; TODO FAULT: Make this `fault` more specific.
+    (cene-err fault "Expected every top-level expression to evaluate to a directive made from a callable value that takes two arguments and returns side effects")
+    effects))
 
 (define/contract
   (sink-effects-run-string fault unique-name qualify string)

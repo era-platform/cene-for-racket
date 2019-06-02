@@ -121,9 +121,6 @@
 (define s-nil (core-sink-struct "nil" #/list))
 (define s-cons (core-sink-struct "cons" #/list "first" "rest"))
 
-(define s-nothing (core-sink-struct "nothing" #/list))
-(define s-just (core-sink-struct "just" #/list "val"))
-
 (define s-assoc (core-sink-struct "assoc" #/list "key" "val"))
 
 ; NOTE: Unlike the other struct tags here, this one is not exposed to
@@ -194,24 +191,6 @@
       (make-sink-struct (s-nil) #/list))
     (make-sink-struct (s-nope) #/list
       (make-sink-struct (s-nil) #/list))))
-
-(define/contract (sink-maybe->maybe-racket sink-maybe)
-  (-> sink? #/maybe/c #/maybe/c sink?)
-  (begin (assert-can-get-cene-definitions!)
-  #/mat (unmake-sink-struct-maybe (s-nothing) sink-maybe)
-    (just #/list)
-    (just #/nothing)
-  #/mat (unmake-sink-struct-maybe (s-just) sink-maybe)
-    (just #/list val)
-    (just #/just val)
-  #/nothing))
-
-(define/contract (racket-maybe->sink racket-maybe)
-  (-> (maybe/c sink?) sink?)
-  (begin (assert-can-get-cene-definitions!)
-  #/mat racket-maybe (just val)
-    (make-sink-struct (s-just) #/list val)
-    (make-sink-struct (s-nothing) #/list)))
 
 (define/contract (sink-list->maybe-racket sink-list)
   (-> sink? #/maybe/c #/listof sink?)
@@ -1100,27 +1079,24 @@
       (->
         sink-fault?
         sink-authorized-name? sink? sink-text-input-stream?
-        sink-cexpr-sequence-output-stream?
         (->
           sink-authorized-name? sink? sink-text-input-stream?
-          sink-cexpr-sequence-output-stream?
+          (maybe/c sink-cexpr?)
           sink-effects?)
         sink-effects?)
       sink?)
-    (sink-fn-curried-fault 5 #/fn
-      fault unique-name qualify text-input-stream output-stream then
+    (sink-fn-curried-fault 4 #/fn
+      fault unique-name qualify text-input-stream then
       
       (expect (sink-authorized-name? unique-name) #t
         (cene-err fault "Expected unique-name to be an authorized name")
       #/expect (sink-text-input-stream? text-input-stream) #t
         (cene-err fault "Expected text-input-stream to be a text input stream")
-      #/expect (sink-cexpr-sequence-output-stream? output-stream) #t
-        (cene-err fault "Expected output-stream to be an expression sequence output stream")
-      #/body fault unique-name qualify text-input-stream output-stream
-      #/fn unique-name qualify text-input-stream output-stream
+      #/body fault unique-name qualify text-input-stream
+      #/fn unique-name qualify text-input-stream maybe-result
       #/w- effects
-        (sink-call fault then
-          unique-name qualify text-input-stream output-stream)
+        (sink-call fault then unique-name qualify text-input-stream
+          (racket-maybe->sink maybe-result))
       #/expect (sink-effects? effects) #t
         (cene-err fault "Expected the return value of a macro's callback to be an effectful computation")
         effects)))
@@ -1131,14 +1107,13 @@
   (define/contract (macro-impl-specific-number-of-args n-args body)
     (-> natural? (-> (listof sink-cexpr?) sink-cexpr?) sink?)
     (macro-impl #/fn
-      fault unique-name qualify text-input-stream output-stream then
+      fault unique-name qualify text-input-stream then
       
       (sink-effects-read-bounded-specific-number-of-cexprs
         fault unique-name qualify text-input-stream n-args
       #/fn unique-name qualify text-input-stream args
-      #/sink-effects-cexpr-write fault output-stream (body args)
-      #/fn output-stream
-      #/then unique-name qualify text-input-stream output-stream)))
+      #/then unique-name qualify text-input-stream
+        (just #/body args))))
   
   (define/contract
     (def-func-impl-reified!
@@ -1373,13 +1348,11 @@
       (sink-name-for-bounded-cexpr-op
       #/sink-name-for-string #/sink-string name-string)
       (macro-impl #/fn
-        fault unique-name qualify text-input-stream output-stream then
+        fault unique-name qualify text-input-stream then
         
         (body fault unique-name qualify text-input-stream
         #/fn unique-name qualify text-input-stream cexpr
-        #/sink-effects-cexpr-write fault output-stream cexpr
-        #/fn output-stream
-        #/then unique-name qualify text-input-stream output-stream))))
+        #/then unique-name qualify text-input-stream (just cexpr)))))
   
   
   
@@ -1394,12 +1367,9 @@
   ; macro based on qualifying the string "foo", and runs it.
   ;
   (def-value-for-package! (sink-name-for-nameless-bounded-cexpr-op)
-    (macro-impl #/fn
-      fault unique-name qualify text-input-stream output-stream then
-      
+    (macro-impl #/fn fault unique-name qualify text-input-stream then
       (sink-effects-read-and-run-bounded-cexpr-op
-        fault unique-name qualify text-input-stream output-stream
-        then)))
+        fault unique-name qualify text-input-stream then)))
   
   ; This binds the freestanding expression reader macro for `=`. This
   ; implementation is a line comment syntax: It consumes all the
@@ -1411,13 +1381,11 @@
   (def-value-for-package!
     (sink-name-for-freestanding-cexpr-op
     #/sink-name-for-string #/sink-string "=")
-    (macro-impl #/fn
-      fault unique-name qualify text-input-stream output-stream then
-      
+    (macro-impl #/fn fault unique-name qualify text-input-stream then
       (sink-effects-claim-freshen unique-name #/fn unique-name
       #/sink-effects-read-non-line-breaks fault text-input-stream
       #/fn text-input-stream non-line-breaks
-      #/then unique-name qualify text-input-stream output-stream)))
+      #/then unique-name qualify text-input-stream (nothing))))
   
   
   ; Miscellaneous
@@ -2980,44 +2948,6 @@
   
   ; TODO BUILTINS: Make sure we have a sufficient set of operations
   ; for manipulating `sink-located-string` values.
-  
-  (def-func! "is-expr-sequence-output-stream" v
-    (racket-boolean->sink #/sink-cexpr-sequence-output-stream? v))
-  
-  (def-func-fault! "effects-make-expr-sequence-output-stream"
-    fault unique-name state on-expr then
-    
-    ; TODO: See if we should differentiate the error messages for
-    ; these three occurrences of `verify-callback-effects!`.
-    (expect (sink-authorized-name? unique-name) #t
-      (cene-err fault "Expected unique-name to be an authorized name")
-    #/sink-effects-make-cexpr-sequence-output-stream
-      fault
-      unique-name
-      state
-      (fn state cexpr then
-        (verify-callback-effects! fault #/sink-call fault on-expr
-          state
-          cexpr
-          (sink-fn-curried 1 #/fn state #/then state)))
-    #/fn output-stream unwrap
-    #/verify-callback-effects! fault #/sink-call fault then
-      output-stream
-      (sink-fn-curried-fault 2 #/fn fault output-stream then
-      #/expect (sink-cexpr-sequence-output-stream? output-stream) #t
-        (cene-err fault "Expected output-stream to be an expression sequence output stream")
-      #/unwrap output-stream #/fn state
-      #/verify-callback-effects! fault #/sink-call fault then state)))
-  
-  (def-func-fault! "effects-expr-write" fault output-stream expr then
-    (expect (sink-cexpr-sequence-output-stream? output-stream) #t
-      (cene-err fault "Expected output-stream to be an expression sequence output stream")
-    #/expect (cexpr? expr) #t
-      (cene-err fault "Expected expr to be an expression")
-    #/sink-effects-cexpr-write fault output-stream expr
-    #/fn output-stream
-    #/verify-callback-effects! fault #/sink-call fault then
-      output-stream))
   
   (def-func! "is-text-input-stream" v
     (racket-boolean->sink #/sink-text-input-stream? v))

@@ -200,21 +200,16 @@
         unique-name target-name (dex-give-up) value))
   /let macro-impl
     (fn-blame bl-body body
-      (fn-blame bl-macro
-        unique-name qualify text-input-stream output-stream then
-        
+      (fn-blame bl-macro unique-name qualify text-input-stream then
         (cast (is-authorized-name unique-name) yep -
           [c-blame bl-macro err /str-prim Expected unique-name to be an authorized name]
         /cast (is-text-input-stream text-input-stream) yep -
           [c-blame bl-macro err /str-prim Expected text-input-stream to be a text input stream]
-        /cast (is-expr-sequence-output-stream output-stream) yep -
-          [c-blame bl-macro err /str-prim Expected output-stream to be an expression sequence output stream]
-        /c body
-          bl-macro unique-name qualify text-input-stream output-stream
-        /fn unique-name qualify text-input-stream output-stream
+        /c body bl-macro unique-name qualify text-input-stream
+        /fn unique-name qualify text-input-stream maybe-result
         /let effects
           (c-blame bl-macro then
-            unique-name qualify text-input-stream output-stream)
+            unique-name qualify text-input-stream maybe-result)
         /cast (c is-effects effects) yep -
           [c-blame bl-macro err /str-prim Expected the return value of a macro's callback to be an effectful computation]
           effects)))
