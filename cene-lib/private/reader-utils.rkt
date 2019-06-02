@@ -143,8 +143,8 @@
     #/sink-effects-read-ids-and-exprs-onto
       fault unique-name qualify text-input-stream rev-results
       pre-qualify
-    #/fn unique-name qualify text-input-streams rev-results
-    #/next unique-name qualify text-input-streams rev-results)))
+    #/fn unique-name qualify text-input-stream rev-results
+    #/next unique-name qualify text-input-stream rev-results)))
 
 ; This reads cexprs until it gets to a closing bracket.
 (define/contract
@@ -253,8 +253,8 @@
     #/sink-effects-read-ids-and-exprs-onto
       fault unique-name qualify text-input-stream rev-results
       pre-qualify
-    #/fn unique-name qualify text-input-streams rev-results
-    #/next unique-name qualify text-input-streams rev-results)))
+    #/fn unique-name qualify text-input-stream rev-results
+    #/next unique-name qualify text-input-stream rev-results)))
 
 ; This reads precisely `n` cexprs, and it causes an error if it
 ; reaches a closing bracket first or if it reads too many cexprs in
