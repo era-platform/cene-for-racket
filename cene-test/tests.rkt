@@ -19,9 +19,11 @@
 ;   language governing permissions and limitations under the License.
 
 
+(require #/only-in racket/format ~a)
+
 (require rackunit)
 
-(require #/only-in lathe-comforts dissectfn expect fn w-)
+(require #/only-in lathe-comforts dissect dissectfn expect fn w-)
 (require #/only-in lathe-comforts/maybe just nothing)
 (require #/only-in lathe-comforts/trivial trivial)
 
@@ -29,7 +31,7 @@
   authorized-name-subname error-definer-from-message
   extfx-ct-continue)
 (require #/only-in effection/extensibility/unsafe
-  run-extfx! run-extfx-result-success?)
+  run-extfx! run-extfx-result-failure run-extfx-result-success?)
 
 (require cene)
 
@@ -86,16 +88,39 @@
   (nothing)
   "Running nothing but line comments works")
 
-; TODO: Make it so errors like this are actually collected into the
-; list of errors returned by `cene-run-string-sample` rather than
-; letting them escape as Racket exceptions.
-(check-exn
-  (lambda (e)
-    (expect e (exn:fail:cene message marks clamor) #f
-    #/not #/not #/regexp-match #px"trivial" message))
-  (lambda ()
-    (cene-code-failure "(follow-heart/trivial)"))
-  "Calling Cene's `follow-heart` raises an `exn:fail:cene` exception in Racket")
+(check-equal?
+  (dissect (cene-run-string-sample ")")
+    (run-extfx-result-failure errors)
+    #t)
+  #t
+  "Running an unmatched closing paren causes a Cene error, not a Racket error")
+
+; TODO: See if we can stop relying on the `write` behavior of the
+; internal structure type `sink-struct` and the Effection internal
+; structure types `run-extfx-errors`, `error-definer-from-message`,
+; and `name` here.
+(check-equal?
+  (dissect (cene-run-string-sample "(follow-heart/trivial)")
+    (run-extfx-result-failure errors)
+    (not #/not #/regexp-match #px"trivial" #/~a errors))
+  #t
+  "Calling this Cene implementation's `follow-heart` causes a Cene error with a message based on the given value")
+
+; TODO: See if we can stop relying on the `write` behavior of the
+; Effection internal structure types `run-extfx-errors` and
+; `error-definer-from-message` here.
+(check-equal?
+  (dissect
+    (cene-run-string-sample
+      "
+      (c (fn f /c f /nil) /fn-blame bl -
+        [follow-heart /clamor-err bl /str-prim:Hello world])
+      
+      ")
+    (run-extfx-result-failure errors)
+    (not #/not #/regexp-match #px"Hello world" #/~a errors))
+  #t
+  "Calling Cene's `follow-heart` with an appropriate `clamor-err` value causes a Cene error with a custom message")
 
 (check-equal?
   (cene-code-failure

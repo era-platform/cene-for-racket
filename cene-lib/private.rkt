@@ -45,10 +45,11 @@
 (require #/only-in effection/extensibility/base
   authorized-name? authorized-name-get-name authorized-name-subname
   dspace? error-definer-from-message error-definer-uninformative
-  extfx? extfx-claim-unique extfx-ct-continue extfx-establish-pubsub
-  extfx-get extfx-noop extfx-pub-write extfx-put extfx-split-list
-  extfx-sub-write fuse-extfx optionally-dexable-dexable
-  optionally-dexable-once success-or-error-definer)
+  extfx? extfx-claim-unique extfx-ct-continue extfx-err
+  extfx-establish-pubsub extfx-get extfx-noop extfx-pub-write
+  extfx-put extfx-split-list extfx-sub-write fuse-extfx
+  optionally-dexable-dexable optionally-dexable-once
+  success-or-error-definer)
 (require #/only-in effection/order
   assocs->table-if-mutually-unique dex-immutable-string dex-trivial)
 (require #/only-in effection/order/base
@@ -268,20 +269,24 @@
 (define/contract cene-definition-get-param
   (parameter/c
     (maybe/c
-      (list/c dspace? sink-authorized-name? (-> sink-name? sink?))))
+      (list/c
+        dspace?
+        sink-authorized-name?
+        (-> sink-name? sink?)
+        (-> sink? none/c))))
   (make-parameter #/nothing))
 
 (define/contract (assert-can-get-cene-definitions!)
   (-> void?)
   (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root get)
+    (just #/list ds lang-impl-qualify-root get err)
     (error "Expected an implementation of `cene-definition-get` to be available in the dynamic scope")
   #/void))
 
 (define/contract (assert-cannot-get-cene-definitions!)
   (-> void?)
   (mat (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root get)
+    (just #/list ds lang-impl-qualify-root get err)
     ; TODO: Make this error message more visually distinct from the
     ; `assert-can-get-cene-definitions!` error message.
     (error "Expected no implementation of `cene-definition-get` to be available in the dynamic scope")
@@ -290,23 +295,30 @@
 (define/contract (cene-definition-dspace)
   (-> dspace?)
   (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root get)
+    (just #/list ds lang-impl-qualify-root get err)
     (error "Expected every call to `cene-definition-dspace` to occur with an implementation in the dynamic scope")
     ds))
 
 (define/contract (cene-definition-lang-impl-qualify-root)
   (-> sink-authorized-name?)
   (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root get)
+    (just #/list ds lang-impl-qualify-root get err)
     (error "Expected every call to `cene-definition-lang-impl-qualify-root` to occur with an implementation in the dynamic scope")
     lang-impl-qualify-root))
 
 (define/contract (cene-definition-get name)
   (-> sink-name? sink?)
   (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root get)
+    (just #/list ds lang-impl-qualify-root get err)
     (error "Expected every call to `cene-definition-get` to occur with an implementation in the dynamic scope")
   #/get name))
+
+(define/contract (raise-cene-err clamor)
+  (-> sink? none/c)
+  (expect (cene-definition-get-param)
+    (just #/list ds lang-impl-qualify-root get err)
+    (error "Expected every call to `raise-cene-err` to occur with an implementation in the dynamic scope")
+  #/err clamor))
 
 (define cene-definition-get-prompt-tag (make-continuation-prompt-tag))
 
@@ -329,7 +341,9 @@
       [
         cene-definition-get-param
         (just
-          (list ds (sink-authorized-name lang-impl-qualify-root)
+          (list
+            ds
+            (sink-authorized-name lang-impl-qualify-root)
             (dissectfn (sink-name name)
               (shift-at cene-definition-get-prompt-tag k
               #/extfx-with-cene-definition-restorer #/fn restore
@@ -337,7 +351,24 @@
                 #;on-stall (error-definer-uninformative)
               #/fn value
               #/restore #/fn
-              #/k value))))])
+              #/k value))
+            (fn clamor
+              (shift-at cene-definition-get-prompt-tag k
+              #/dissect
+                (expect
+                  (unmake-sink-struct-maybe (s-clamor-err) clamor)
+                  (just #/list
+                    (sink-fault maybe-marks)
+                    (sink-string message))
+                  (list (nothing) (format "~s" clamor))
+                  (list maybe-marks message))
+                (list maybe-marks message)
+              #/w- marks
+                (mat maybe-marks (just marks) marks
+                #/current-continuation-marks)
+              ; TODO: Do smething with `marks` here. Maybe use it to
+              ; add a stack trace to the message somehow.
+              #/extfx-err #/error-definer-from-message message))))])
   #/reset-at cene-definition-get-prompt-tag
     (body unique-name)))
 
@@ -707,8 +738,6 @@
       (cene-definition-lang-impl-qualify-root))
     then))
 
-(struct exn:fail:cene exn:fail (clamor))
-
 (define/contract (sink-cexpr-var name)
   (-> sink-name? sink-cexpr?)
   (dissect name (sink-name name)
@@ -899,20 +928,6 @@
 (define/contract (make-fault-internal)
   (-> sink-fault?)
   (sink-fault #/just #/current-continuation-marks))
-
-(define/contract (raise-cene-err clamor)
-  (-> sink? none/c)
-  (begin (assert-can-get-cene-definitions!)
-  #/dissect
-    (expect (unmake-sink-struct-maybe (s-clamor-err) clamor)
-      (just #/list (sink-fault maybe-marks) (sink-string message))
-      (list (nothing) (format "~s" clamor))
-      (list maybe-marks message))
-    (list maybe-marks message)
-  #/w- marks
-    (mat maybe-marks (just marks) marks
-    #/current-continuation-marks)
-  #/raise #/exn:fail:cene message marks clamor))
 
 (define-simple-macro (cene-err fault:expr message:string)
   ; TODO: See if there's a way we can either stop depending on

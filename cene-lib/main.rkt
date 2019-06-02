@@ -36,7 +36,3 @@
 (provide sink-effects-init-package)
 (provide sink-effects-run!)
 (provide sink-effects-run-string)
-
-; TODO: See if we really want to provide these exports at all. If we
-; do, document them.
-(provide exn:fail:cene)
