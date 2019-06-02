@@ -1445,6 +1445,10 @@
   
   (def-data-struct! "clamor-err" #/list "blame" "message")
   
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func! "is-blame" v
+    (racket-boolean->sink #/sink-fault? v))
+  
   ; TODO BUILTINS: Implement the macro `err`, probably in a Cene
   ; prelude. In the prelude, before we define `err`, we can still
   ; report errors using `[follow-heart/clamor-err bl /str-prim ...]`.
