@@ -1066,35 +1066,46 @@
     (-> (-> sink-authorized-name? sink-effects?) void?)
     (set! init-essentials-steps (cons step init-essentials-steps)))
   
-  (define/contract (add-init-package-step! step)
-    (->
-      (-> sink-authorized-name? (-> sink-name? sink-authorized-name?)
-        sink-effects?)
-      void?)
-    (add-init-essentials-step! #/fn unique-name
-      (sink-effects-add-init-package-step
-        root-fault unique-name step)))
+  (define/contract
+    (sink-effects-def-dexable-value-for-lang-impl
+      unique-name target-name dex value)
+    (-> sink-authorized-name? sink-authorized-name? sink-dex? sink?
+      sink-effects?)
+    (sink-effects-claim unique-name #/fn
+    #/sink-effects-put target-name dex value))
   
-  (define/contract (def-dexable-value-for-lang-impl! name dex value)
-    (-> sink-authorized-name? sink-dex? sink? void?)
-    (add-init-essentials-step! #/fn unique-name
-      (sink-effects-put name dex value)))
+  (define/contract
+    (sink-effects-def-dexable-value-for-package
+      unique-name target-name dex value)
+    (-> sink-authorized-name? sink-name? sink-dex? sink?
+      sink-effects?)
+    (sink-effects-claim-freshen unique-name #/fn unique-name
+    #/sink-effects-add-init-package-step root-fault unique-name
+    #/fn unique-name qualify-for-package
+      (sink-effects-claim unique-name #/fn
+      #/sink-effects-put (qualify-for-package target-name) dex
+        value)))
   
-  (define/contract (def-dexable-value-for-package! name dex value)
-    (-> sink-name? sink-dex? sink? void?)
-    (add-init-package-step! #/fn unique-name qualify-for-package
-      (sink-effects-claim-and-split unique-name 0 #/dissectfn (list)
-      #/sink-effects-put (qualify-for-package name) dex value)))
+  (define/contract
+    (sink-effects-def-value-for-lang-impl
+      unique-name target-name value)
+    (-> sink-authorized-name? sink-authorized-name? sink?
+      sink-effects?)
+    (sink-effects-claim-freshen unique-name #/fn unique-name
+    #/sink-effects-def-dexable-value-for-lang-impl
+      unique-name target-name (sink-dex #/dex-give-up) value))
   
-  (define/contract (def-value-for-lang-impl! name value)
-    (-> sink-authorized-name? sink? void?)
-    (def-dexable-value-for-lang-impl!
-      name (sink-dex #/dex-give-up) value))
+  (define/contract
+    (sink-effects-def-value-for-package unique-name target-name value)
+    (-> sink-authorized-name? sink-name? sink? sink-effects?)
+    (sink-effects-claim-freshen unique-name #/fn unique-name
+    #/sink-effects-def-dexable-value-for-package
+      unique-name target-name (sink-dex #/dex-give-up) value))
   
   (define/contract (def-value-for-package! name value)
     (-> sink-name? sink? void?)
-    (def-dexable-value-for-package!
-      name (sink-dex #/dex-give-up) value))
+    (add-init-essentials-step! #/fn unique-name
+      (sink-effects-def-value-for-package unique-name name value)))
   
   (define/contract (macro-impl body)
     (->
@@ -1142,29 +1153,38 @@
       #/then unique-name qualify text-input-stream output-stream)))
   
   (define/contract
-    (def-func-impl-reified!
-      qualified-main-tag-name qualified-proj-tag-names impl)
-    (-> sink-authorized-name? sink-table? sink? void?)
-    (def-value-for-lang-impl!
-      (sink-authorized-name-for-function-implementation-code
-        qualified-main-tag-name qualified-proj-tag-names)
-      (sink-cexpr-reified impl))
-    (def-value-for-lang-impl!
-      (sink-authorized-name-for-function-implementation-value
-        qualified-main-tag-name qualified-proj-tag-names)
-      impl))
+    (sink-effects-def-func-impl-reified
+      unique-name qualified-main-tag-name qualified-proj-tag-names
+      impl)
+    (-> sink-authorized-name? sink-authorized-name? sink-table? sink?
+      sink-effects?)
+    (sink-effects-claim-and-split unique-name 2
+    #/dissectfn (list unique-name-for-code unique-name-for-value)
+    #/sink-effects-fuse
+      (sink-effects-def-value-for-lang-impl unique-name-for-code
+        (sink-authorized-name-for-function-implementation-code
+          qualified-main-tag-name qualified-proj-tag-names)
+        (sink-cexpr-reified impl))
+      (sink-effects-def-value-for-lang-impl unique-name-for-value
+        (sink-authorized-name-for-function-implementation-value
+          qualified-main-tag-name qualified-proj-tag-names)
+        impl)))
   
   
   (define/contract
-    (def-func-verbose!
-      def-value-custom! main-tag-string n-args racket-func)
+    (sink-effects-def-func-verbose
+      unique-name sink-effects-def-value-custom main-tag-string n-args
+      racket-func)
     (->
-      (-> sink-name? sink? void?)
+      sink-authorized-name?
+      (-> sink-authorized-name? sink-name? sink? sink-effects?)
       immutable-string?
       exact-positive-integer?
       procedure?
-      void?)
-    (w- main-tag-name
+      sink-effects?)
+    (sink-effects-claim-and-split unique-name 2
+    #/dissectfn (list unique-name-for-macro unique-name-for-impl)
+    #/w- main-tag-name
       (sink-name-for-string #/sink-string main-tag-string)
     #/w- qualified-main-tag-authorized-name
       (sink-name-qualify-for-lang-impl
@@ -1172,10 +1192,11 @@
     #/w- qualified-main-tag-name
       (sink-authorized-name-get-name
         qualified-main-tag-authorized-name)
+    #/sink-effects-fuse
       
       ; We define a reader macro so that the user can write code that
       ; compiles into a call to this function.
-      (def-value-custom!
+      (sink-effects-def-value-custom unique-name-for-macro
         (sink-name-for-bounded-cexpr-op main-tag-name)
         
         ; Given precisely `n-args` cexprs, we construct a cexpr that
@@ -1199,7 +1220,7 @@
       
       ; We define a Cene struct function implementation containing
       ; the function's run time behavior.
-      (def-func-impl-reified!
+      (sink-effects-def-func-impl-reified unique-name-for-impl
         qualified-main-tag-authorized-name
         (sink-table #/table-empty)
         (sink-opaque-fn #/fn struct-value
@@ -1207,10 +1228,26 @@
       
       ))
   
+  (define/contract
+    (def-func-verbose!
+      sink-effects-def-value-custom main-tag-string n-args
+      racket-func)
+    (->
+      (-> sink-authorized-name? sink-name? sink? sink-effects?)
+      immutable-string?
+      exact-positive-integer?
+      procedure?
+      void?)
+    (add-init-essentials-step! #/fn unique-name
+      (sink-effects-def-func-verbose
+        unique-name sink-effects-def-value-custom main-tag-string
+        n-args racket-func)))
+  
   (define-syntax (def-func-fault! stx)
     (syntax-parse stx #/
       (_ main-tag-string:expr fault:id param:id ... body:expr)
-      #`(def-func-verbose! def-value-for-package! main-tag-string
+      #`(def-func-verbose! sink-effects-def-value-for-package
+          main-tag-string
           '#,(length (syntax->list #'(param ...)))
           (fn fault param ...
             body))))
@@ -1220,9 +1257,12 @@
       (_ main-tag-string:expr param:id ... body:expr)
       #`(def-func-fault! main-tag-string fault param ... body)))
   
-  (define/contract (def-nullary-func! main-tag-string result)
-    (-> immutable-string? sink? void?)
-    (w- main-tag-name
+  (define/contract
+    (sink-effects-def-nullary-func unique-name main-tag-string result)
+    (-> sink-authorized-name? immutable-string? sink? sink-effects?)
+    (sink-effects-claim-and-split unique-name 2
+    #/dissectfn (list unique-name-for-macro unique-name-for-impl)
+    #/w- main-tag-name
       (sink-name-for-string #/sink-string main-tag-string)
     #/w- qualified-main-tag-authorized-name
       (sink-name-qualify-for-lang-impl
@@ -1230,10 +1270,11 @@
     #/w- qualified-main-tag-name
       (sink-authorized-name-get-name
         qualified-main-tag-authorized-name)
+    #/sink-effects-fuse
       
       ; We define a reader macro so that the user can write code that
       ; compiles into a call to this function.
-      (def-value-for-package!
+      (sink-effects-def-value-for-package unique-name-for-macro
         (sink-name-for-bounded-cexpr-op main-tag-name)
         
         ; Given precisely zero cexprs, we construct a cexpr that first
@@ -1251,7 +1292,7 @@
       
       ; We define a Cene struct function implementation containing
       ; the function's run time behavior.
-      (def-func-impl-reified!
+      (sink-effects-def-func-impl-reified unique-name-for-impl
         qualified-main-tag-authorized-name
         (sink-table #/table-empty)
         (sink-fn-curried-fault 2 #/fn fault struct-value arg
@@ -1262,9 +1303,27 @@
       
       ))
   
-  (define/contract (def-data-struct! main-tag-string proj-strings)
-    (-> immutable-string? (listof immutable-string?) void?)
-    (w- main-tag-name
+  (define/contract (def-nullary-func! main-tag-string result)
+    (-> immutable-string? sink? void?)
+    (add-init-essentials-step! #/fn unique-name
+      (sink-effects-def-nullary-func
+        unique-name main-tag-string result)))
+  
+  (define/contract
+    (sink-effects-def-data-struct
+      unique-name main-tag-string proj-strings)
+    (->
+      sink-authorized-name?
+      immutable-string?
+      (listof immutable-string?)
+      sink-effects?)
+    (sink-effects-claim-and-split unique-name 3
+    #/dissectfn
+      (list
+        unique-name-for-macro
+        unique-name-for-impl
+        unique-name-for-metadata)
+    #/w- main-tag-name
       (sink-name-for-string #/sink-string main-tag-string)
     #/w- qualified-main-tag-authorized-name
       (sink-name-qualify-for-lang-impl
@@ -1296,12 +1355,12 @@
           #/cons proj-name proj-authorized-name)))
       (just qualified-proj-names-table)
       (error "Expected the projection strings to be mutually unique")
-    #/begin
+    #/sink-effects-fuse
       
       ; We define a reader macro so that the user can write code that
       ; compiles into an expression that constructs a struct with this
       ; tag.
-      (def-value-for-package!
+      (sink-effects-def-value-for-package unique-name-for-macro
         (sink-name-for-bounded-cexpr-op main-tag-name)
         
         (w- n-projs (length qualified-proj-names)
@@ -1327,7 +1386,7 @@
       ; implementation for every struct we use, which might be an
       ; invariant that comes in handy. (TODO: See if it does.)
       ;
-      (def-func-impl-reified!
+      (sink-effects-def-func-impl-reified unique-name-for-impl
         qualified-main-tag-authorized-name
         (sink-table qualified-proj-names-table)
         (sink-opaque-fn-fault #/dissectfn (list fault struct-value)
@@ -1341,7 +1400,8 @@
       ; TODO: We haven't even tried to store this in the same format
       ; as the JavaScript version of Cene does. See if we should.
       ;
-      (def-dexable-value-for-package!
+      (sink-effects-def-dexable-value-for-package
+        unique-name-for-metadata
         (sink-name-for-struct-metadata main-tag-name)
         (sink-dex-struct (s-struct-metadata) #/list
           (sink-dex-name)
@@ -1358,6 +1418,38 @@
       
       ))
   
+  (define/contract (def-data-struct! main-tag-string proj-strings)
+    (-> immutable-string? (listof immutable-string?) void?)
+    (add-init-essentials-step! #/fn unique-name
+      (sink-effects-def-data-struct
+        unique-name main-tag-string proj-strings)))
+  
+  (define/contract
+    (sink-effects-def-macro unique-name name-string body)
+    (->
+      sink-authorized-name?
+      immutable-string?
+      (->
+        sink-fault?
+        sink-authorized-name? sink? sink-text-input-stream?
+        (->
+          sink-authorized-name? sink? sink-text-input-stream?
+          sink-cexpr?
+          sink-effects?)
+        sink-effects?)
+      sink-effects?)
+    (sink-effects-def-value-for-package unique-name
+      (sink-name-for-bounded-cexpr-op
+      #/sink-name-for-string #/sink-string name-string)
+      (macro-impl #/fn
+        fault unique-name qualify text-input-stream output-stream then
+        
+        (body fault unique-name qualify text-input-stream
+        #/fn unique-name qualify text-input-stream cexpr
+        #/sink-effects-cexpr-write fault output-stream cexpr
+        #/fn output-stream
+        #/then unique-name qualify text-input-stream output-stream))))
+  
   (define/contract (def-macro! name-string body)
     (->
       immutable-string?
@@ -1370,17 +1462,8 @@
           sink-effects?)
         sink-effects?)
       void?)
-    (def-value-for-package!
-      (sink-name-for-bounded-cexpr-op
-      #/sink-name-for-string #/sink-string name-string)
-      (macro-impl #/fn
-        fault unique-name qualify text-input-stream output-stream then
-        
-        (body fault unique-name qualify text-input-stream
-        #/fn unique-name qualify text-input-stream cexpr
-        #/sink-effects-cexpr-write fault output-stream cexpr
-        #/fn output-stream
-        #/then unique-name qualify text-input-stream output-stream))))
+    (add-init-essentials-step! #/fn unique-name
+      (sink-effects-def-macro unique-name name-string body)))
   
   
   
@@ -3121,22 +3204,25 @@
         "prelude-qualify-root")
       (cene-definition-lang-impl-qualify-root)))
   
-  (define/contract (def-value-for-prelude! name value)
-    (-> sink-name? sink? void?)
-    (w- name (qualify-for-prelude name)
-    #/add-init-essentials-step! #/fn unique-name
-      (sink-effects-put name (sink-dex #/dex-give-up) value)))
+  (define/contract
+    (sink-effects-def-value-for-prelude unique-name target-name value)
+    (-> sink-authorized-name? sink-name? sink? sink-effects?)
+    (sink-effects-claim unique-name #/fn
+    #/w- target-name (qualify-for-prelude target-name)
+    #/sink-effects-put target-name (sink-dex #/dex-give-up) value))
   
   
   ; We define these built-ins only in the scope of prelude.cene.
   
-  (def-func-verbose! def-value-for-prelude! "qualify-for-lang-impl" 1
+  (def-func-verbose! sink-effects-def-value-for-prelude
+    "qualify-for-lang-impl"
+    1
     (fn fault name
       (expect (sink-name? name) #t
         (cene-err fault "Expected name to be a name")
       #/sink-name-qualify-for-lang-impl name)))
   
-  (def-func-verbose! def-value-for-prelude!
+  (def-func-verbose! sink-effects-def-value-for-prelude
     "effects-add-init-package-step"
     2
     (fn fault unique-name step

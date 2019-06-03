@@ -76,6 +76,9 @@
         [c-blame bl err /str-prim:Expected xs to be a cons list]
       /call-fuse (fuse-int-by-plus) (int-one)
         (c-blame bl list-length xs)))
+  /let is-name
+    (fn x
+      (in-dex (dex-name) x))
   /let is-dex
     (fn x
       (in-dex (dex-dex) x))
@@ -222,8 +225,8 @@
     (fn-blame bl unique-name target-name dex value
       (cast (is-authorized-name unique-name) yep -
         [c-blame bl err /str-prim:Expected unique-name to be an authorized name]
-      /cast (is-authorized-name target-name) yep -
-        [c-blame bl err /str-prim:Expected target-name to be an authorized name]
+      /cast (c is-name target-name) yep -
+        [c-blame bl err /str-prim:Expected target-name to be a name]
       /cast (c is-dex dex) yep -
         [c-blame bl err /str-prim:Expected dex to be a dex]
       /c effects-claim-freshen unique-name /fn unique-name
@@ -237,14 +240,16 @@
         [c-blame bl err /str-prim:Expected unique-name to be an authorized name]
       /cast (is-authorized-name target-name) yep -
         [c-blame bl err /str-prim:Expected target-name to be an authorized name]
+      /c effects-claim-freshen unique-name /fn unique-name
       /c effects-def-dexable-value-for-lang-impl
         unique-name target-name (dex-give-up) value))
   /let effects-def-value-for-package
     (fn-blame bl unique-name target-name value
       (cast (is-authorized-name unique-name) yep -
         [c-blame bl err /str-prim:Expected unique-name to be an authorized name]
-      /cast (is-authorized-name target-name) yep -
-        [c-blame bl err /str-prim:Expected target-name to be an authorized name]
+      /cast (c is-name target-name) yep -
+        [c-blame bl err /str-prim:Expected target-name to be a name]
+      /c effects-claim-freshen unique-name /fn unique-name
       /c effects-def-dexable-value-for-package
         unique-name target-name (dex-give-up) value))
   /let macro-impl
