@@ -276,7 +276,7 @@
 (define/contract cene-definition-get-param
   (parameter/c
     (maybe/c
-      (list/c dspace? sink-authorized-name? (-> getfx? sink?))))
+      (list/c dspace? sink-authorized-name? (-> getfx? any/c))))
   (make-parameter #/nothing))
 
 (define/contract (assert-can-get-cene-definitions!)
@@ -309,16 +309,6 @@
     (error "Expected every call to `cene-definition-lang-impl-qualify-root` to occur with an implementation in the dynamic scope")
     lang-impl-qualify-root))
 
-(define/contract (cene-definition-get name)
-  (-> sink-name? sink?)
-  (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root run-getfx)
-    (error "Expected every call to `cene-definition-get` to occur with an implementation in the dynamic scope")
-  #/dissect name (sink-name name)
-  #/run-getfx #/getfx-get ds name
-    #;on-stall (error-definer-uninformative)
-    ))
-
 (define/contract (raise-cene-err clamor)
   (-> sink? none/c)
   (expect (cene-definition-get-param)
@@ -336,6 +326,35 @@
   ; TODO: Do smething with `marks` here. Maybe use it to
   ; add a stack trace to the message somehow.
   #/run-getfx #/getfx-err #/error-definer-from-message message))
+
+(define/contract (cene-definition-get name)
+  (-> sink-name? sink?)
+  (expect (cene-definition-get-param)
+    (just #/list ds lang-impl-qualify-root run-getfx)
+    (error "Expected every call to `cene-definition-get` to occur with an implementation in the dynamic scope")
+  #/dissect name (sink-name name)
+  #/run-getfx #/getfx-get ds name
+    #;on-stall (error-definer-uninformative)
+    ))
+
+(define/contract (cene-definition-establish-pubsub pubsub-name)
+  (-> sink-authorized-name? #/list/c sink-pub? sink-sub?)
+  (expect (cene-definition-get-param)
+    (just #/list ds lang-impl-qualify-root run-getfx)
+    (error "Expected every call to `cene-definition-establish-pubsub` to occur with an implementation in the dynamic scope")
+  #/dissect pubsub-name (sink-authorized-name pubsub-name)
+  #/dissect (run-getfx #/getfx-establish-pubsub ds pubsub-name)
+    (list p s)
+  #/list (sink-pub p) (sink-sub s)))
+
+(define/contract (cene-definition-establish-init-package-pubsub)
+  (-> #/list/c sink-pub? sink-sub?)
+  (begin (assert-can-get-cene-definitions!)
+  #/cene-definition-establish-pubsub
+    (sink-authorized-name-subname
+      (sink-name #/just-value #/name-of (dex-immutable-string)
+        "init-package-pubsub")
+      (cene-definition-lang-impl-qualify-root))))
 
 (define cene-definition-get-prompt-tag (make-continuation-prompt-tag))
 
@@ -690,18 +709,6 @@
   (-> (-> sink-extfx?) sink-extfx?)
   (make-sink-extfx #/fn #/sink-extfx-run! #/then))
 
-(define/contract (sink-extfx-establish-pubsub pubsub-name then)
-  (-> sink-authorized-name? (-> sink-pub? sink-sub? sink-extfx?)
-    sink-extfx?)
-  (dissect pubsub-name (sink-authorized-name pubsub-name)
-  #/make-sink-extfx #/fn
-    (extfx-with-cene-definition-restorer #/fn restore
-    #/extfx-run-getfx
-      (getfx-establish-pubsub (cene-definition-dspace) pubsub-name)
-    #/dissectfn (list p s)
-    #/restore #/fn
-    #/sink-extfx-run! #/then (sink-pub p) (sink-sub s))))
-
 (define/contract (sink-extfx-pub-write p unique-name arg)
   (-> sink-pub? sink-authorized-name? sink? sink-extfx?)
   (dissect p (sink-pub p)
@@ -729,15 +736,6 @@
       (fn arg
         (restore #/fn
         #/sink-extfx-run! #/func arg)))))
-
-(define/contract (sink-extfx-establish-init-package-pubsub then)
-  (-> (-> sink-pub? sink-sub? sink-extfx?) sink-extfx?)
-  (sink-extfx-establish-pubsub
-    (sink-authorized-name-subname
-      (sink-name #/just-value #/name-of (dex-immutable-string)
-        "init-package-pubsub")
-      (cene-definition-lang-impl-qualify-root))
-    then))
 
 (define/contract (sink-cexpr-var name)
   (-> sink-name? sink-cexpr?)
