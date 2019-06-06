@@ -44,12 +44,12 @@
 
 (require #/only-in effection/extensibility/base
   authorized-name? authorized-name-get-name authorized-name-subname
-  dspace? error-definer-from-message error-definer-uninformative
-  extfx? extfx-claim-unique extfx-ct-continue extfx-err
-  extfx-establish-pubsub extfx-get extfx-noop extfx-pub-write
-  extfx-put extfx-split-list extfx-sub-write fuse-extfx
-  optionally-dexable-dexable optionally-dexable-once
-  success-or-error-definer)
+  dspace? error-definer? error-definer-from-message
+  error-definer-uninformative extfx? extfx-claim-unique
+  extfx-ct-continue extfx-noop extfx-pub-write extfx-run-getfx
+  extfx-put extfx-split-list extfx-sub-write fuse-extfx getfx-err
+  getfx-establish-pubsub getfx-get optionally-dexable-dexable
+  optionally-dexable-once success-or-error-definer)
 (require #/only-in effection/order
   assocs->table-if-mutually-unique dex-immutable-string dex-trivial)
 (require #/only-in effection/order/base
@@ -97,6 +97,12 @@
 (define/contract (table-v-map table v-to-v)
   (-> table? (-> any/c any/c) table?)
   (table-kv-map table #/fn k v #/v-to-v v))
+
+; TODO: See if we should add this to `effection/extensibility`.
+(define/contract (extfx-err on-execute)
+  (-> error-definer? extfx?)
+  (extfx-run-getfx (getfx-err on-execute) #/fn impossible-result
+    (error "Internal error: Did not expect `getfx-err` to complete with a result value")))
 
 
 (define-generics sink)
@@ -347,8 +353,10 @@
             (dissectfn (sink-name name)
               (shift-at cene-definition-get-prompt-tag k
               #/extfx-with-cene-definition-restorer #/fn restore
-              #/extfx-get ds name
-                #;on-stall (error-definer-uninformative)
+              #/extfx-run-getfx
+                (getfx-get ds name
+                  #;on-stall (error-definer-uninformative)
+                  )
               #/fn value
               #/restore #/fn
               #/k value))
@@ -631,8 +639,10 @@
   (dissect name (sink-name name)
   #/make-sink-extfx #/fn
   #/extfx-with-cene-definition-restorer #/fn restore
-  #/extfx-get (cene-definition-dspace) name
-    #;on-stall (error-definer-uninformative)
+  #/extfx-run-getfx
+    (getfx-get (cene-definition-dspace) name
+      #;on-stall (error-definer-uninformative)
+      )
   #/fn result
   #/restore #/fn
   #/sink-extfx-run!
@@ -696,8 +706,9 @@
   (dissect pubsub-name (sink-authorized-name pubsub-name)
   #/make-sink-extfx #/fn
     (extfx-with-cene-definition-restorer #/fn restore
-    #/extfx-establish-pubsub (cene-definition-dspace) pubsub-name
-    #/fn p s
+    #/extfx-run-getfx
+      (getfx-establish-pubsub (cene-definition-dspace) pubsub-name)
+    #/dissectfn (list p s)
     #/restore #/fn
     #/sink-extfx-run! #/then (sink-pub p) (sink-sub s))))
 
