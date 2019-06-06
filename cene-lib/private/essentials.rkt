@@ -221,6 +221,20 @@
   #/dexable dex val))
 
 
+(define/contract (sink-getfx-done result)
+  (-> sink? sink-getfx?)
+  (sink-getfx #/fn result))
+
+(define/contract (sink-getfx-bind effects then)
+  (-> sink-getfx? (-> any/c sink-getfx?) sink-getfx?)
+  (dissect effects (sink-getfx go)
+  #/sink-getfx #/fn
+    (getfx-with-cene-definition-restorer #/fn restore
+    #/getfx-bind (go) #/fn intermediate
+    #/restore #/fn
+    #/sink-getfx-run #/then intermediate)))
+
+
 (struct-easy
   (cene-struct-metadata tags proj-string-to-name proj-name-to-string))
 
@@ -315,7 +329,7 @@
   #:other #:methods gen:sink [])
 (struct-easy (sink-fuse fuse)
   #:other #:methods gen:sink [])
-(struct-easy (sink-perffx go)
+(struct-easy (sink-perffx getfx)
   #:other #:methods gen:sink [])
 (struct-easy (sink-int racket-int)
   #:other #:methods gen:sink [])
@@ -1499,20 +1513,16 @@
       effects))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
-  (def-func-fault! "getfx-done" fault result
-    (sink-getfx #/fn result))
+  (def-func! "getfx-done" result
+    (sink-getfx-done result))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "getfx-bind" fault effects then
     (expect effects (sink-getfx go)
       (cene-err fault "Expected effects to be a getfx effectful computation")
-    #/sink-getfx #/fn
-      (getfx-with-cene-definition-restorer #/fn restore
-      #/getfx-bind (go) #/fn intermediate
-      #/restore #/fn
-      #/sink-getfx-run
-      #/verify-callback-getfx! fault #/sink-call fault then
-        intermediate)))
+    #/sink-getfx-bind effects #/fn intermediate
+    #/verify-callback-getfx! fault #/sink-call fault then
+      intermediate))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "run-getfx" fault effects
@@ -2399,22 +2409,18 @@
   ; should generally take the same amount of time each time they're
   ; performed.
   
-  (define/contract (verify-callback-perffx! fault effects)
-    (-> sink-fault? sink? sink-perffx?)
-    (expect (sink-perffx? effects) #t
-      (cene-err fault "Expected the return value of the callback to be a perffx effects value")
-      effects))
-  
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "perffx-done" fault result
-    (sink-perffx #/fn result))
+    (sink-perffx #/sink-getfx #/fn result))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "perffx-bind" fault effects then
-    (expect effects (sink-perffx go)
+    (expect effects (sink-perffx effects)
       (cene-err fault "Expected effects to be a perffx effectful computation")
-    #/sink-perffx #/fn
-    #/verify-callback-perffx! fault #/sink-call fault then #/go))
+    #/sink-perffx #/sink-getfx-bind effects #/fn intermediate
+      (expect (sink-call fault then intermediate) (sink-perffx getfx)
+        (cene-err fault "Expected the return value of a perffx-bind callback to be a perffx effects value")
+        getfx)))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `no-effects`.
@@ -2442,29 +2448,25 @@
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   ;
-  ; TODO: The reason we expose `extfx-run-getfx` when we're already
+  ; TODO: The reason we expose `perffx-run-getfx` when we're already
   ; exposing `run-getfx` is for performance. Calling `run-getfx`
   ; incurs the cost of invoking a continuation. It may be worth
   ; investigating whether we can speed up `run-getfx` somehow,
   ; although it might involve converting most of the codebase to
   ; continuation-passing style.
   ;
-  ; TODO: Implement `perffx-run-getfx`, and expose it as a built-in
-  ; instead of this.
-  ;
-  (def-func-fault! "extfx-run-getfx" fault effects then
+  (def-func-fault! "perffx-run-getfx" fault effects
     (expect (sink-getfx? effects) #t
       (cene-err fault "Expected effects to be a getfx effectful computation")
-    #/sink-extfx-run-getfx effects #/fn intermediate
-    #/verify-callback-extfx! fault #/sink-call fault then
-      intermediate))
+    #/sink-perffx effects))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "extfx-run-perffx" fault effects then
-    (expect effects (sink-perffx go)
+    (expect effects (sink-perffx getfx)
       (cene-err fault "Expected effects to be a perffx effectful computation")
-    #/sink-extfx-later #/fn
-    #/verify-callback-extfx! fault #/sink-call fault then #/go))
+    #/sink-extfx-run-getfx getfx #/fn intermediate
+    #/verify-callback-extfx! fault #/sink-call fault then
+      intermediate))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `later`, and it took an extfx effects value rather than a function
@@ -2747,7 +2749,7 @@
       (cene-err fault "Expected a to be a string")
     #/expect b (sink-string b)
       (cene-err fault "Expected b to be a string")
-    #/sink-perffx #/fn
+    #/sink-perffx #/sink-getfx #/fn
       (sink-string #/string->immutable-string #/string-append a b)))
   
   ; This is an extremely basic string syntax. It doesn't have any
@@ -2890,7 +2892,8 @@
   (def-func-fault! "perffx-optimize-textpat" fault t
     (expect t (sink-textpat t)
       (cene-err fault "Expected t to be a text pattern")
-    #/sink-perffx #/fn #/sink-optimized-textpat #/optimize-textpat t))
+    #/sink-perffx #/sink-getfx #/fn
+      (sink-optimized-textpat #/optimize-textpat t)))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `optimized-regex-match-later`.
@@ -2916,7 +2919,7 @@
       (cene-err fault "Expected stop to be less than or equal to the length of the string")
     #/expect (<= start stop) #t
       (cene-err fault "Expected start to be less than or equal to stop")
-    #/sink-perffx #/fn
+    #/sink-perffx #/sink-getfx #/fn
     #/w- result (optimized-textpat-match ot str start stop)
     #/mat result (textpat-result-matched stop)
       (make-sink-struct (s-textpat-result-matched) #/list
@@ -3112,7 +3115,7 @@
     
     (expect (sink-located-string? located-string) #t
       (cene-err fault "Expected located-string to be a located string")
-    #/sink-perffx #/fn
+    #/sink-perffx #/sink-getfx #/fn
       (sink-string-from-located-string located-string)))
   
   ; TODO BUILTINS: Make sure we have a sufficient set of operations
