@@ -48,7 +48,7 @@
   error-definer-uninformative extfx? extfx-claim-unique
   extfx-ct-continue extfx-noop extfx-pub-write extfx-run-getfx
   extfx-put extfx-split-list extfx-sub-write fuse-extfx getfx?
-  getfx-err getfx-establish-pubsub getfx-get
+  getfx-bind getfx-done getfx-err getfx-establish-pubsub getfx-get
   optionally-dexable-dexable optionally-dexable-once
   success-or-error-definer)
 (require #/only-in effection/order
@@ -187,11 +187,13 @@
   #:other #:methods gen:sink [])
 (struct-easy (sink-authorized-name authorized-name)
   #:other #:methods gen:sink [])
+(struct-easy (sink-getfx go)
+  #:other #:methods gen:sink [])
+(struct-easy (sink-extfx go!)
+  #:other #:methods gen:sink [])
 (struct-easy (sink-pub pub)
   #:other #:methods gen:sink [])
 (struct-easy (sink-sub sub)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-extfx go!)
   #:other #:methods gen:sink [])
 (struct-easy
   (sink-cexpr-sequence-output-stream
@@ -309,12 +311,9 @@
     (error "Expected every call to `cene-definition-lang-impl-qualify-root` to occur with an implementation in the dynamic scope")
     lang-impl-qualify-root))
 
-(define/contract (raise-cene-err clamor)
-  (-> sink? none/c)
-  (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root run-getfx)
-    (error "Expected every call to `raise-cene-err` to occur with an implementation in the dynamic scope")
-  #/dissect
+(define/contract (sink-getfx-err clamor)
+  (-> sink? sink-getfx?)
+  (dissect
     (expect (unmake-sink-struct-maybe (s-clamor-err) clamor)
       (just #/list (sink-fault maybe-marks) (sink-string message))
       (list (nothing) (format "~s" clamor))
@@ -323,40 +322,62 @@
   #/w- marks
     (mat maybe-marks (just marks) marks
     #/current-continuation-marks)
-  ; TODO: Do smething with `marks` here. Maybe use it to
-  ; add a stack trace to the message somehow.
-  #/run-getfx #/getfx-err #/error-definer-from-message message))
+  ; TODO: Do smething with `marks` here. Maybe use it to add a stack
+  ; trace to the message somehow.
+  #/sink-getfx #/fn #/getfx-err #/error-definer-from-message message))
 
-(define/contract (cene-definition-get name)
-  (-> sink-name? sink?)
+(define/contract (sink-getfx-get name)
+  (-> sink-name? sink-getfx?)
+  (dissect name (sink-name name)
+  #/sink-getfx #/fn
+    (getfx-get (cene-definition-dspace) name
+      #;on-stall (error-definer-uninformative)
+      )))
+
+(define/contract (cene-definition-run-getfx effects)
+  (-> sink-getfx? sink?)
   (expect (cene-definition-get-param)
     (just #/list ds lang-impl-qualify-root run-getfx)
     (error "Expected every call to `cene-definition-get` to occur with an implementation in the dynamic scope")
-  #/dissect name (sink-name name)
-  #/run-getfx #/getfx-get ds name
-    #;on-stall (error-definer-uninformative)
-    ))
+  #/dissect effects (sink-getfx go)
+  #/run-getfx #/go))
 
-(define/contract (cene-definition-establish-pubsub pubsub-name)
-  (-> sink-authorized-name? #/list/c sink-pub? sink-sub?)
-  (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root run-getfx)
-    (error "Expected every call to `cene-definition-establish-pubsub` to occur with an implementation in the dynamic scope")
-  #/dissect pubsub-name (sink-authorized-name pubsub-name)
-  #/dissect (run-getfx #/getfx-establish-pubsub ds pubsub-name)
-    (list p s)
-  #/list (sink-pub p) (sink-sub s)))
+(define/contract (sink-getfx-establish-pubsub pubsub-name)
+  (-> sink-authorized-name? sink-getfx?)
+  (dissect pubsub-name (sink-authorized-name pubsub-name)
+  #/sink-getfx #/fn
+    (getfx-with-cene-definition-restorer #/fn restore
+    #/getfx-bind
+      (getfx-establish-pubsub (cene-definition-dspace) pubsub-name)
+    #/dissectfn (list p s)
+    #/restore #/fn
+    #/getfx-done
+      (racket-list->sink #/list (sink-pub p) (sink-sub s)))))
 
-(define/contract (cene-definition-establish-init-package-pubsub)
-  (-> #/list/c sink-pub? sink-sub?)
-  (begin (assert-can-get-cene-definitions!)
-  #/cene-definition-establish-pubsub
-    (sink-authorized-name-subname
-      (sink-name #/just-value #/name-of (dex-immutable-string)
-        "init-package-pubsub")
-      (cene-definition-lang-impl-qualify-root))))
+(define/contract (sink-extfx-establish-init-package-pubsub then)
+  (-> (-> sink-pub? sink-sub? sink-extfx?) sink-extfx?)
+  (sink-extfx-later #/fn
+  #/sink-extfx-run-getfx
+    (sink-getfx-establish-pubsub
+      (sink-authorized-name-subname
+        (sink-name #/just-value #/name-of (dex-immutable-string)
+          "init-package-pubsub")
+        (cene-definition-lang-impl-qualify-root)))
+  #/fn pubsub
+  #/dissect (sink-list->maybe-racket pubsub) (just #/list p s)
+  #/then p s))
 
 (define cene-definition-get-prompt-tag (make-continuation-prompt-tag))
+
+(define/contract (getfx-with-cene-definition-restorer body)
+  (-> (-> (-> (-> getfx?) getfx?) getfx?) getfx?)
+  (begin (assert-can-get-cene-definitions!)
+  #/w- val (cene-definition-get-param)
+  #/body #/fn body
+    (parameterize ([cene-definition-get-param val])
+    #/with-getfx-run-getfx #/fn
+    #/reset-at cene-definition-get-prompt-tag
+      (body))))
 
 (define/contract (extfx-with-cene-definition-restorer body)
   (-> (-> (-> (-> extfx?) extfx?) extfx?) extfx?)
@@ -364,8 +385,43 @@
   #/w- val (cene-definition-get-param)
   #/body #/fn body
     (parameterize ([cene-definition-get-param val])
+    #/with-extfx-run-getfx #/fn
     #/reset-at cene-definition-get-prompt-tag
       (body))))
+
+(define/contract (with-getfx-run-getfx body)
+  (-> (-> any/c) any/c)
+  (expect (cene-definition-get-param)
+    (just #/list ds lang-impl-qualify-root run-getfx)
+    (error "Expected every call to `with-getfx-run-getfx` to occur with an implementation in the dynamic scope")
+  #/parameterize
+    (
+      [
+        cene-definition-get-param
+        (just #/list ds lang-impl-qualify-root #/fn effects
+          (shift-at cene-definition-get-prompt-tag k
+          #/getfx-with-cene-definition-restorer #/fn restore
+          #/getfx-bind effects #/fn value
+          #/restore #/fn
+          #/k value))])
+    (body)))
+
+(define/contract (with-extfx-run-getfx body)
+  (-> (-> any/c) any/c)
+  (expect (cene-definition-get-param)
+    (just #/list ds lang-impl-qualify-root run-getfx)
+    (error "Expected every call to `with-extfx-run-getfx` to occur with an implementation in the dynamic scope")
+  #/parameterize
+    (
+      [
+        cene-definition-get-param
+        (just #/list ds lang-impl-qualify-root #/fn effects
+          (shift-at cene-definition-get-prompt-tag k
+          #/extfx-with-cene-definition-restorer #/fn restore
+          #/extfx-run-getfx effects #/fn value
+          #/restore #/fn
+          #/k value))])
+    (body)))
 
 (define/contract (extfx-with-gets-from ds unique-name body)
   (-> dspace? authorized-name? (-> authorized-name? extfx?) extfx?)
@@ -381,13 +437,16 @@
             ds
             (sink-authorized-name lang-impl-qualify-root)
             (fn effects
-              (shift-at cene-definition-get-prompt-tag k
-              #/extfx-with-cene-definition-restorer #/fn restore
-              #/extfx-run-getfx effects #/fn value
-              #/restore #/fn
-              #/k value))))])
+              (error "Expected `with-extfx-run-getfx` to shadow this implementation of `run-getfx`"))))])
+  #/with-extfx-run-getfx #/fn
   #/reset-at cene-definition-get-prompt-tag
     (body unique-name)))
+
+(define/contract (sink-getfx-run effects)
+  (-> sink-getfx? getfx?)
+  (begin (assert-can-get-cene-definitions!)
+  #/dissect effects (sink-getfx go)
+  #/go))
 
 (define/contract (sink-extfx-run! effects)
   (-> sink-extfx? extfx?)
@@ -617,7 +676,7 @@
         (error "Expected this to be a cexpr-located")
       ; TODO CEXPR-LOCATED / TODO FAULT: Replace `fault` here with
       ; something related to `location-definition-name` or
-      ; `(cene-definition-get location-definition-name)`.
+      ; `(sink-getfx-get location-definition-name)`.
       #/-eval-in-env fault body))
   ])
 
@@ -645,19 +704,14 @@
   (-> (-> extfx?) sink-extfx?)
   (sink-extfx go!))
 
-(define/contract (sink-extfx-get name then)
-  (-> sink-name? (-> sink? sink-extfx?) sink-extfx?)
-  (dissect name (sink-name name)
-  #/make-sink-extfx #/fn
-  #/extfx-with-cene-definition-restorer #/fn restore
-  #/extfx-run-getfx
-    (getfx-get (cene-definition-dspace) name
-      #;on-stall (error-definer-uninformative)
-      )
-  #/fn result
-  #/restore #/fn
-  #/sink-extfx-run!
-  #/then result))
+(define/contract (sink-extfx-run-getfx effects then)
+  (-> sink-getfx? (-> any/c sink-extfx?) sink-extfx?)
+  (dissect effects (sink-getfx go)
+  #/sink-extfx #/fn
+    (extfx-with-cene-definition-restorer #/fn restore
+    #/extfx-run-getfx (go) #/fn intermediate
+    #/restore #/fn
+    #/sink-extfx-run! #/then intermediate)))
 
 (define/contract (sink-extfx-put name dex value)
   (-> sink-authorized-name? sink-dex? sink? sink-extfx?)
@@ -935,7 +989,7 @@
   ; `s-clamor-err` here or move this code after the place where
   ; `s-clamor-err` is defined.
   (begin (assert-can-get-cene-definitions!)
-  #/raise-cene-err
+  #/cene-definition-run-getfx #/sink-getfx-err
     (make-sink-struct (s-clamor-err) #/list
       fault
       (sink-string message))))
@@ -955,7 +1009,7 @@
     ; TODO: This lookup might be expensive. See if we should memoize
     ; it.
     #/w- impl
-      (cene-definition-get
+      (cene-definition-run-getfx #/sink-getfx-get
       #/sink-name-for-function-implementation-value
         main-tag
         (list-foldr proj-tags (sink-table #/table-empty)
@@ -1452,7 +1506,8 @@
   (sink-extfx-claim-freshen unique-name #/fn unique-name
   #/sink-extfx-read-op fault text-input-stream qualify pre-qualify
   #/fn text-input-stream op-name
-  #/sink-extfx-get (sink-authorized-name-get-name op-name)
+  #/sink-extfx-run-getfx
+    (sink-getfx-get #/sink-authorized-name-get-name op-name)
   #/fn op-impl
   #/sink-extfx-run-op
     fault op-impl unique-name qualify text-input-stream output-stream
@@ -1502,10 +1557,10 @@
       sink-extfx?)
     sink-extfx?)
   (sink-extfx-claim-freshen unique-name #/fn unique-name
-  #/sink-extfx-get
-    (sink-authorized-name-get-name
-    #/sink-call-qualify fault qualify
-      (sink-name-for-nameless-bounded-cexpr-op))
+  #/sink-extfx-run-getfx
+    (sink-getfx-get #/sink-authorized-name-get-name
+      (sink-call-qualify fault qualify
+        (sink-name-for-nameless-bounded-cexpr-op)))
   #/fn op-impl
   #/sink-extfx-run-op
     fault op-impl unique-name qualify text-input-stream output-stream
@@ -1684,8 +1739,35 @@
       name)))
 
 (define s-trivial (core-sink-struct "trivial" #/list))
+
+(define s-nil (core-sink-struct "nil" #/list))
+(define s-cons (core-sink-struct "cons" #/list "first" "rest"))
+
 (define s-clamor-err
   (core-sink-struct "clamor-err" #/list "blame" "message"))
+
+(define/contract (sink-list->maybe-racket sink-list)
+  (-> sink? #/maybe/c #/listof sink?)
+  ; NOTE: We could call `sink-list->maybe-racket` itself recursively,
+  ; but we explicitly accumulate elements using a parameter
+  ; (`rev-racket-list`) of a recursive helper function (`next`) so
+  ; that we keep the call stack at a constant size throughout the list
+  ; traversal.
+  (begin (assert-can-get-cene-definitions!)
+  #/w-loop next sink-list sink-list rev-racket-list (list)
+  #/mat (unmake-sink-struct-maybe (s-nil) sink-list) (just #/list)
+    (just #/reverse rev-racket-list)
+  #/mat (unmake-sink-struct-maybe (s-cons) sink-list)
+    (just #/list elem sink-list)
+    (next sink-list #/cons elem rev-racket-list)
+  #/nothing))
+
+(define/contract (racket-list->sink racket-list)
+  (-> (listof sink?) sink?)
+  (begin (assert-can-get-cene-definitions!)
+  #/list-foldr racket-list (make-sink-struct (s-nil) #/list)
+  #/fn elem rest
+    (make-sink-struct (s-cons) #/list elem rest)))
 
 (define/contract (extfx-claim name on-success)
   (-> authorized-name? (-> extfx?) extfx?)

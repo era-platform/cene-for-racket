@@ -46,7 +46,7 @@
 (require #/only-in lathe-comforts/trivial trivial)
 
 (require #/only-in effection/extensibility/base
-  authorized-name-get-name)
+  authorized-name-get-name getfx-bind)
 (require #/only-in effection/order
   assocs->table-if-mutually-unique cline-exact-rational
   dex-exact-rational dex-immutable-string fuse-exact-rational-by-plus
@@ -117,9 +117,6 @@
 
 (define s-yep (core-sink-struct "yep" #/list "val"))
 (define s-nope (core-sink-struct "nope" #/list "val"))
-
-(define s-nil (core-sink-struct "nil" #/list))
-(define s-cons (core-sink-struct "cons" #/list "first" "rest"))
 
 (define s-nothing (core-sink-struct "nothing" #/list))
 (define s-just (core-sink-struct "just" #/list "val"))
@@ -213,29 +210,6 @@
     (make-sink-struct (s-just) #/list val)
     (make-sink-struct (s-nothing) #/list)))
 
-(define/contract (sink-list->maybe-racket sink-list)
-  (-> sink? #/maybe/c #/listof sink?)
-  ; NOTE: We could call `sink-list->maybe-racket` itself recursively,
-  ; but we explicitly accumulate elements using a parameter
-  ; (`rev-racket-list`) of a recursive helper function (`next`) so
-  ; that we keep the call stack at a constant size throughout the list
-  ; traversal.
-  (begin (assert-can-get-cene-definitions!)
-  #/w-loop next sink-list sink-list rev-racket-list (list)
-  #/mat (unmake-sink-struct-maybe (s-nil) sink-list) (just #/list)
-    (just #/reverse rev-racket-list)
-  #/mat (unmake-sink-struct-maybe (s-cons) sink-list)
-    (just #/list elem sink-list)
-    (next sink-list #/cons elem rev-racket-list)
-  #/nothing))
-
-(define/contract (racket-list->sink racket-list)
-  (-> (listof sink?) sink?)
-  (begin (assert-can-get-cene-definitions!)
-  #/list-foldr racket-list (make-sink-struct (s-nil) #/list)
-  #/fn elem rest
-    (make-sink-struct (s-cons) #/list elem rest)))
-
 (define/contract (sink-valid-dexable->maybe-racket sink-dexable)
   (-> sink? #/unsafe:dexableof-unchecked sink?)
   (begin (assert-can-get-cene-definitions!)
@@ -314,7 +288,8 @@
     sink-name-for-struct-metadata
   #/fn unique-name qualify text-input-stream metadata-names
   #/dissect metadata-names (list #/list located-string metadata-name)
-  #/sink-extfx-get (sink-authorized-name-get-name metadata-name)
+  #/sink-extfx-run-getfx
+    (sink-getfx-get #/sink-authorized-name-get-name metadata-name)
   #/fn metadata
   ; TODO FAULT: Make this `fault` more specific.
   #/then unique-name qualify text-input-stream
@@ -1015,7 +990,7 @@
     sink-extfx?)
   (sink-extfx-claim-and-split unique-name 2
   #/dissectfn (list unique-name-for-sub-write unique-name-for-step)
-  #/dissect (cene-definition-establish-init-package-pubsub) (list p s)
+  #/sink-extfx-establish-init-package-pubsub #/fn p s
   #/sink-extfx-sub-write s unique-name-for-sub-write #/fn entry
     (expect (unmake-sink-struct-maybe (s-command-init-package) entry)
       (just #/list key qualify)
@@ -1037,7 +1012,7 @@
     sink-extfx?)
   (sink-extfx-claim-and-split unique-name 2
   #/dissectfn (list unique-name-for-pub-write unique-name-for-step)
-  #/dissect (cene-definition-establish-init-package-pubsub) (list p s)
+  #/sink-extfx-establish-init-package-pubsub #/fn p s
   #/sink-extfx-pub-write p unique-name-for-pub-write
     (make-sink-struct (s-command-init-package) #/list
       (sink-authorized-name-get-name unique-name-for-step)
@@ -1517,9 +1492,47 @@
   
   ; Errors and conscience
   
+  (define/contract (verify-callback-getfx! fault effects)
+    (-> sink-fault? sink? sink-getfx?)
+    (expect (sink-getfx? effects) #t
+      (cene-err fault "Expected the return value of the callback to be a getfx effects value")
+      effects))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func-fault! "getfx-done" fault result
+    (sink-getfx #/fn result))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func-fault! "getfx-bind" fault effects then
+    (expect effects (sink-getfx go)
+      (cene-err fault "Expected effects to be a getfx effectful computation")
+    #/sink-getfx #/fn
+      (getfx-with-cene-definition-restorer #/fn restore
+      #/getfx-bind (go) #/fn intermediate
+      #/restore #/fn
+      #/sink-getfx-run
+      #/verify-callback-getfx! fault #/sink-call fault then
+        intermediate)))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func-fault! "run-getfx" fault effects
+    (expect effects (sink-getfx go)
+      (cene-err fault "Expected effects to be a getfx effects value")
+    #/cene-definition-run-getfx #/go))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func! "getfx-err" clamor
+    (sink-getfx-err clamor))
+  
   ; TODO: Test this.
+  ;
+  ; NOTE: Even though this implementation of `follow-heart` can be
+  ; implemented in terms of `run-getfx` and `getfx-err`, other Cene
+  ; implementations may recognize certain clamors as being non-error
+  ; operations.
+  ;
   (def-func! "follow-heart" clamor
-    (raise-cene-err clamor))
+    (cene-definition-run-getfx #/sink-getfx-err clamor))
   
   (def-data-struct! "clamor-err" #/list "blame" "message")
   
@@ -2379,18 +2392,18 @@
   ; built-ins (or at least the ones that existed) were known as
   ; `...effects...`.
   
-  (define/contract (verify-callback-perffx! fault effects)
-    (-> sink-fault? sink? sink-perffx?)
-    (expect (sink-perffx? effects) #t
-      (cene-err fault "Expected the return value of the callback to be a perffx effects value")
-      effects))
-  
   ; A "perffx" value (which means "performance effects") is a monadic
   ; computation which can take an indeterministic amount of time and
   ; other resources. This is usually used to avoid performing
   ; subcomputations more than once. All other operations in Cene
   ; should generally take the same amount of time each time they're
   ; performed.
+  
+  (define/contract (verify-callback-perffx! fault effects)
+    (-> sink-fault? sink? sink-perffx?)
+    (expect (sink-perffx? effects) #t
+      (cene-err fault "Expected the return value of the callback to be a perffx effects value")
+      effects))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "perffx-done" fault result
@@ -2428,6 +2441,25 @@
       effects))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
+  ;
+  ; TODO: The reason we expose `extfx-run-getfx` when we're already
+  ; exposing `run-getfx` is for performance. Calling `run-getfx`
+  ; incurs the cost of invoking a continuation. It may be worth
+  ; investigating whether we can speed up `run-getfx` somehow,
+  ; although it might involve converting most of the codebase to
+  ; continuation-passing style.
+  ;
+  ; TODO: Implement `perffx-run-getfx`, and expose it as a built-in
+  ; instead of this.
+  ;
+  (def-func-fault! "extfx-run-getfx" fault effects then
+    (expect (sink-getfx? effects) #t
+      (cene-err fault "Expected effects to be a getfx effectful computation")
+    #/sink-extfx-run-getfx effects #/fn intermediate
+    #/verify-callback-extfx! fault #/sink-call fault then
+      intermediate))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "extfx-run-perffx" fault effects then
     (expect effects (sink-perffx go)
       (cene-err fault "Expected effects to be a perffx effectful computation")
@@ -2456,11 +2488,10 @@
   ;   committing-to-define
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
-  (def-func-fault! "extfx-get" fault name then
+  (def-func-fault! "getfx-get" fault name
     (expect (sink-name? name) #t
       (cene-err fault "Expected name to be a name")
-    #/sink-extfx-get name #/fn result
-    #/verify-callback-extfx! fault #/sink-call fault then result))
+    #/sink-getfx #/fn #/sink-getfx-get name))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "extfx-put" fault name dex value
@@ -2477,10 +2508,10 @@
   ; struct or replace this with separate `establish-pub` and
   ; `establish-sub` functions.
   ;
-  (def-func-fault! "establish-pubsub" fault name
+  (def-func-fault! "getfx-establish-pubsub" fault name
     (expect (sink-authorized-name? name) #t
       (cene-err fault "Expected name to be an authorized name")
-    #/racket-list->sink #/cene-definition-establish-pubsub name))
+    #/sink-getfx-establish-pubsub name))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "extfx-pub-write" fault p unique-name arg
