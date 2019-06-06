@@ -397,7 +397,7 @@
 
 (define-generics cexpr
   (cexpr-has-free-vars? cexpr env)
-  (cexpr-eval fault cexpr env))
+  (cexpr-eval-in-env fault cexpr env))
 
 (struct-easy (cexpr-var name)
   
@@ -412,7 +412,7 @@
         #t
         #f))
     
-    (define (cexpr-eval fault this env)
+    (define (cexpr-eval-in-env fault this env)
       (expect this (cexpr-var name)
         (error "Expected this to be a cexpr-var")
       #/expect (table-get name env) (just value)
@@ -431,7 +431,7 @@
         (error "Expected this to be a cexpr-reified")
         #f))
     
-    (define (cexpr-eval fault this env)
+    (define (cexpr-eval-in-env fault this env)
       (expect this (cexpr-reified result)
         (error "Expected this to be a cexpr-reified")
         result))
@@ -444,7 +444,7 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval cexpr-eval)
+    (define/generic -eval-in-env cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-construct main-tag-name projs)
@@ -452,7 +452,7 @@
       #/list-any projs #/dissectfn (list proj-name proj-cexpr)
         (-has-free-vars? proj-cexpr env)))
     
-    (define (cexpr-eval fault this env)
+    (define (cexpr-eval-in-env fault this env)
       (expect this (cexpr-construct main-tag-name projs)
         (error "Expected this to be a cexpr-construct")
       #/make-sink-struct
@@ -460,7 +460,7 @@
         #/list-map projs #/dissectfn (list proj-name proj-cexpr)
           proj-name)
       #/list-map projs #/dissectfn (list proj-name proj-cexpr)
-        (-eval fault proj-cexpr env)))
+        (-eval-in-env fault proj-cexpr env)))
   ])
 
 (struct-easy (cexpr-call-fault fault-arg func arg)
@@ -470,7 +470,7 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval cexpr-eval)
+    (define/generic -eval-in-env cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-call-fault fault-arg func arg)
@@ -480,12 +480,12 @@
         (-has-free-vars? func env)
         (-has-free-vars? arg env)))
     
-    (define (cexpr-eval fault this env)
+    (define (cexpr-eval-in-env fault this env)
       (expect this (cexpr-call-fault fault-arg func arg)
         (error "Expected this to be a cexpr-call-fault")
-      #/w- fault-arg (-eval fault fault-arg env)
-      #/w- func (-eval fault func env)
-      #/w- arg (-eval fault arg env)
+      #/w- fault-arg (-eval-in-env fault fault-arg env)
+      #/w- func (-eval-in-env fault func env)
+      #/w- arg (-eval-in-env fault arg env)
       #/expect (sink-fault? fault-arg) #t
         (cene-err fault "Expected the blame argument to be a blame value")
       #/sink-call-fault fault fault-arg func arg))
@@ -498,17 +498,19 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval cexpr-eval)
+    (define/generic -eval-in-env cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-call func arg)
         (error "Expected this to be a cexpr-call")
       #/or (-has-free-vars? func env) (-has-free-vars? arg env)))
     
-    (define (cexpr-eval fault this env)
+    (define (cexpr-eval-in-env fault this env)
       (expect this (cexpr-call func arg)
         (error "Expected this to be a cexpr-call")
-      #/sink-call fault (-eval fault func env) (-eval fault arg env)))
+      #/sink-call fault
+        (-eval-in-env fault func env)
+        (-eval-in-env fault arg env)))
   ])
 
 (struct-easy (cexpr-opaque-fn-fault fault-param param body)
@@ -521,7 +523,7 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval cexpr-eval)
+    (define/generic -eval-in-env cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-opaque-fn-fault fault-param param body)
@@ -531,11 +533,11 @@
       #/table-shadow param (just #/trivial)
         env))
     
-    (define (cexpr-eval caller-fault this env)
+    (define (cexpr-eval-in-env caller-fault this env)
       (expect this (cexpr-opaque-fn-fault fault-param param body)
         (error "Expected this to be a cexpr-opaque-fn")
       #/sink-opaque-fn-fault #/dissectfn (list explicit-fault arg)
-        (-eval caller-fault body
+        (-eval-in-env caller-fault body
           (table-shadow fault-param (just explicit-fault)
           #/table-shadow param (just arg)
             env))))
@@ -548,7 +550,7 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval cexpr-eval)
+    (define/generic -eval-in-env cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-opaque-fn param body)
@@ -556,11 +558,11 @@
       #/-has-free-vars? body
       #/table-shadow param (just #/trivial) env))
     
-    (define (cexpr-eval caller-fault this env)
+    (define (cexpr-eval-in-env caller-fault this env)
       (expect this (cexpr-opaque-fn param body)
         (error "Expected this to be a cexpr-opaque-fn")
       #/sink-opaque-fn #/fn arg
-        (-eval caller-fault body
+        (-eval-in-env caller-fault body
           (table-shadow param (just arg) env))))
   ])
 
@@ -571,7 +573,7 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval cexpr-eval)
+    (define/generic -eval-in-env cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-let bindings body)
@@ -584,13 +586,13 @@
         (dissect binding (list var val)
         #/table-shadow var (just #/trivial) env)))
     
-    (define (cexpr-eval fault this env)
+    (define (cexpr-eval-in-env fault this env)
       (expect this (cexpr-let bindings body)
         (error "Expected this to be a cexpr-let")
-      #/-eval fault body
+      #/-eval-in-env fault body
       #/list-foldl env
         (list-map bindings #/dissectfn (list var val)
-          (list var #/-eval fault val env))
+          (list var #/-eval-in-env fault val env))
       #/fn env binding
         (dissect binding (list var val)
         #/table-shadow var (just val) env)))
@@ -603,20 +605,20 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval cexpr-eval)
+    (define/generic -eval-in-env cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-located location-definition-name body)
         (error "Expected this to be a cexpr-located")
       #/-has-free-vars? body))
     
-    (define (cexpr-eval fault this env)
+    (define (cexpr-eval-in-env fault this env)
       (expect this (cexpr-located location-definition-name body)
         (error "Expected this to be a cexpr-located")
       ; TODO CEXPR-LOCATED / TODO FAULT: Replace `fault` here with
       ; something related to `location-definition-name` or
       ; `(cene-definition-get location-definition-name)`.
-      #/-eval fault body))
+      #/-eval-in-env fault body))
   ])
 
 ; TODO: Put this in Effection.
@@ -1758,37 +1760,29 @@
   #/dissectfn (list unique-name)
   #/then unique-name))
 
-(define/contract (cexpr-can-eval? cexpr)
+(define/contract (cexpr-is-closed? cexpr)
   (-> cexpr? boolean?)
   (not #/cexpr-has-free-vars? cexpr #/table-empty))
 
-; This evaluates the given cexpr. If the current extfx side effects
-; runner doesn't support evaluating cexprs, this causes an error
-; instead.
+; This evaluates the given cexpr. This causes an error instead if the
+; current getfx side effects runner doesn't support evaluating cexprs
+; or doesn't have/allow access to all the modules that would be needed
+; to know the function call behaviors of the structs this expression
+; can construct. Some Cene compilation targets may even reject a
+; dependency on this operation at compile time. Compilation targets
+; where the struct tag names have been compiled to meaningless tokens
+; will usually not support this operation, since there's no way to
+; compare the expresson's first-class names with the tokens the rest
+; of the program interacts with.
 ;
-; The macroexpander's extfx side effects runner supports the
-; operation, and so far the only extfx side effects runner we've
+; The macroexpander's getfx side effects runner fully supports the
+; operation, and so far the only getfx side effects runner we've
 ; written is the macrexpander's (TODO), so this particular version
 ; always succeeds.
 ;
-; TODO: Actually, this is more of a job for getfx, i.e. pure Cene
-; code. This operation can only be implemented on platforms where
-; struct tag names aren't compiled away (at least not unless they
-; can't be constructed at run time) and where it's okay to depend on a
-; Cene module by surprise at run time (at least if an import of the
-; Cene module can be constructed at run time). On other platforms,
-; this can usually be rejected at compile time, but some platforms may
-; allow some or all calls to this operation to cause errors at run
-; time instead.
-;
-(define/contract (sink-extfx-cexpr-eval fault cexpr then)
-  (->
-    sink-fault?
-    (and/c cexpr? cexpr-can-eval?)
-    (-> sink? sink-extfx?)
-    sink-extfx?)
-  (sink-extfx-later #/fn
-  #/then #/cexpr-eval fault cexpr #/table-empty))
+(define/contract (cexpr-eval fault cexpr)
+  (-> sink-fault? (and/c cexpr? cexpr-is-closed?) sink?)
+  (cexpr-eval-in-env fault cexpr (table-empty)))
 
 ; This returns a computation that reads all the content of the given
 ; text input stream and runs the reader macros it encounters. Unlike
@@ -1827,8 +1821,7 @@
         ; TODO FAULT: Make this `fault` more specific.
         (cene-err fault "Encountered a top-level expression with at least one free variable")
       #/sink-extfx-fuse (then unique-name-rest)
-      #/sink-extfx-cexpr-eval fault cexpr #/fn directive
-      #/expect directive (sink-directive directive)
+      #/expect (cexpr-eval fault cexpr) (sink-directive directive)
         ; TODO FAULT: Make this `fault` more specific.
         (cene-err fault "Expected every top-level expression to evaluate to a directive")
       #/w- effects

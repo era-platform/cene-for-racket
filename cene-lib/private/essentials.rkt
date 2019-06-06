@@ -572,7 +572,7 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval cexpr-eval)
+    (define/generic -eval-in-env cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-dex-struct main-tag-name projs)
@@ -580,7 +580,7 @@
       #/list-any projs #/dissectfn (list proj-name proj-cexpr)
         (-has-free-vars? proj-cexpr env)))
     
-    (define (cexpr-eval fault this env)
+    (define (cexpr-eval-in-env fault this env)
       (expect this (cexpr-dex-struct main-tag-name projs)
         (error "Expected this to be a cexpr-dex-struct")
       #/sink-dex #/unsafe:dex #/dex-internals-sink-struct
@@ -588,7 +588,7 @@
         #/list-map projs #/dissectfn (list proj-name proj-cexpr)
           proj-name)
       #/list-map projs #/dissectfn (list proj-name proj-cexpr)
-        (-eval fault proj-cexpr env)))
+        (-eval-in-env fault proj-cexpr env)))
   ])
 
 
@@ -646,7 +646,7 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval cexpr-eval)
+    (define/generic -eval-in-env cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-cline-struct main-tag-name projs)
@@ -654,7 +654,7 @@
       #/list-any projs #/dissectfn (list proj-name proj-cexpr)
         (-has-free-vars? proj-cexpr env)))
     
-    (define (cexpr-eval fault this env)
+    (define (cexpr-eval-in-env fault this env)
       (expect this (cexpr-cline-struct main-tag-name projs)
         (error "Expected this to be a cexpr-cline-struct")
       #/sink-cline #/unsafe:cline #/cline-internals-sink-struct
@@ -662,7 +662,7 @@
         #/list-map projs #/dissectfn (list proj-name proj-cexpr)
           proj-name)
       #/list-map projs #/dissectfn (list proj-name proj-cexpr)
-        (-eval fault proj-cexpr env)))
+        (-eval-in-env fault proj-cexpr env)))
   ])
 
 
@@ -713,7 +713,7 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval cexpr-eval)
+    (define/generic -eval-in-env cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-merge-struct main-tag-name projs)
@@ -721,7 +721,7 @@
       #/list-any projs #/dissectfn (list proj-name proj-cexpr)
         (-has-free-vars? proj-cexpr env)))
     
-    (define (cexpr-eval fault this env)
+    (define (cexpr-eval-in-env fault this env)
       (expect this (cexpr-merge-struct main-tag-name projs)
         (error "Expected this to be a cexpr-merge-struct")
       #/sink-merge #/unsafe:merge #/furge-internals-sink-struct
@@ -730,7 +730,7 @@
         #/list-map projs #/dissectfn (list proj-name proj-cexpr)
           proj-name)
       #/list-map projs #/dissectfn (list proj-name proj-cexpr)
-        (-eval fault proj-cexpr env)))
+        (-eval-in-env fault proj-cexpr env)))
   ])
 
 (struct-easy (cexpr-fuse-struct main-tag-name projs)
@@ -740,7 +740,7 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval cexpr-eval)
+    (define/generic -eval-in-env cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-fuse-struct main-tag-name projs)
@@ -748,7 +748,7 @@
       #/list-any projs #/dissectfn (list proj-name proj-cexpr)
         (-has-free-vars? proj-cexpr env)))
     
-    (define (cexpr-eval fault this env)
+    (define (cexpr-eval-in-env fault this env)
       (expect this (cexpr-fuse-struct main-tag-name projs)
         (error "Expected this to be a cexpr-fuse-struct")
       #/sink-fuse #/unsafe:fuse #/furge-internals-sink-struct
@@ -757,7 +757,7 @@
         #/list-map projs #/dissectfn (list proj-name proj-cexpr)
           proj-name)
       #/list-map projs #/dissectfn (list proj-name proj-cexpr)
-        (-eval proj-cexpr env)))
+        (-eval-in-env proj-cexpr env)))
   ])
 
 
@@ -790,7 +790,7 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval cexpr-eval)
+    (define/generic -eval-in-env cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this
@@ -802,17 +802,17 @@
           (table-shadow var (just #/trivial) env))
         (-has-free-vars? else-expr env)))
     
-    (define (cexpr-eval fault this env)
+    (define (cexpr-eval-in-env fault this env)
       (expect this
         (cexpr-case subject-expr tags vars then-expr else-expr)
         (error "Expected this to be a cexpr-case")
-      #/w- subject (-eval fault subject-expr env)
+      #/w- subject (-eval-in-env fault subject-expr env)
       #/mat (unmake-sink-struct-maybe tags subject) (just vals)
-        (-eval fault then-expr
+        (-eval-in-env fault then-expr
         #/list-foldl env (map list vars vals) #/fn env entry
           (dissect entry (list var val)
           #/table-shadow var (just val) env))
-        (-eval fault else-expr env)))
+        (-eval-in-env fault else-expr env)))
   ])
 
 (define/contract
@@ -2585,32 +2585,20 @@
   (def-func! "is-expr" v
     (racket-boolean->sink #/sink-cexpr? v))
   
-  ; TODO: See if this can be a pure function.
   ; NOTE: The JavaScript version of Cene doesn't have this.
-  (def-func-fault! "extfx-expr-can-eval" fault expr then
+  (def-func-fault! "expr-is-closed" fault expr
     (expect expr (sink-cexpr expr)
       (cene-err fault "Expected expr to be an expression")
-    #/sink-extfx-later #/fn
-    #/verify-callback-extfx! fault #/sink-call fault then
-    #/racket-boolean->sink #/cexpr-can-eval? expr))
+    #/racket-boolean->sink #/cexpr-is-closed? expr))
   
-  ; TODO: See if this can be a pure function.
-  ;
   ; NOTE: In the JavaScript version of Cene, this was known as
-  ; `eval-cexpr`, and it was a pure function that took a mode
-  ; parameter.
-  ;
-  (def-func-fault! "extfx-expr-eval-blame"
-    caller-fault explicit-fault expr then
-    
+  ; `eval-cexpr`, and it took a mode parameter.
+  (def-func-fault! "expr-eval-blame" caller-fault explicit-fault expr
     (expect expr (sink-cexpr expr)
       (cene-err caller-fault "Expected expr to be an expression")
-    #/sink-extfx-later #/fn
-    #/expect (cexpr-can-eval? expr) #t
+    #/expect (cexpr-is-closed? expr) #t
       (cene-err caller-fault "Expected expr to be an expression which had all the information it needed for evaluation")
-    #/sink-extfx-cexpr-eval explicit-fault expr #/fn result
-    #/verify-callback-extfx! caller-fault
-      (sink-call caller-fault then result)))
+    #/cexpr-eval explicit-fault expr))
   
   ; TODO BUILTINS: Consider implementing something like the following
   ; built-ins from the JavaScript version of Cene. We can probably
