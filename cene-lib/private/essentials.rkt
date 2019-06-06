@@ -340,6 +340,8 @@
   #:other #:methods gen:sink [])
 (struct-easy (sink-fuse fuse)
   #:other #:methods gen:sink [])
+(struct-easy (sink-perffx go)
+  #:other #:methods gen:sink [])
 (struct-easy (sink-int racket-int)
   #:other #:methods gen:sink [])
 (struct-easy (sink-textpat racket-textpat)
@@ -2377,6 +2379,30 @@
   ; built-ins (or at least the ones that existed) were known as
   ; `...effects...`.
   
+  (define/contract (verify-callback-perffx! fault effects)
+    (-> sink-fault? sink? sink-perffx?)
+    (expect (sink-perffx? effects) #t
+      (cene-err fault "Expected the return value of the callback to be a perffx effects value")
+      effects))
+  
+  ; A "perffx" value (which means "performance effects") is a monadic
+  ; computation which can take an indeterministic amount of time and
+  ; other resources. This is usually used to avoid performing
+  ; subcomputations more than once. All other operations in Cene
+  ; should generally take the same amount of time each time they're
+  ; performed.
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func-fault! "perffx-done" fault result
+    (sink-perffx #/fn result))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func-fault! "perffx-bind" fault effects then
+    (expect effects (sink-perffx go)
+      (cene-err fault "Expected effects to be a perffx effectful computation")
+    #/sink-perffx #/fn
+    #/verify-callback-perffx! fault #/sink-call fault then #/go))
+  
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `no-effects`.
   ;
@@ -2401,10 +2427,21 @@
       (cene-err fault "Expected the return value of the callback to be an extfx effects value")
       effects))
   
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func-fault! "extfx-run-perffx" fault effects then
+    (expect effects (sink-perffx go)
+      (cene-err fault "Expected effects to be a perffx effectful computation")
+    #/sink-extfx-later #/fn
+    #/verify-callback-extfx! fault #/sink-call fault then #/go))
+  
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `later`, and it took an extfx effects value rather than a function
   ; that computed one. When we needed to do what this does, we used
   ; `get-mode` and ignored the mode value.
+  ;
+  ; TODO: Move this to the prelude, and implement it in terms of
+  ; `extfx-run-perffx`.
+  ;
   (def-func-fault! "extfx-later" fault get-effects
     (sink-extfx-later #/fn
     #/verify-callback-extfx! fault
@@ -2672,15 +2709,15 @@
     #/list->string #/list #/integer->char unicode-scalar))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
-  ; `string-append-later`.
-  (def-func-fault! "extfx-string-append" fault a b then
+  ; `string-append-later`, it took a callback, and it returned an
+  ; extfx value.
+  (def-func-fault! "perffx-string-append" fault a b
     (expect a (sink-string a)
       (cene-err fault "Expected a to be a string")
     #/expect b (sink-string b)
       (cene-err fault "Expected b to be a string")
-    #/sink-extfx-later #/fn
-    #/verify-callback-extfx! fault #/sink-call fault then
-    #/sink-string #/string->immutable-string #/string-append a b))
+    #/sink-perffx #/fn
+      (sink-string #/string->immutable-string #/string-append a b)))
   
   ; This is an extremely basic string syntax. It doesn't have any
   ; support for escape sequences. It reads a body that must have zero
@@ -2697,9 +2734,9 @@
       fault str-prim-pat text-input-stream
     #/fn text-input-stream maybe-contents
     #/dissect maybe-contents (just contents)
-    #/sink-extfx-string-from-located-string contents #/fn contents
     #/then unique-name qualify text-input-stream
-    #/sink-cexpr-reified contents))
+      (sink-cexpr-reified
+        (sink-string-from-located-string contents))))
   
   ; TODO BUILTINS: Implement the macro `str`, probably in a Cene
   ; prelude.
@@ -2817,18 +2854,17 @@
     #/racket-boolean->sink #/textpat-has-empty? t))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
-  ; `optimize-regex-later`.
-  (def-func-fault! "extfx-optimize-textpat" fault t then
+  ; `optimize-regex-later`, it took a callback, and it returned an
+  ; extfx value.
+  (def-func-fault! "perffx-optimize-textpat" fault t
     (expect t (sink-textpat t)
       (cene-err fault "Expected t to be a text pattern")
-    #/sink-extfx-optimize-textpat t #/fn t
-    #/verify-callback-extfx! fault #/sink-call fault then
-    #/sink-optimized-textpat t))
+    #/sink-perffx #/fn #/sink-optimized-textpat #/optimize-textpat t))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `optimized-regex-match-later`.
-  (def-func-fault! "extfx-optimized-textpat-match"
-    fault ot str start stop then
+  (def-func-fault! "perffx-optimized-textpat-match"
+    fault ot str start stop
     
     (expect ot (sink-optimized-textpat ot)
       (cene-err fault "Expected ot to be a text pattern")
@@ -2849,8 +2885,7 @@
       (cene-err fault "Expected stop to be less than or equal to the length of the string")
     #/expect (<= start stop) #t
       (cene-err fault "Expected start to be less than or equal to stop")
-    #/sink-extfx-later #/fn
-    #/verify-callback-extfx! fault #/sink-call fault then
+    #/sink-perffx #/fn
     #/w- result (optimized-textpat-match ot str start stop)
     #/mat result (textpat-result-matched stop)
       (make-sink-struct (s-textpat-result-matched) #/list
@@ -3041,13 +3076,13 @@
   (def-func! "is-located-string" v
     (racket-boolean->sink #/sink-located-string? v))
   
-  (def-func-fault! "extfx-string-from-located-string"
-    fault located-string then
+  (def-func-fault! "perffx-string-from-located-string"
+    fault located-string
     
     (expect (sink-located-string? located-string) #t
       (cene-err fault "Expected located-string to be a located string")
-    #/sink-extfx-string-from-located-string located-string #/fn string
-    #/verify-callback-extfx! fault #/sink-call fault then string))
+    #/sink-perffx #/fn
+      (sink-string-from-located-string located-string)))
   
   ; TODO BUILTINS: Make sure we have a sufficient set of operations
   ; for manipulating `sink-located-string` values.

@@ -1006,16 +1006,16 @@
   (begin (assert-can-get-cene-definitions!)
   #/sink-call-list caller-fault func args))
 
-(define/contract
-  (sink-extfx-string-from-located-string located-string then)
-  (-> sink-located-string? (-> sink-string? sink-extfx?) sink-extfx?)
+; NOTE: We only use this from places where we're allowed to perform
+; perffx (such as places where we're allowed to perform extfx).
+(define/contract (sink-string-from-located-string located-string)
+  (-> sink-located-string? sink-string?)
   (dissect located-string (sink-located-string parts)
-  #/sink-extfx-later #/fn
   ; TODO: See if this is a painter's algorithm.
-  #/then #/sink-string #/string->immutable-string
-  #/list-foldl "" parts #/fn state part
-    (dissect part (list start-loc string stop-loc)
-    #/string-append state string)))
+  #/sink-string #/string->immutable-string
+    (list-foldl "" parts #/fn state part
+      (dissect part (list start-loc string stop-loc)
+      #/string-append state string))))
 
 (define/contract (name-for-sink-string string)
   (-> sink-string? name?)
@@ -1290,11 +1290,11 @@
   #/fn text-input-stream maybe-located-string
   #/expect maybe-located-string (just located-string)
     (then text-input-stream #/nothing)
-  #/sink-extfx-string-from-located-string located-string #/fn string
   #/then text-input-stream
     (just #/list located-string
       (sink-call-qualify fault qualify
-        (pre-qualify #/sink-name-for-string string)))))
+        (pre-qualify #/sink-name-for-string
+          (sink-string-from-located-string located-string))))))
 
 (define sink-extfx-read-maybe-op-character-pat
   ; TODO: Support a more Unicode-aware notion here, maybe the
@@ -1316,10 +1316,6 @@
   (sink-extfx-optimized-textpat-read-located
     fault sink-extfx-read-maybe-op-character-pat text-input-stream
     then))
-
-(define/contract (sink-extfx-optimize-textpat t then)
-  (-> textpat? (-> optimized-textpat? sink-extfx?) sink-extfx?)
-  (sink-extfx-later #/fn #/then #/optimize-textpat t))
 
 (define |pat "["| (optimize-textpat #/textpat-from-string "["))
 (define |pat "]"| (optimize-textpat #/textpat-from-string "]"))
@@ -1371,11 +1367,10 @@
   (sink-extfx-read-maybe-op-character fault text-input-stream
   #/fn text-input-stream maybe-identifier
   #/mat maybe-identifier (just identifier)
-    (sink-extfx-string-from-located-string identifier
-    #/fn identifier
-    #/then text-input-stream
+    (then text-input-stream
       (sink-call-qualify fault qualify
-        (pre-qualify #/sink-name-for-string identifier)))
+        (pre-qualify #/sink-name-for-string
+          (sink-string-from-located-string identifier))))
   
   #/w- then
     (fn text-input-stream op-name
