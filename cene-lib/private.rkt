@@ -47,9 +47,10 @@
   dspace? error-definer? error-definer-from-message
   error-definer-uninformative extfx? extfx-claim-unique
   extfx-ct-continue extfx-noop extfx-pub-write extfx-run-getfx
-  extfx-put extfx-split-list extfx-sub-write fuse-extfx getfx-err
-  getfx-establish-pubsub getfx-get optionally-dexable-dexable
-  optionally-dexable-once success-or-error-definer)
+  extfx-put extfx-split-list extfx-sub-write fuse-extfx getfx?
+  getfx-err getfx-establish-pubsub getfx-get
+  optionally-dexable-dexable optionally-dexable-once
+  success-or-error-definer)
 (require #/only-in effection/order
   assocs->table-if-mutually-unique dex-immutable-string dex-trivial)
 (require #/only-in effection/order/base
@@ -275,24 +276,20 @@
 (define/contract cene-definition-get-param
   (parameter/c
     (maybe/c
-      (list/c
-        dspace?
-        sink-authorized-name?
-        (-> sink-name? sink?)
-        (-> sink? none/c))))
+      (list/c dspace? sink-authorized-name? (-> getfx? sink?))))
   (make-parameter #/nothing))
 
 (define/contract (assert-can-get-cene-definitions!)
   (-> void?)
   (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root get err)
+    (just #/list ds lang-impl-qualify-root run-getfx)
     (error "Expected an implementation of `cene-definition-get` to be available in the dynamic scope")
   #/void))
 
 (define/contract (assert-cannot-get-cene-definitions!)
   (-> void?)
   (mat (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root get err)
+    (just #/list ds lang-impl-qualify-root run-getfx)
     ; TODO: Make this error message more visually distinct from the
     ; `assert-can-get-cene-definitions!` error message.
     (error "Expected no implementation of `cene-definition-get` to be available in the dynamic scope")
@@ -301,30 +298,44 @@
 (define/contract (cene-definition-dspace)
   (-> dspace?)
   (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root get err)
+    (just #/list ds lang-impl-qualify-root run-getfx)
     (error "Expected every call to `cene-definition-dspace` to occur with an implementation in the dynamic scope")
     ds))
 
 (define/contract (cene-definition-lang-impl-qualify-root)
   (-> sink-authorized-name?)
   (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root get err)
+    (just #/list ds lang-impl-qualify-root run-getfx)
     (error "Expected every call to `cene-definition-lang-impl-qualify-root` to occur with an implementation in the dynamic scope")
     lang-impl-qualify-root))
 
 (define/contract (cene-definition-get name)
   (-> sink-name? sink?)
   (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root get err)
+    (just #/list ds lang-impl-qualify-root run-getfx)
     (error "Expected every call to `cene-definition-get` to occur with an implementation in the dynamic scope")
-  #/get name))
+  #/dissect name (sink-name name)
+  #/run-getfx #/getfx-get ds name
+    #;on-stall (error-definer-uninformative)
+    ))
 
 (define/contract (raise-cene-err clamor)
   (-> sink? none/c)
   (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root get err)
+    (just #/list ds lang-impl-qualify-root run-getfx)
     (error "Expected every call to `raise-cene-err` to occur with an implementation in the dynamic scope")
-  #/err clamor))
+  #/dissect
+    (expect (unmake-sink-struct-maybe (s-clamor-err) clamor)
+      (just #/list (sink-fault maybe-marks) (sink-string message))
+      (list (nothing) (format "~s" clamor))
+      (list maybe-marks message))
+    (list maybe-marks message)
+  #/w- marks
+    (mat maybe-marks (just marks) marks
+    #/current-continuation-marks)
+  ; TODO: Do smething with `marks` here. Maybe use it to
+  ; add a stack trace to the message somehow.
+  #/run-getfx #/getfx-err #/error-definer-from-message message))
 
 (define cene-definition-get-prompt-tag (make-continuation-prompt-tag))
 
@@ -350,33 +361,12 @@
           (list
             ds
             (sink-authorized-name lang-impl-qualify-root)
-            (dissectfn (sink-name name)
+            (fn effects
               (shift-at cene-definition-get-prompt-tag k
               #/extfx-with-cene-definition-restorer #/fn restore
-              #/extfx-run-getfx
-                (getfx-get ds name
-                  #;on-stall (error-definer-uninformative)
-                  )
-              #/fn value
+              #/extfx-run-getfx effects #/fn value
               #/restore #/fn
-              #/k value))
-            (fn clamor
-              (shift-at cene-definition-get-prompt-tag k
-              #/dissect
-                (expect
-                  (unmake-sink-struct-maybe (s-clamor-err) clamor)
-                  (just #/list
-                    (sink-fault maybe-marks)
-                    (sink-string message))
-                  (list (nothing) (format "~s" clamor))
-                  (list maybe-marks message))
-                (list maybe-marks message)
-              #/w- marks
-                (mat maybe-marks (just marks) marks
-                #/current-continuation-marks)
-              ; TODO: Do smething with `marks` here. Maybe use it to
-              ; add a stack trace to the message somehow.
-              #/extfx-err #/error-definer-from-message message))))])
+              #/k value))))])
   #/reset-at cene-definition-get-prompt-tag
     (body unique-name)))
 
