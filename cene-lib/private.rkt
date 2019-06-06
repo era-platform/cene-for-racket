@@ -184,7 +184,7 @@
   #:other #:methods gen:sink [])
 (struct-easy (sink-sub sub)
   #:other #:methods gen:sink [])
-(struct-easy (sink-effects go!)
+(struct-easy (sink-extfx go!)
   #:other #:methods gen:sink [])
 (struct-easy
   (sink-cexpr-sequence-output-stream
@@ -372,10 +372,10 @@
   #/reset-at cene-definition-get-prompt-tag
     (body unique-name)))
 
-(define/contract (sink-effects-run! effects)
-  (-> sink-effects? extfx?)
+(define/contract (sink-extfx-run! effects)
+  (-> sink-extfx? extfx?)
   (begin (assert-can-get-cene-definitions!)
-  #/dissect effects (sink-effects go!)
+  #/dissect effects (sink-extfx go!)
   #/go!))
 
 (define-generics cexpr
@@ -620,41 +620,41 @@
   (extfx-fuse-list lst))
 
 ; NOTE: The only purpose of this is to help track down a common kind
-; of error where the result of `go!` is mistakenly a `sink-effects?`
+; of error where the result of `go!` is mistakenly a `sink-extfx?`
 ; instead of an `extfx?`.
-(define/contract (make-sink-effects go!)
-  (-> (-> extfx?) sink-effects?)
-  (sink-effects go!))
+(define/contract (make-sink-extfx go!)
+  (-> (-> extfx?) sink-extfx?)
+  (sink-extfx go!))
 
-(define/contract (sink-effects-get name then)
-  (-> sink-name? (-> sink? sink-effects?) sink-effects?)
+(define/contract (sink-extfx-get name then)
+  (-> sink-name? (-> sink? sink-extfx?) sink-extfx?)
   (dissect name (sink-name name)
-  #/make-sink-effects #/fn
+  #/make-sink-extfx #/fn
   #/extfx-with-cene-definition-restorer #/fn restore
   #/extfx-get (cene-definition-dspace) name
     #;on-stall (error-definer-uninformative)
   #/fn result
   #/restore #/fn
-  #/sink-effects-run!
+  #/sink-extfx-run!
   #/then result))
 
-(define/contract (sink-effects-put name dex value)
-  (-> sink-authorized-name? sink-dex? sink? sink-effects?)
+(define/contract (sink-extfx-put name dex value)
+  (-> sink-authorized-name? sink-dex? sink? sink-extfx?)
   (dissect name (sink-authorized-name name)
   #/dissect dex (sink-dex dex)
-  #/make-sink-effects #/fn
+  #/make-sink-extfx #/fn
     ; NOTE: We need this restorer because the `in-dex?` call can
     ; invoke Cene code (or even Racket code like the implementation of
     ; `sink-dex-list`) that can depend on `cene-definition-get-param`.
     (extfx-with-cene-definition-restorer #/fn restore
     #/extfx-put (cene-definition-dspace) name
       (error-definer-from-message
-        "Internal error: Expected the sink-effects-put continuation ticket to be written to")
+        "Internal error: Expected the sink-extfx-put continuation ticket to be written to")
       (fn then
         (restore #/fn
         #/extfx-ct-continue then
           (error-definer-from-message
-            "Internal error: Expected the sink-effects-put continuation ticket to be written to only once")
+            "Internal error: Expected the sink-extfx-put continuation ticket to be written to only once")
           (list
             #;on-conflict
             (success-or-error-definer
@@ -664,48 +664,48 @@
               (optionally-dexable-dexable #/dexable dex value)
               (optionally-dexable-once value))))))))
 
-(define/contract (sink-effects-noop)
-  (-> sink-effects?)
-  (make-sink-effects #/fn #/extfx-noop))
+(define/contract (sink-extfx-noop)
+  (-> sink-extfx?)
+  (make-sink-extfx #/fn #/extfx-noop))
 
-(define/contract (sink-effects-fuse-binary a b)
-  (-> sink-effects? sink-effects? sink-effects?)
-  (dissect a (sink-effects a-go!)
-  #/dissect b (sink-effects b-go!)
-  #/make-sink-effects #/fn #/extfx-fuse (a-go!) (b-go!)))
+(define/contract (sink-extfx-fuse-binary a b)
+  (-> sink-extfx? sink-extfx? sink-extfx?)
+  (dissect a (sink-extfx a-go!)
+  #/dissect b (sink-extfx b-go!)
+  #/make-sink-extfx #/fn #/extfx-fuse (a-go!) (b-go!)))
 
-(define/contract (sink-effects-fuse-list effects)
-  (-> (listof sink-effects?) sink-effects?)
-  (list-foldl (sink-effects-noop) effects #/fn a b
-    (sink-effects-fuse-binary a b)))
+(define/contract (sink-extfx-fuse-list effects)
+  (-> (listof sink-extfx?) sink-extfx?)
+  (list-foldl (sink-extfx-noop) effects #/fn a b
+    (sink-extfx-fuse-binary a b)))
 
-(define/contract (sink-effects-fuse . effects)
-  (->* () #:rest (listof sink-effects?) sink-effects?)
-  (sink-effects-fuse-list effects))
+(define/contract (sink-extfx-fuse . effects)
+  (->* () #:rest (listof sink-extfx?) sink-extfx?)
+  (sink-extfx-fuse-list effects))
 
 ; This performs some computation during the side effect runner, rather
 ; than performing it right away. The computation doesn't have to be
 ; pure.
-(define/contract (sink-effects-later then)
-  (-> (-> sink-effects?) sink-effects?)
-  (make-sink-effects #/fn #/sink-effects-run! #/then))
+(define/contract (sink-extfx-later then)
+  (-> (-> sink-extfx?) sink-extfx?)
+  (make-sink-extfx #/fn #/sink-extfx-run! #/then))
 
-(define/contract (sink-effects-establish-pubsub pubsub-name then)
-  (-> sink-authorized-name? (-> sink-pub? sink-sub? sink-effects?)
-    sink-effects?)
+(define/contract (sink-extfx-establish-pubsub pubsub-name then)
+  (-> sink-authorized-name? (-> sink-pub? sink-sub? sink-extfx?)
+    sink-extfx?)
   (dissect pubsub-name (sink-authorized-name pubsub-name)
-  #/make-sink-effects #/fn
+  #/make-sink-extfx #/fn
     (extfx-with-cene-definition-restorer #/fn restore
     #/extfx-establish-pubsub (cene-definition-dspace) pubsub-name
     #/fn p s
     #/restore #/fn
-    #/sink-effects-run! #/then (sink-pub p) (sink-sub s))))
+    #/sink-extfx-run! #/then (sink-pub p) (sink-sub s))))
 
-(define/contract (sink-effects-pub-write p unique-name arg)
-  (-> sink-pub? sink-authorized-name? sink? sink-effects?)
+(define/contract (sink-extfx-pub-write p unique-name arg)
+  (-> sink-pub? sink-authorized-name? sink? sink-extfx?)
   (dissect p (sink-pub p)
   #/dissect unique-name (sink-authorized-name unique-name)
-  #/make-sink-effects #/fn
+  #/make-sink-extfx #/fn
     (extfx-pub-write (cene-definition-dspace) p unique-name
       #;on-conflict
       (success-or-error-definer
@@ -713,12 +713,12 @@
         (extfx-noop))
       arg)))
 
-(define/contract (sink-effects-sub-write s unique-name func)
-  (-> sink-sub? sink-authorized-name? (-> sink? sink-effects?)
-    sink-effects?)
+(define/contract (sink-extfx-sub-write s unique-name func)
+  (-> sink-sub? sink-authorized-name? (-> sink? sink-extfx?)
+    sink-extfx?)
   (dissect s (sink-sub s)
   #/dissect unique-name (sink-authorized-name unique-name)
-  #/make-sink-effects #/fn
+  #/make-sink-extfx #/fn
     (extfx-with-cene-definition-restorer #/fn restore
     #/extfx-sub-write (cene-definition-dspace) s unique-name
       #;on-conflict
@@ -727,11 +727,11 @@
         (extfx-noop))
       (fn arg
         (restore #/fn
-        #/sink-effects-run! #/func arg)))))
+        #/sink-extfx-run! #/func arg)))))
 
-(define/contract (sink-effects-establish-init-package-pubsub then)
-  (-> (-> sink-pub? sink-sub? sink-effects?) sink-effects?)
-  (sink-effects-establish-pubsub
+(define/contract (sink-extfx-establish-init-package-pubsub then)
+  (-> (-> sink-pub? sink-sub? sink-extfx?) sink-extfx?)
+  (sink-extfx-establish-pubsub
     (sink-authorized-name-subname
       (sink-name #/just-value #/name-of (dex-immutable-string)
         "init-package-pubsub")
@@ -1006,11 +1006,10 @@
   #/sink-call-list caller-fault func args))
 
 (define/contract
-  (sink-effects-string-from-located-string located-string then)
-  (-> sink-located-string? (-> sink-string? sink-effects?)
-    sink-effects?)
+  (sink-extfx-string-from-located-string located-string then)
+  (-> sink-located-string? (-> sink-string? sink-extfx?) sink-extfx?)
   (dissect located-string (sink-located-string parts)
-  #/sink-effects-later #/fn
+  #/sink-extfx-later #/fn
   ; TODO: See if this is a painter's algorithm.
   #/then #/sink-string #/string->immutable-string
   #/list-foldl "" parts #/fn state part
@@ -1077,7 +1076,7 @@
   (-> sink-fault? sink-cexpr-sequence-output-stream?
     (list/c
       any/c
-      (-> any/c sink-cexpr? (-> any/c sink-effects?) sink-effects?)))
+      (-> any/c sink-cexpr? (-> any/c sink-extfx?) sink-extfx?)))
   (begin (assert-can-get-cene-definitions!)
   #/dissect stream (sink-cexpr-sequence-output-stream id b)
   ; TODO: See if this should be more thread-safe in some way.
@@ -1088,20 +1087,19 @@
     state-and-handler))
 
 (define/contract
-  (sink-effects-make-cexpr-sequence-output-stream
+  (sink-extfx-make-cexpr-sequence-output-stream
     fault unique-name state on-cexpr then)
   (->
     sink-fault?
     sink-authorized-name?
     any/c
-    (-> any/c sink-cexpr (-> any/c sink-effects?) sink-effects?)
+    (-> any/c sink-cexpr (-> any/c sink-extfx?) sink-extfx?)
     (-> sink-cexpr-sequence-output-stream?
-      (-> sink-cexpr-sequence-output-stream?
-        (-> any/c sink-effects?)
-        sink-effects?)
-      sink-effects?)
-    sink-effects?)
-  (sink-effects-claim-and-split unique-name 0 #/dissectfn (list)
+      (-> sink-cexpr-sequence-output-stream? (-> any/c sink-extfx?)
+        sink-extfx?)
+      sink-extfx?)
+    sink-extfx?)
+  (sink-extfx-claim-and-split unique-name 0 #/dissectfn (list)
   #/w- identity (box #/trivial)
   #/then
     (sink-cexpr-sequence-output-stream identity #/box #/just
@@ -1111,25 +1109,25 @@
         (sink-cexpr-sequence-output-stream found-id _)
       #/expect (eq? identity found-id) #t
         ; TODO: See if we can tweak the design of
-        ; `sink-effects-make-cexpr-sequence-output-stream` in such a
-        ; way that its clients can specify their own error messages to
+        ; `sink-extfx-make-cexpr-sequence-output-stream` in such a way
+        ; that its clients can specify their own error messages to
         ; take the place of this one. Since we don't currently support
         ; that, we're reporting this error message in such a way that
         ; it makes sense for Cene's
-        ; `effects-make-expr-sequence-output-stream` built-in.
-        (cene-err fault "Expected the expression sequence output stream given to an effects-make-expr-sequence-output-stream unwrapper to be a descendant of the same one created by that call")
+        ; `extfx-make-expr-sequence-output-stream` built-in.
+        (cene-err fault "Expected the expression sequence output stream given to an extfx-make-expr-sequence-output-stream unwrapper to be a descendant of the same one created by that call")
       #/dissect
         (sink-cexpr-sequence-output-stream-spend! fault output-stream)
         (list state on-cexpr)
       #/then state))))
 
 (define/contract
-  (sink-effects-cexpr-write fault output-stream cexpr then)
+  (sink-extfx-cexpr-write fault output-stream cexpr then)
   (->
     sink-fault? sink-cexpr-sequence-output-stream? sink-cexpr?
-    (-> sink-cexpr-sequence-output-stream? sink-effects?)
-    sink-effects?)
-  (sink-effects-later #/fn
+    (-> sink-cexpr-sequence-output-stream? sink-extfx?)
+    sink-extfx?)
+  (sink-extfx-later #/fn
   #/dissect output-stream (sink-cexpr-sequence-output-stream id _)
   #/dissect
     (sink-cexpr-sequence-output-stream-spend! fault output-stream)
@@ -1151,14 +1149,14 @@
     input-port))
 
 (define/contract
-  (sink-effects-read-eof fault text-input-stream on-eof else)
+  (sink-extfx-read-eof fault text-input-stream on-eof else)
   (->
     sink-fault?
     sink-text-input-stream?
-    sink-effects?
-    (-> sink-text-input-stream? sink-effects?)
-    sink-effects?)
-  (sink-effects-later #/fn
+    sink-extfx?
+    (-> sink-text-input-stream? sink-extfx?)
+    sink-extfx?)
+  (sink-extfx-later #/fn
   #/w- in (sink-text-input-stream-spend! fault text-input-stream)
   #/if (eof-object? #/peek-byte in)
     (begin (close-input-port in)
@@ -1166,16 +1164,16 @@
   #/else #/sink-text-input-stream #/box #/just in))
 
 (define/contract
-  (sink-effects-optimized-textpat-read-located
+  (sink-extfx-optimized-textpat-read-located
     fault pattern text-input-stream then)
   (->
     sink-fault?
     optimized-textpat?
     sink-text-input-stream?
     (-> sink-text-input-stream? (maybe/c sink-located-string?)
-      sink-effects?)
-    sink-effects?)
-  (sink-effects-later #/fn
+      sink-extfx?)
+    sink-extfx?)
+  (sink-extfx-later #/fn
   #/w- in (sink-text-input-stream-spend! fault text-input-stream)
   #/let-values
     (
@@ -1199,63 +1197,63 @@
           text
           (list stop-line stop-column stop-position))))))
 
-(define sink-effects-peek-whether-eof-pat
+(define sink-extfx-peek-whether-eof-pat
   (optimize-textpat #/textpat-lookahead #/textpat-one))
 
 (define/contract
-  (sink-effects-peek-whether-eof fault text-input-stream then)
+  (sink-extfx-peek-whether-eof fault text-input-stream then)
   (->
     sink-fault?
     sink-text-input-stream?
-    (-> sink-text-input-stream? boolean? sink-effects?)
-    sink-effects?)
-  (sink-effects-optimized-textpat-read-located
-    fault sink-effects-peek-whether-eof-pat text-input-stream
+    (-> sink-text-input-stream? boolean? sink-extfx?)
+    sink-extfx?)
+  (sink-extfx-optimized-textpat-read-located
+    fault sink-extfx-peek-whether-eof-pat text-input-stream
   #/fn text-input-stream maybe-located-string
   #/mat maybe-located-string (just located-string)
     (then text-input-stream #f)
     (then text-input-stream #t)))
 
-(define sink-effects-read-whitespace-pat
+(define sink-extfx-read-whitespace-pat
   ; TODO: Support a more Unicode-aware notion of whitespace.
   (optimize-textpat #/textpat-star #/textpat-one-in-string " \t\r\n"))
 
 (define/contract
-  (sink-effects-read-whitespace fault text-input-stream then)
+  (sink-extfx-read-whitespace fault text-input-stream then)
   (->
     sink-fault?
     sink-text-input-stream?
-    (-> sink-text-input-stream? sink-located-string? sink-effects?)
-    sink-effects?)
-  (sink-effects-optimized-textpat-read-located
-    fault sink-effects-read-whitespace-pat text-input-stream
+    (-> sink-text-input-stream? sink-located-string? sink-extfx?)
+    sink-extfx?)
+  (sink-extfx-optimized-textpat-read-located
+    fault sink-extfx-read-whitespace-pat text-input-stream
   #/fn text-input-stream maybe-located-string
   #/dissect maybe-located-string (just located-string)
   #/then text-input-stream located-string))
 
-(define sink-effects-read-non-line-breaks-pat
+(define sink-extfx-read-non-line-breaks-pat
   (optimize-textpat
   ; TODO: Support a more Unicode-aware notion of line break.
   #/textpat-star #/textpat-one-not-in-string "\r\n"))
 
 (define/contract
-  (sink-effects-read-non-line-breaks fault text-input-stream then)
+  (sink-extfx-read-non-line-breaks fault text-input-stream then)
   (->
     sink-fault?
     sink-text-input-stream?
-    (-> sink-text-input-stream? sink-located-string? sink-effects?)
-    sink-effects?)
-  (sink-effects-optimized-textpat-read-located
-    fault sink-effects-read-non-line-breaks-pat text-input-stream
+    (-> sink-text-input-stream? sink-located-string? sink-extfx?)
+    sink-extfx?)
+  (sink-extfx-optimized-textpat-read-located
+    fault sink-extfx-read-non-line-breaks-pat text-input-stream
   #/fn text-input-stream maybe-located-string
   #/dissect maybe-located-string (just located-string)
   #/then text-input-stream located-string))
 
-(define sink-effects-read-maybe-identifier-pat
+(define sink-extfx-read-maybe-identifier-pat
   ; TODO: Support a more Unicode-aware notion of identifier. Not only
-  ; should `sink-effects-read-maybe-identifier` recognize an
-  ; identifier according to one of the Unicode algorithms, it should
-  ; normalize it according to a Unicode algorithm as well.
+  ; should `sink-extfx-read-maybe-identifier` recognize an identifier
+  ; according to one of the Unicode algorithms, it should normalize it
+  ; according to a Unicode algorithm as well.
   (optimize-textpat #/textpat-once-or-more #/textpat-or
     (textpat-one-in-string "-0")
     (textpat-one-in-range #\1 #\9)
@@ -1274,7 +1272,7 @@
     qualified-name))
 
 (define/contract
-  (sink-effects-read-maybe-identifier
+  (sink-extfx-read-maybe-identifier
     fault qualify text-input-stream pre-qualify then)
   (->
     sink-fault?
@@ -1284,20 +1282,20 @@
     (->
       sink-text-input-stream?
       (maybe/c #/list/c sink-located-string? sink-authorized-name?)
-      sink-effects?)
-    sink-effects?)
-  (sink-effects-optimized-textpat-read-located
-    fault sink-effects-read-maybe-identifier-pat text-input-stream
+      sink-extfx?)
+    sink-extfx?)
+  (sink-extfx-optimized-textpat-read-located
+    fault sink-extfx-read-maybe-identifier-pat text-input-stream
   #/fn text-input-stream maybe-located-string
   #/expect maybe-located-string (just located-string)
     (then text-input-stream #/nothing)
-  #/sink-effects-string-from-located-string located-string #/fn string
+  #/sink-extfx-string-from-located-string located-string #/fn string
   #/then text-input-stream
     (just #/list located-string
       (sink-call-qualify fault qualify
         (pre-qualify #/sink-name-for-string string)))))
 
-(define sink-effects-read-maybe-op-character-pat
+(define sink-extfx-read-maybe-op-character-pat
   ; TODO: Support a more Unicode-aware notion here, maybe the
   ; "pattern" symbols described in the Unicode identifier rules.
   (optimize-textpat #/textpat-one-not #/textpat-or
@@ -1307,23 +1305,20 @@
     (textpat-one-in-range #\A #\Z)))
 
 (define/contract
-  (sink-effects-read-maybe-op-character fault text-input-stream then)
+  (sink-extfx-read-maybe-op-character fault text-input-stream then)
   (->
     sink-fault?
     sink-text-input-stream?
     (-> sink-text-input-stream? (maybe/c sink-located-string?)
-      sink-effects?)
-    sink-effects?)
-  (sink-effects-optimized-textpat-read-located
-    fault sink-effects-read-maybe-op-character-pat text-input-stream
+      sink-extfx?)
+    sink-extfx?)
+  (sink-extfx-optimized-textpat-read-located
+    fault sink-extfx-read-maybe-op-character-pat text-input-stream
     then))
 
-(define/contract (sink-effects-optimize-textpat t then)
-  (->
-    textpat?
-    (-> optimized-textpat? sink-effects?)
-    sink-effects?)
-  (sink-effects-later #/fn #/then #/optimize-textpat t))
+(define/contract (sink-extfx-optimize-textpat t then)
+  (-> textpat? (-> optimized-textpat? sink-extfx?) sink-extfx?)
+  (sink-extfx-later #/fn #/then #/optimize-textpat t))
 
 (define |pat "["| (optimize-textpat #/textpat-from-string "["))
 (define |pat "]"| (optimize-textpat #/textpat-from-string "]"))
@@ -1334,19 +1329,17 @@
 (define |pat ":"| (optimize-textpat #/textpat-from-string ":"))
 (define |pat "/"| (optimize-textpat #/textpat-from-string "/"))
 
-(define sink-effects-peek-whether-closing-bracket-pat
+(define sink-extfx-peek-whether-closing-bracket-pat
   (optimize-textpat #/textpat-lookahead #/textpat-one-in-string "])"))
 
 (define/contract
-  (sink-effects-peek-whether-closing-bracket
+  (sink-extfx-peek-whether-closing-bracket
     fault text-input-stream then)
-  (->
-    sink-fault?
-    sink-text-input-stream?
-    (-> sink-text-input-stream? boolean? sink-effects?)
-    sink-effects?)
-  (sink-effects-optimized-textpat-read-located
-    fault sink-effects-peek-whether-closing-bracket-pat
+  (-> sink-fault? sink-text-input-stream?
+    (-> sink-text-input-stream? boolean? sink-extfx?)
+    sink-extfx?)
+  (sink-extfx-optimized-textpat-read-located
+    fault sink-extfx-peek-whether-closing-bracket-pat
     text-input-stream
   #/fn text-input-stream maybe-located-empty-string
   #/mat maybe-located-empty-string (just located-empty-string)
@@ -1354,15 +1347,15 @@
     (then text-input-stream #f)))
 
 (define/contract
-  (sink-effects-read-op
+  (sink-extfx-read-op
     fault text-input-stream qualify pre-qualify then)
   (->
     sink-fault?
     sink-text-input-stream?
     sink?
     (-> sink-name? sink-name?)
-    (-> sink-text-input-stream? sink-authorized-name? sink-effects?)
-    sink-effects?)
+    (-> sink-text-input-stream? sink-authorized-name? sink-extfx?)
+    sink-extfx?)
   
   ; NOTE: These are the cases we should handle here.
   ;
@@ -1374,10 +1367,10 @@
   ;   [markup]:
   ;   [markup]
   
-  (sink-effects-read-maybe-op-character fault text-input-stream
+  (sink-extfx-read-maybe-op-character fault text-input-stream
   #/fn text-input-stream maybe-identifier
   #/mat maybe-identifier (just identifier)
-    (sink-effects-string-from-located-string identifier
+    (sink-extfx-string-from-located-string identifier
     #/fn identifier
     #/then text-input-stream
       (sink-call-qualify fault qualify
@@ -1385,27 +1378,27 @@
   
   #/w- then
     (fn text-input-stream op-name
-      (sink-effects-optimized-textpat-read-located
+      (sink-extfx-optimized-textpat-read-located
         fault |pat ":"| text-input-stream
       #/fn text-input-stream maybe-str
       #/then text-input-stream op-name))
   
   ; TODO: Support the use of ( and [ as delimiters for macro
   ; names.
-  #/sink-effects-optimized-textpat-read-located
+  #/sink-extfx-optimized-textpat-read-located
     fault |pat "("| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     ; TODO FAULT: Make this `fault` more specific.
     (cene-err fault "The use of ( to delimit a macro name is not yet supported")
-  #/sink-effects-optimized-textpat-read-located
+  #/sink-extfx-optimized-textpat-read-located
     fault |pat "["| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     ; TODO FAULT: Make this `fault` more specific.
     (cene-err fault "The use of [ to delimit a macro name is not yet supported")
   
-  #/sink-effects-read-maybe-identifier
+  #/sink-extfx-read-maybe-identifier
     fault qualify text-input-stream pre-qualify
   #/fn text-input-stream maybe-name
   #/mat maybe-name (just #/list located-string name)
@@ -1415,7 +1408,7 @@
   #/cene-err fault "Encountered an unrecognized case of the expression operator syntax"))
 
 (define/contract
-  (sink-effects-run-op
+  (sink-extfx-run-op
     fault op-impl unique-name qualify text-input-stream output-stream
     then)
   (->
@@ -1424,9 +1417,9 @@
     (->
       sink-authorized-name? sink? sink-text-input-stream?
       sink-cexpr-sequence-output-stream?
-      sink-effects?)
-    sink-effects?)
-  (sink-effects-claim-freshen unique-name #/fn unique-name
+      sink-extfx?)
+    sink-extfx?)
+  (sink-extfx-claim-freshen unique-name #/fn unique-name
   #/w- result
     (sink-call fault op-impl
       unique-name qualify text-input-stream output-stream
@@ -1438,14 +1431,14 @@
       (cene-err fault "Expected the text input stream of a macro's callback results to be a text input stream")
     #/expect (sink-cexpr-sequence-output-stream? output-stream) #t
       (cene-err fault "Expected the expression sequence output stream of a macro's callback results to be an expression sequence output stream")
-    #/sink-effects-claim-freshen unique-name #/fn unique-name
+    #/sink-extfx-claim-freshen unique-name #/fn unique-name
     #/then unique-name qualify text-input-stream output-stream)
-  #/expect (sink-effects? result) #t
+  #/expect (sink-extfx? result) #t
     (cene-err fault "Expected the return value of a macro to be an effectful computation")
     result))
 
 (define/contract
-  (sink-effects-read-and-run-op
+  (sink-extfx-read-and-run-op
     fault unique-name qualify text-input-stream output-stream
     pre-qualify then)
   (->
@@ -1458,19 +1451,19 @@
     (->
       sink-authorized-name? sink? sink-text-input-stream?
       sink-cexpr-sequence-output-stream?
-      sink-effects?)
-    sink-effects?)
-  (sink-effects-claim-freshen unique-name #/fn unique-name
-  #/sink-effects-read-op fault text-input-stream qualify pre-qualify
+      sink-extfx?)
+    sink-extfx?)
+  (sink-extfx-claim-freshen unique-name #/fn unique-name
+  #/sink-extfx-read-op fault text-input-stream qualify pre-qualify
   #/fn text-input-stream op-name
-  #/sink-effects-get (sink-authorized-name-get-name op-name)
+  #/sink-extfx-get (sink-authorized-name-get-name op-name)
   #/fn op-impl
-  #/sink-effects-run-op
+  #/sink-extfx-run-op
     fault op-impl unique-name qualify text-input-stream output-stream
     then))
 
 (define/contract
-  (sink-effects-read-and-run-freestanding-cexpr-op
+  (sink-extfx-read-and-run-freestanding-cexpr-op
     fault unique-name qualify text-input-stream output-stream then)
   (->
     sink-fault? sink-authorized-name? sink? sink-text-input-stream?
@@ -1478,15 +1471,15 @@
     (->
       sink-authorized-name? sink? sink-text-input-stream?
       sink-cexpr-sequence-output-stream?
-      sink-effects?)
-    sink-effects?)
-  (sink-effects-read-and-run-op
+      sink-extfx?)
+    sink-extfx?)
+  (sink-extfx-read-and-run-op
     fault unique-name qualify text-input-stream output-stream
     sink-name-for-freestanding-cexpr-op
     then))
 
 (define/contract
-  (sink-effects-read-and-run-bounded-cexpr-op
+  (sink-extfx-read-and-run-bounded-cexpr-op
     fault unique-name qualify text-input-stream output-stream then)
   (->
     sink-fault? sink-authorized-name? sink? sink-text-input-stream?
@@ -1494,15 +1487,15 @@
     (->
       sink-authorized-name? sink? sink-text-input-stream?
       sink-cexpr-sequence-output-stream?
-      sink-effects?)
-    sink-effects?)
-  (sink-effects-read-and-run-op
+      sink-extfx?)
+    sink-extfx?)
+  (sink-extfx-read-and-run-op
     fault unique-name qualify text-input-stream output-stream
     sink-name-for-bounded-cexpr-op
     then))
 
 (define/contract
-  (sink-effects-run-nameless-op
+  (sink-extfx-run-nameless-op
     fault unique-name qualify text-input-stream output-stream then)
   (->
     sink-fault? sink-authorized-name? sink? sink-text-input-stream?
@@ -1510,15 +1503,15 @@
     (->
       sink-authorized-name? sink? sink-text-input-stream?
       sink-cexpr-sequence-output-stream?
-      sink-effects?)
-    sink-effects?)
-  (sink-effects-claim-freshen unique-name #/fn unique-name
-  #/sink-effects-get
+      sink-extfx?)
+    sink-extfx?)
+  (sink-extfx-claim-freshen unique-name #/fn unique-name
+  #/sink-extfx-get
     (sink-authorized-name-get-name
     #/sink-call-qualify fault qualify
       (sink-name-for-nameless-bounded-cexpr-op))
   #/fn op-impl
-  #/sink-effects-run-op
+  #/sink-extfx-run-op
     fault op-impl unique-name qualify text-input-stream output-stream
     then))
 
@@ -1533,7 +1526,7 @@
 ; TODO CEXPR-LOCATED: For every cexpr read this way, wrap that cexpr
 ; in a `cexpr-located`.
 (define/contract
-  (sink-effects-read-cexprs
+  (sink-extfx-read-cexprs
     fault unique-name qualify text-input-stream output-stream then)
   (->
     sink-fault? sink-authorized-name? sink? sink-text-input-stream?
@@ -1541,8 +1534,8 @@
     (->
       sink-authorized-name? sink? sink-text-input-stream?
       sink-cexpr-sequence-output-stream?
-      sink-effects?)
-    sink-effects?)
+      sink-extfx?)
+    sink-extfx?)
   
   ; NOTE: These are the cases we should handle.
   ;
@@ -1564,104 +1557,104 @@
   ;
   ; We do not handle identifiers here. Clients who anticipate
   ; identifiers should try to read them with
-  ; `sink-effects-read-maybe-identifier` before calling this.
+  ; `sink-extfx-read-maybe-identifier` before calling this.
   
   
-  (sink-effects-claim-freshen unique-name #/fn unique-name
-  #/sink-effects-read-whitespace fault text-input-stream
+  (sink-extfx-claim-freshen unique-name #/fn unique-name
+  #/sink-extfx-read-whitespace fault text-input-stream
   #/fn text-input-stream whitespace
-  #/sink-effects-peek-whether-eof fault text-input-stream
+  #/sink-extfx-peek-whether-eof fault text-input-stream
   #/fn text-input-stream is-eof
   #/if is-eof
     (then unique-name qualify text-input-stream output-stream)
   
-  #/sink-effects-optimized-textpat-read-located
+  #/sink-extfx-optimized-textpat-read-located
     fault |pat ")"| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     ; TODO FAULT: Make this `fault` more specific.
     (cene-err fault "Encountered an unmatched )")
-  #/sink-effects-optimized-textpat-read-located
+  #/sink-extfx-optimized-textpat-read-located
     fault |pat "]"| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     ; TODO FAULT: Make this `fault` more specific.
     (cene-err fault "Encountered an unmatched ]")
   
-  #/sink-effects-optimized-textpat-read-located
+  #/sink-extfx-optimized-textpat-read-located
     fault |pat "\\"| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
-    (sink-effects-read-and-run-freestanding-cexpr-op
+    (sink-extfx-read-and-run-freestanding-cexpr-op
       fault unique-name qualify text-input-stream output-stream then)
   
-  #/sink-effects-optimized-textpat-read-located
+  #/sink-extfx-optimized-textpat-read-located
     fault |pat "("| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     (w- then
       (fn unique-name qualify text-input-stream output-stream
-        (sink-effects-optimized-textpat-read-located
+        (sink-extfx-optimized-textpat-read-located
           fault |pat ")"| text-input-stream
         #/fn text-input-stream maybe-str
         #/expect maybe-str (just _)
           ; TODO FAULT: Make this `fault` more specific.
           (cene-err fault "Encountered a syntax that began with ( or (. and did not end with )")
         #/then unique-name qualify text-input-stream output-stream))
-    #/sink-effects-optimized-textpat-read-located
+    #/sink-extfx-optimized-textpat-read-located
       fault |pat "."| text-input-stream
     #/fn text-input-stream maybe-str
     #/mat maybe-str (just _)
-      (sink-effects-read-and-run-bounded-cexpr-op
+      (sink-extfx-read-and-run-bounded-cexpr-op
         fault unique-name qualify text-input-stream output-stream
         then)
-    #/sink-effects-run-nameless-op
+    #/sink-extfx-run-nameless-op
       fault unique-name qualify text-input-stream output-stream then)
   
-  #/sink-effects-optimized-textpat-read-located
+  #/sink-extfx-optimized-textpat-read-located
     fault |pat "["| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     (w- then
       (fn unique-name qualify text-input-stream output-stream
-        (sink-effects-optimized-textpat-read-located
+        (sink-extfx-optimized-textpat-read-located
           fault |pat "]"| text-input-stream
         #/fn text-input-stream maybe-str
         #/expect maybe-str (just _)
           ; TODO FAULT: Make this `fault` more specific.
           (cene-err fault "Encountered a syntax that began with [ or [. and did not end with ]")
         #/then unique-name qualify text-input-stream output-stream))
-    #/sink-effects-optimized-textpat-read-located
+    #/sink-extfx-optimized-textpat-read-located
       fault |pat "."| text-input-stream
     #/fn text-input-stream maybe-str
     #/mat maybe-str (just _)
-      (sink-effects-read-and-run-bounded-cexpr-op
+      (sink-extfx-read-and-run-bounded-cexpr-op
         fault unique-name qualify text-input-stream output-stream
         then)
-    #/sink-effects-run-nameless-op
+    #/sink-extfx-run-nameless-op
       fault unique-name qualify text-input-stream output-stream then)
   
-  #/sink-effects-optimized-textpat-read-located
+  #/sink-extfx-optimized-textpat-read-located
     fault |pat "/"| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     (w- then
       (fn unique-name qualify text-input-stream output-stream
-        (sink-effects-peek-whether-closing-bracket
+        (sink-extfx-peek-whether-closing-bracket
           fault text-input-stream
         #/fn text-input-stream is-closing-bracket
         #/if (not is-closing-bracket)
           ; TODO FAULT: Make this `fault` more specific.
           (cene-err fault "Encountered a syntax that began with /. and did not end at ) or ]")
         #/then unique-name qualify text-input-stream output-stream))
-    #/sink-effects-optimized-textpat-read-located
+    #/sink-extfx-optimized-textpat-read-located
       fault |pat "."| text-input-stream
     #/fn text-input-stream maybe-str
     #/mat maybe-str (just _)
-      (sink-effects-read-and-run-bounded-cexpr-op
+      (sink-extfx-read-and-run-bounded-cexpr-op
         fault unique-name qualify text-input-stream output-stream
         then)
-    #/sink-effects-run-nameless-op
+    #/sink-extfx-run-nameless-op
       fault unique-name qualify text-input-stream output-stream then)
   
   ; TODO FAULT: Make this `fault` more specific.
@@ -1704,11 +1697,11 @@
     (error-definer-from-message
       "Tried to claim a name unique more than once")
     (error-definer-from-message
-      "Internal error: Expected the sink-effects-claim familiarity ticket to be spent")
+      "Internal error: Expected the sink-extfx-claim familiarity ticket to be spent")
   #/fn fresh-authorized-name familiarity-ticket
   #/extfx-split-list familiarity-ticket 0
     (error-definer-from-message
-      "Internal error: Expected the sink-effects-claim familiarity ticket to be spent only once")
+      "Internal error: Expected the sink-extfx-claim familiarity ticket to be spent only once")
   #/dissectfn (list)
   #/on-success))
 
@@ -1736,34 +1729,33 @@
     
     #/next n rest #/cons first names)))
 
-(define/contract (sink-effects-claim name on-success)
-  (-> sink-authorized-name? (-> sink-effects?) sink-effects?)
+(define/contract (sink-extfx-claim name on-success)
+  (-> sink-authorized-name? (-> sink-extfx?) sink-extfx?)
   (dissect name (sink-authorized-name name)
-  #/make-sink-effects #/fn
+  #/make-sink-extfx #/fn
     (extfx-with-cene-definition-restorer #/fn restore
     #/extfx-claim name #/fn
     #/restore #/fn
-    #/sink-effects-run!
+    #/sink-extfx-run!
     #/on-success)))
 
-(define/contract (sink-effects-claim-and-split unique-name n then)
+(define/contract (sink-extfx-claim-and-split unique-name n then)
   (->
-    sink-authorized-name?
-    natural?
-    (-> (listof sink-authorized-name?) sink-effects?)
-    sink-effects?)
+    sink-authorized-name? natural?
+    (-> (listof sink-authorized-name?) sink-extfx?)
+    sink-extfx?)
   (dissect unique-name (sink-authorized-name unique-name)
-  #/make-sink-effects #/fn
+  #/make-sink-extfx #/fn
     (extfx-with-cene-definition-restorer #/fn restore
     #/extfx-claim-and-split unique-name n #/fn names
     #/restore #/fn
-    #/sink-effects-run! #/then #/list-map names #/fn name
+    #/sink-extfx-run! #/then #/list-map names #/fn name
       (sink-authorized-name name))))
 
-(define/contract (sink-effects-claim-freshen unique-name then)
-  (-> sink-authorized-name? (-> sink-authorized-name? sink-effects?)
-    sink-effects?)
-  (sink-effects-claim-and-split unique-name 1
+(define/contract (sink-extfx-claim-freshen unique-name then)
+  (-> sink-authorized-name? (-> sink-authorized-name? sink-extfx?)
+    sink-extfx?)
+  (sink-extfx-claim-and-split unique-name 1
   #/dissectfn (list unique-name)
   #/then unique-name))
 
@@ -1771,20 +1763,32 @@
   (-> cexpr? boolean?)
   (not #/cexpr-has-free-vars? cexpr #/table-empty))
 
-; This evaluates the given cexpr. If the current side effects runner
-; doesn't support evaluating cexprs, this causes an error instead.
+; This evaluates the given cexpr. If the current extfx side effects
+; runner doesn't support evaluating cexprs, this causes an error
+; instead.
 ;
-; The macroexpander's side effects runner supports the operation, and
-; so far we've only written code for the macroexpander's side effects
-; runner (TODO), so this particular version always succeeds.
+; The macroexpander's extfx side effects runner supports the
+; operation, and so far the only extfx side effects runner we've
+; written is the macrexpander's (TODO), so this particular version
+; always succeeds.
 ;
-(define/contract (sink-effects-cexpr-eval fault cexpr then)
+; TODO: Actually, this is more of a job for getfx, i.e. pure Cene
+; code. This operation can only be implemented on platforms where
+; struct tag names aren't compiled away (at least not unless they
+; can't be constructed at run time) and where it's okay to depend on a
+; Cene module by surprise at run time (at least if an import of the
+; Cene module can be constructed at run time). On other platforms,
+; this can usually be rejected at compile time, but some platforms may
+; allow some or all calls to this operation to cause errors at run
+; time instead.
+;
+(define/contract (sink-extfx-cexpr-eval fault cexpr then)
   (->
     sink-fault?
     (and/c cexpr? cexpr-can-eval?)
-    (-> sink? sink-effects?)
-    sink-effects?)
-  (sink-effects-later #/fn
+    (-> sink? sink-extfx?)
+    sink-extfx?)
+  (sink-extfx-later #/fn
   #/then #/cexpr-eval fault cexpr #/table-empty))
 
 ; This returns a computation that reads all the content of the given
@@ -1792,28 +1796,28 @@
 ; typical Lisp readers, this does not read first-class values; it only
 ; reads and performs side effects.
 (define/contract
-  (sink-effects-read-top-level
+  (sink-extfx-read-top-level
     fault unique-name qualify text-input-stream)
   (-> sink-fault? sink-authorized-name? sink? sink-text-input-stream?
-    sink-effects?)
-  (sink-effects-claim-freshen unique-name #/fn unique-name
-  #/sink-effects-read-eof fault text-input-stream
+    sink-extfx?)
+  (sink-extfx-claim-freshen unique-name #/fn unique-name
+  #/sink-extfx-read-eof fault text-input-stream
     ; If we're at the end of the file, we're done. We claim the
     ; `unique-name` to stay in the habit, even though it's clear no
     ; one else can be using it.
-    (sink-effects-claim unique-name #/fn #/sink-effects-noop)
+    (sink-extfx-claim unique-name #/fn #/sink-extfx-noop)
   #/fn text-input-stream
-  #/sink-effects-claim-and-split unique-name 3
+  #/sink-extfx-claim-and-split unique-name 3
   #/dissectfn
     (list unique-name-stream unique-name-writer unique-name-main)
-  #/sink-effects-make-cexpr-sequence-output-stream
+  #/sink-extfx-make-cexpr-sequence-output-stream
     fault
     unique-name-stream
     unique-name-writer
     (fn unique-name-writer cexpr then
       ; If we encounter an expression, we evaluate it and call the
       ; result, passing in the current scope information.
-      (sink-effects-claim-and-split unique-name-writer 2
+      (sink-extfx-claim-and-split unique-name-writer 2
       #/dissectfn (list unique-name-first unique-name-rest)
       #/expect cexpr (sink-cexpr cexpr)
         ; TODO: Test that we can actually get this error. We might
@@ -1823,36 +1827,35 @@
       #/expect (cexpr-has-free-vars? cexpr #/table-empty) #f
         ; TODO FAULT: Make this `fault` more specific.
         (cene-err fault "Encountered a top-level expression with at least one free variable")
-      #/sink-effects-fuse (then unique-name-rest)
-      #/sink-effects-cexpr-eval fault cexpr #/fn directive
+      #/sink-extfx-fuse (then unique-name-rest)
+      #/sink-extfx-cexpr-eval fault cexpr #/fn directive
       #/expect directive (sink-directive directive)
         ; TODO FAULT: Make this `fault` more specific.
         (cene-err fault "Expected every top-level expression to evaluate to a directive")
       #/w- effects
         (sink-call fault directive unique-name-first qualify)
-      #/expect (sink-effects? effects) #t
+      #/expect (sink-extfx? effects) #t
         ; TODO FAULT: Make this `fault` more specific.
-        (cene-err fault "Expected every top-level expression to evaluate to a directive made from a callable value that takes two arguments and returns side effects")
+        (cene-err fault "Expected every top-level expression to evaluate to a directive made from a callable value that takes two arguments and returns extfx side effects")
         effects))
   #/fn output-stream unwrap
-  #/sink-effects-read-cexprs
+  #/sink-extfx-read-cexprs
     fault unique-name-main qualify text-input-stream output-stream
   #/fn unique-name-main qualify text-input-stream output-stream
   #/unwrap output-stream #/fn unique-name-writer
-  #/sink-effects-claim-and-split unique-name-writer 0
-  #/dissectfn (list)
-  #/sink-effects-read-top-level
+  #/sink-extfx-claim-and-split unique-name-writer 0 #/dissectfn (list)
+  #/sink-extfx-read-top-level
     fault unique-name-main qualify text-input-stream))
 
 (define/contract
-  (sink-effects-run-string fault unique-name qualify string)
+  (sink-extfx-run-string fault unique-name qualify string)
   (->
     sink-fault?
     sink-authorized-name?
     (-> sink-name? sink-authorized-name?)
     string?
-    sink-effects?)
-  (sink-effects-read-top-level
+    sink-extfx?)
+  (sink-extfx-read-top-level
     fault
     unique-name
     (sink-fn-curried-fault 1 #/fn fault name

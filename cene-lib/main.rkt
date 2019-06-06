@@ -21,18 +21,18 @@
 
 (require cene/private)
 (require #/only-in cene/private/essentials
-  sink-effects-init-essentials sink-effects-init-package)
+  sink-extfx-init-essentials sink-extfx-init-package)
 
 
 ; TODO: Document these exports.
 (provide extfx-with-gets-from)
 (provide make-fault-internal)
-(provide make-sink-effects)
+(provide make-sink-extfx)
 (provide sink-authorized-name)
 (provide sink-authorized-name-subname)
-(provide sink-effects-claim-and-split)
-(provide sink-effects-fuse)
-(provide sink-effects-init-essentials)
-(provide sink-effects-init-package)
-(provide sink-effects-run!)
-(provide sink-effects-run-string)
+(provide sink-extfx-claim-and-split)
+(provide sink-extfx-fuse)
+(provide sink-extfx-init-essentials)
+(provide sink-extfx-init-package)
+(provide sink-extfx-run!)
+(provide sink-extfx-run-string)

@@ -45,8 +45,8 @@
       "Internal error: Expected the cene-run-string-sample continuation ticket to be written to")
     (fn ds unique-name then
       (extfx-with-gets-from ds unique-name #/fn unique-name
-      #/sink-effects-run!
-      #/sink-effects-claim-and-split
+      #/sink-extfx-run!
+      #/sink-extfx-claim-and-split
         (sink-authorized-name unique-name)
         4
       #/dissectfn
@@ -57,12 +57,12 @@
           unique-name-sample)
       #/w- qualify
         (fn name #/sink-authorized-name-subname name unique-name-root)
-      #/sink-effects-fuse
-        (sink-effects-init-essentials fault unique-name-essentials)
-        (sink-effects-init-package fault unique-name-package qualify)
-        (sink-effects-run-string
+      #/sink-extfx-fuse
+        (sink-extfx-init-essentials fault unique-name-essentials)
+        (sink-extfx-init-package fault unique-name-package qualify)
+        (sink-extfx-run-string
           fault unique-name-sample qualify code-string)
-      #/make-sink-effects #/fn
+      #/make-sink-extfx #/fn
         (extfx-ct-continue then
           (error-definer-from-message
             "Internal error: Expected the cene-run-string-sample continuation ticket to be written to only once")
@@ -124,7 +124,7 @@
 
 (check-equal?
   (cene-code-failure
-    "(directive/fn unique-name qualify /effects-noop)")
+    "(directive/fn unique-name qualify /extfx-noop)")
   (nothing)
   "Running a single top-level command that does nothing works")
 
@@ -143,7 +143,7 @@
             v
             v
             x))
-      /effects-noop))
+      /extfx-noop))
     
     ")
   (nothing)

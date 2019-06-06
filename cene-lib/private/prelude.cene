@@ -18,7 +18,7 @@
 \=   language governing permissions and limitations under the License.
 
 
-\= TODO: Finish implementing `effects-read-bounded-exprs`.
+\= TODO: Finish implementing `extfx-read-bounded-exprs`.
 
 \= TODO: Work up to defining `defn` and `def-macro`. In order to do
 \= that, we've been porting things to Cene local variables that we've
@@ -31,7 +31,7 @@
 
 \= TODO: Make sure we make most of the things we define in the prelude
 \= visible to user-supplied Cene code by using
-\= `effects-add-init-package-step`.
+\= `extfx-add-init-package-step`.
 
 (directive /fn root-unique-name root-qualify
   (let err
@@ -113,9 +113,9 @@
       (case (call-fuse fuse x x) just -
         (yep/nil)
         (nope/nil)))
-  /let is-effects
+  /let is-extfx
     (fn x
-      (c in-fuse (fuse-effects) x))
+      (c in-fuse (fuse-extfx) x))
   /let is-int
     (fn x
       (in-dex (dex-int) x))
@@ -147,13 +147,13 @@
     (authorized-name-get-name/authorized-name-subname
       [c name-of-string /str-prim:rest]
       root-unique-name)
-  /let effects-claim-and-split
+  /let extfx-claim-and-split
     (fn-blame bl unique-name n then
       (cast (is-authorized-name unique-name) yep -
         [c-blame bl err /str-prim:Expected unique-name to be an authorized name]
       /cast (c is-nat n) yep -
         [c-blame bl err /str-prim:Expected n to be a natural number]
-      /effects-claim unique-name /fn -
+      /extfx-claim unique-name /fn -
       /c loop3 n unique-name (nil) /fn next n next-name names
         (cast (c nat-to-maybe n) just n (c-blame bl then names)
         /let first
@@ -163,18 +163,18 @@
           (authorized-name-subname unique-name-for-split-rest
             next-name)
         /c next n rest /cons first names)))
-  /let effects-claim-freshen
+  /let extfx-claim-freshen
     (fn-blame bl unique-name then
       (cast (is-authorized-name unique-name) yep -
         [c-blame bl err /str-prim:Expected unique-name to be an authorized name]
-      /c effects-claim-and-split unique-name (int-one)
+      /c extfx-claim-and-split unique-name (int-one)
       /fn unique-names
       /cast unique-names cons unique-name -
-        [c err /str-prim:Internal error: Expected the list resulting from effects-claim-and-split to be a list of the requested length]
+        [c err /str-prim:Internal error: Expected the list resulting from extfx-claim-and-split to be a list of the requested length]
       /c-blame bl then unique-name))
   
   \= This reads expressions until it gets to a closing bracket.
-  /let effects-read-bounded-exprs
+  /let extfx-read-bounded-exprs
     (fn-blame bl-implicit
       bl-explicit unique-name qualify text-input-stream then
       \= TODO: Implement this.
@@ -182,7 +182,7 @@
   
   \= This reads expressions until it gets to a closing bracket, and it
   \= verifies that there are precisely `n` of them.
-  /let effects-read-bounded-specific-number-of-exprs
+  /let extfx-read-bounded-specific-number-of-exprs
     (fn-blame bl-implicit
       bl-explicit unique-name qualify text-input-stream n then
       
@@ -194,7 +194,7 @@
         [c-blame bl-implicit err /str-prim:Expected text-input-stream to be a text input stream]
       /cast (c is-nat n) yep -
         [c-blame bl-implicit err /str-prim:Expected n to be a natural number]
-      /c effects-read-bounded-exprs
+      /c extfx-read-bounded-exprs
         bl-explicit unique-name qualify text-input-stream
       /fn unique-name qualify text-input-stream exprs
       /let actual-n (c list-length exprs)
@@ -207,11 +207,11 @@
       /let effects
         (c-blame bl-implicit then
           unique-name qualify text-input-stream exprs)
-      /cast (c is-effects effects) yep -
-        [c-blame bl-implicit err /str-prim:Expected the return value of an effects-read-bounded-specific-number-of-exprs callback to be an effectful computation]
+      /cast (c is-extfx effects) yep -
+        [c-blame bl-implicit err /str-prim:Expected the return value of an extfx-read-bounded-specific-number-of-exprs callback to be an extfx effectful computation]
         effects))
   
-  /let effects-def-dexable-value-for-lang-impl
+  /let extfx-def-dexable-value-for-lang-impl
     (fn-blame bl unique-name target-name dex value
       (cast (is-authorized-name unique-name) yep -
         [c-blame bl err /str-prim:Expected unique-name to be an authorized name]
@@ -219,9 +219,9 @@
         [c-blame bl err /str-prim:Expected target-name to be an authorized name]
       /cast (c is-dex dex) yep -
         [c-blame bl err /str-prim:Expected dex to be a dex]
-      /effects-claim unique-name /fn -
-      /effects-put target-name dex value))
-  /let effects-def-dexable-value-for-package
+      /extfx-claim unique-name /fn -
+      /extfx-put target-name dex value))
+  /let extfx-def-dexable-value-for-package
     (fn-blame bl unique-name target-name dex value
       (cast (is-authorized-name unique-name) yep -
         [c-blame bl err /str-prim:Expected unique-name to be an authorized name]
@@ -229,28 +229,28 @@
         [c-blame bl err /str-prim:Expected target-name to be a name]
       /cast (c is-dex dex) yep -
         [c-blame bl err /str-prim:Expected dex to be a dex]
-      /c effects-claim-freshen unique-name /fn unique-name
-      /effects-add-init-package-step unique-name
+      /c extfx-claim-freshen unique-name /fn unique-name
+      /extfx-add-init-package-step unique-name
       /fn unique-name qualify-for-package
-        (effects-claim unique-name /fn -
-        /effects-put (c qualify-for-package target-name) dex value)))
-  /let effects-def-value-for-lang-impl
+        (extfx-claim unique-name /fn -
+        /extfx-put (c qualify-for-package target-name) dex value)))
+  /let extfx-def-value-for-lang-impl
     (fn-blame bl unique-name target-name value
       (cast (is-authorized-name unique-name) yep -
         [c-blame bl err /str-prim:Expected unique-name to be an authorized name]
       /cast (is-authorized-name target-name) yep -
         [c-blame bl err /str-prim:Expected target-name to be an authorized name]
-      /c effects-claim-freshen unique-name /fn unique-name
-      /c effects-def-dexable-value-for-lang-impl
+      /c extfx-claim-freshen unique-name /fn unique-name
+      /c extfx-def-dexable-value-for-lang-impl
         unique-name target-name (dex-give-up) value))
-  /let effects-def-value-for-package
+  /let extfx-def-value-for-package
     (fn-blame bl unique-name target-name value
       (cast (is-authorized-name unique-name) yep -
         [c-blame bl err /str-prim:Expected unique-name to be an authorized name]
       /cast (c is-name target-name) yep -
         [c-blame bl err /str-prim:Expected target-name to be a name]
-      /c effects-claim-freshen unique-name /fn unique-name
-      /c effects-def-dexable-value-for-package
+      /c extfx-claim-freshen unique-name /fn unique-name
+      /c extfx-def-dexable-value-for-package
         unique-name target-name (dex-give-up) value))
   /let macro-impl
     (fn-blame bl-body body
@@ -269,8 +269,8 @@
         /let effects
           (c-blame bl-macro then
             unique-name qualify text-input-stream output-stream)
-        /cast (c is-effects effects) yep -
-          [c-blame bl-macro err /str-prim:Expected the return value of a macro's callback to be an effectful computation]
+        /cast (c is-extfx effects) yep -
+          [c-blame bl-macro err /str-prim:Expected the return value of a macro's callback to be an extfx effectful computation]
           effects)))
   
   \= This creates a macro implementation function that reads a form
@@ -285,16 +285,16 @@
         bl-macro unique-name qualify text-input-stream output-stream
         then
         
-        (c effects-read-bounded-specific-number-of-exprs
+        (c extfx-read-bounded-specific-number-of-exprs
           bl-macro unique-name qualify text-input-stream n-args
         /fn unique-name qualify text-input-stream args
-        /effects-expr-write output-stream (c-blame bl-body body args)
+        /extfx-expr-write output-stream (c-blame bl-body body args)
         /fn output-stream
         /let effects
           (c-blame bl-macro then
             unique-name qualify text-input-stream output-stream)
-        /cast (c is-effects effects) yep -
-          [c-blame bl-macro err /str-prim:Expected the return value of a macro-impl-specific-number-of-args callback to be an effectful computation]
+        /cast (c is-extfx effects) yep -
+          [c-blame bl-macro err /str-prim:Expected the return value of a macro-impl-specific-number-of-args callback to be an extfx effectful computation]
           effects)))
   
-  /effects-noop))
+  /extfx-noop))
