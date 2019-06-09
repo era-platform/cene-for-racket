@@ -26,7 +26,7 @@
 
 
 (require #/only-in racket/contract/base
-  -> ->i any/c cons/c list/c listof)
+  -> ->* ->i any/c cons/c list/c listof)
 (require #/only-in racket/contract/region define/contract)
 (require #/only-in racket/generic define/generic)
 (require #/only-in racket/match match-define)
@@ -221,6 +221,26 @@
   #/dexable dex val))
 
 
+(struct-easy (sink-ordering-private racket-ordering-private)
+  #:other #:methods gen:sink [])
+(struct-easy (sink-cline cline)
+  #:other #:methods gen:sink [])
+(struct-easy (sink-merge merge)
+  #:other #:methods gen:sink [])
+(struct-easy (sink-fuse fuse)
+  #:other #:methods gen:sink [])
+(struct-easy (sink-perffx getfx)
+  #:other #:methods gen:sink [])
+(struct-easy (sink-mobile value make-cexpr get-mobile-perffx-mobile)
+  #:other #:methods gen:sink [])
+(struct-easy (sink-int racket-int)
+  #:other #:methods gen:sink [])
+(struct-easy (sink-textpat racket-textpat)
+  #:other #:methods gen:sink [])
+(struct-easy (sink-optimized-textpat racket-optimized-textpat)
+  #:other #:methods gen:sink [])
+
+
 (define/contract (sink-getfx-done result)
   (-> sink? sink-getfx?)
   (sink-getfx #/fn result))
@@ -233,6 +253,192 @@
     #/getfx-bind (go) #/fn intermediate
     #/restore #/fn
     #/sink-getfx-run #/then intermediate)))
+
+(define/contract (sink-perffx-done result)
+  (-> sink? sink-getfx?)
+  (sink-perffx #/sink-getfx #/fn result))
+
+(define/contract (sink-perffx-bind effects then)
+  (-> sink-perffx? (-> any/c sink-perffx?) sink-perffx?)
+  (dissect effects (sink-perffx effects)
+  #/sink-perffx #/sink-getfx-bind effects #/fn intermediate
+    (dissect (then intermediate) (sink-perffx getfx)
+      getfx)))
+
+(define/contract (sink-perffx-later then)
+  (-> (-> sink-perffx?) sink-perffx?)
+  (sink-perffx-bind (sink-perffx-done #/trivial) #/dissectfn (trivial)
+  #/then))
+
+(define/contract (sink-perffx-later-done then)
+  (-> (-> sink?) sink-perffx?)
+  (sink-perffx-later #/fn #/sink-perffx-done then))
+
+
+; In Cene, "mobile values" are values that are bundled with
+; information about how to carry them through a compilation process.
+; Given a mobile value, it's possible to retrieve:
+;
+;   * The value itself (which we sometimes call the "unadorned"
+;     value).
+;
+;   * A perffx computation that computes a cexpr that computes a
+;     perffx computation that computes the unadorned value.
+;
+;   * Another mobile value, where this time the unadorned value is a
+;     perffx computation that computes the mobile value we started
+;     with. (Its value is "adorned" twice now, with a perffx step in
+;     between.)
+;
+; All the operations that create mobile values ensure that these three
+; views of the value are consistent. Aside from possible run time
+; errors that may occur along the way, each of these views will indeed
+; retrieve the same value.
+;
+; The purpose of this kind of value is to let us compile one cexpr
+; value to another cexpr value that produces the original cexpr...
+; essentially giving us a way to quote an expression. Cene programmers
+; will find this useful for building libraries of syntactic
+; abstractions for other Cene programmers to use, but one of our first
+; motivations is to let the Cene built-ins be written mostly in Cene
+; (prelude.cene) and yet for them to load fast, rather than parsing
+; the prelude each and every time Cene runs. Both of these use cases
+; are instances of the idea of easing the amortized costs of
+; compilation by producing intermediate compiled artifacts along the
+; way and reusing them when possible.
+;
+; (TODO MOBILE: We don't yet use this to compile cexprs to cexprs that
+; produce them (much less use this to compile the prelude). To do so,
+; one thing we still need to do is to change `expr-construct`,
+; `expr-case`, and `expr-{dex,...}-struct` so that they take mobile
+; authorized names rather than unadorned authorized names. We'll also
+; need to take care of the TODO MOBILE described in
+; `sink-mobile-built-in-construct-nullary`.)
+;
+; We're using the terminology "mobile" as seen in sources like
+; Tom Murphy VII's "Modal Types for Mobile Code," where
+; "[Grid computing] applications are mobile in the sense that they run
+; on multiple different hosts, in different locations, during the
+; course of their execution. [...] The ConCert infrastructure
+; automatically allocates the mobile code to idle hosts." In Cene's
+; case, a mobile cexpr is indeed a cexpr that can be transported to
+; another machine across a serialization barrier, but rather than
+; using it for grid computing, we're thinking of it more as a tool for
+; staged programming, metaprogramming, or build automation.
+;
+; We could easily call mobile values "quotable values," but since we
+; have no immediate intention to create a `quote` or `quasiquote`
+; combinator for cexprs, and since our mobile values essentially have
+; multiple different notions of quotation (quoting the unadorned value
+; and quoting the mobile value itself), the term "quotable value"
+; might paint a deceptive picture of what these values are capable of.
+
+; NOTE: We use `make-sink-mobile-perffx` and `make-sink-mobile`
+; instead of calling the `sink-mobile` constructor directly, and one
+; of the only reasons we do this is so that it's easier to search for
+; all the places we construct `sink-mobile` values.
+
+(define/contract
+  (make-sink-mobile-perffx value make-expr get-mobile-perffx-mobile)
+  (-> sink? sink-perffx? (-> sink-mobile?) sink-mobile?)
+  (sink-mobile value make-expr get-mobile-perffx-mobile))
+
+(define/contract
+  (make-sink-mobile fault value make-expr get-mobile-mobile)
+  (-> sink-fault? sink? sink-perffx? (-> sink-mobile?) sink-mobile?)
+  (make-sink-mobile-perffx value make-expr
+    (fn
+      (sink-mobile-built-in-call fault "perffx-done"
+        (get-mobile-mobile)))))
+
+(define/contract
+  (sink-mobile-construct-nullary
+    fault mobile-qualified-main-tag-sink-authorized-name)
+  (-> sink-fault? sink-mobile? sink-mobile?)
+  (dissect mobile-qualified-main-tag-sink-authorized-name
+    (sink-mobile qualified-main-tag-sink-authorized-name _ _)
+  #/expect
+    (sink-authorized-name? qualified-main-tag-sink-authorized-name)
+    #t
+    (cene-err fault "Expected mobile-qualified-main-tag-authorized-name to be a mobile authorized name")
+  #/dissect
+    (sink-authorized-name-get-name
+      qualified-main-tag-sink-authorized-name)
+    (sink-name qualified-main-tag-name)
+  #/make-sink-mobile fault
+    (make-sink-struct (list qualified-main-tag-name) (list))
+    (sink-perffx-later-done #/fn
+      (sink-mobile-built-in-call fault "perffx-done"
+        (sink-mobile-built-in-call fault "expr-construct"
+          mobile-qualified-main-tag-sink-authorized-name
+          (sink-mobile-built-in-construct-nullary fault "nil"))))
+    (fn
+      (sink-mobile-built-in-call fault "mobile-construct-nullary"
+        mobile-qualified-main-tag-sink-authorized-name))))
+
+(define/contract
+  (sink-mobile-built-in-construct-nullary fault main-tag-string)
+  (-> sink-fault? immutable-string? sink-mobile?)
+  (w- main-tag-name
+    (sink-name-for-string #/sink-string main-tag-string)
+  #/w- qualified-main-tag-sink-authorized-name
+    (sink-name-qualify-for-lang-impl
+    #/sink-name-for-struct-main-tag main-tag-name)
+  #/sink-mobile-construct-nullary fault
+    ; TODO MOBILE: Stop using `sink-mobile-reified` here, and instead
+    ; express the name using a module import so that compilers can
+    ; anticipate having to serialize this kind of value.
+    (sink-mobile-reified
+      fault qualified-main-tag-sink-authorized-name)))
+
+(define/contract (sink-mobile-reified fault value)
+  (-> sink-fault? sink? sink-mobile?)
+  (let next ()
+    (make-sink-mobile fault value
+      (sink-perffx-later-done #/fn
+        (sink-mobile-built-in-call fault "perffx-done"
+          (sink-mobile-built-in-call fault "expr-reified" (next))))
+      (fn
+        (sink-mobile-built-in-call fault "mobile-reified" (next))))))
+
+(define/contract
+  (sink-mobile-call-binary fault mobile-func mobile-arg)
+  (-> sink-fault? sink-mobile? sink-mobile? sink-mobile?)
+  (dissect mobile-func (sink-mobile func make-func-expr _)
+  #/dissect mobile-arg (sink-mobile arg make-arg-expr _)
+  #/make-sink-mobile fault (sink-call-binary fault func arg)
+    (sink-perffx-bind make-func-expr #/fn func-expr
+      (sink-perffx-bind make-arg-expr #/fn arg-expr
+      #/sink-perffx-done #/sink-cexpr-call func-expr arg-expr))
+    (fn
+      (sink-mobile-built-in-call fault "mobile-call-binary"
+        mobile-func mobile-arg))))
+
+(define/contract (sink-mobile-call-list fault mobile-func mobile-args)
+  (-> sink-fault? sink-mobile? (listof sink-mobile?) sink-mobile?)
+  (list-foldl mobile-func mobile-args #/fn mobile-func mobile-arg
+    (sink-mobile-call-binary fault mobile-func mobile-arg)))
+
+(define/contract (sink-mobile-call fault mobile-func . mobile-args)
+  (->* (sink-fault? sink-mobile?) #:rest (listof sink-mobile?)
+    sink-mobile?)
+  (sink-mobile-call-list fault mobile-func mobile-args))
+
+(define/contract
+  (sink-mobile-built-in-call fault built-in-name-string . mobile-args)
+  (->* (sink-fault? immutable-string?) #:rest (listof sink-mobile?)
+    sink-mobile?)
+  (w- mobile-args
+    (expect mobile-args (list) mobile-args
+    ; NOTE: Nullary built-in functions work differently. We have to
+    ; pass them `(nil)`. Yes, this means `sink-mobile-built-in-call`
+    ; can be used to call a built-in unary function as though it were
+    ; nullary, but we just don't do that.
+    #/list #/sink-mobile-built-in-construct-nullary fault "nil")
+  #/sink-mobile-call-list fault
+    (sink-mobile-built-in-construct-nullary
+      fault built-in-name-string)
+    mobile-args))
 
 
 (struct-easy
@@ -319,24 +525,6 @@
   (dissect metadata
     (cene-struct-metadata (cons main-tag-name proj-names) _ _)
   #/length proj-names))
-
-
-(struct-easy (sink-ordering-private racket-ordering-private)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-cline cline)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-merge merge)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-fuse fuse)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-perffx getfx)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-int racket-int)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-textpat racket-textpat)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-optimized-textpat racket-optimized-textpat)
-  #:other #:methods gen:sink [])
 
 
 ; Sorts `proj-tags` and `vals` to put them in a normalized order.
@@ -2014,6 +2202,29 @@
     #/sink-cexpr #/cexpr-construct main-tag-name projections))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
+  ;
+  ; NOTE EVAL: This can construct (certain) arbitrary structs given a
+  ; name at run time, which means the program can rely on more modules
+  ; than can be anticipated at compile time. Many compilation targets
+  ; won't support this operation, and those that do might have it
+  ; cause run time errors.
+  ;
+  ; TODO: Expose something that allows non-nullary structs to be
+  ; constructed as well, and either turn this into a derived operation
+  ; or remove it altogether.
+  ;
+  (def-func-fault! "mobile-construct-nullary"
+    fault mobile-qualified-main-tag-authorized-name
+    
+    (expect
+      (sink-authorized-name?
+        mobile-qualified-main-tag-authorized-name)
+      #t
+      (cene-err fault "Expected mobile-qualified-main-tag-authorized-name to be an authorized name")
+    #/sink-mobile-construct-nullary
+      fault mobile-qualified-main-tag-authorized-name))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-macro! "construct" #/fn
     fault unique-name qualify text-input-stream then
     
@@ -2226,6 +2437,14 @@
       (cene-err fault "Expected arg-expr to be an expression")
     #/sink-cexpr #/cexpr-call func-expr arg-expr))
   
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func-fault! "mobile-call-binary" fault mobile-func mobile-arg
+    (expect (sink-mobile? mobile-func) #t
+      (cene-err fault "Expected mobile-func to be a mobile value")
+    #/expect (sink-mobile? mobile-arg) #t
+      (cene-err fault "Expected mobile-arg to be a mobile value")
+    #/sink-mobile-call-binary fault mobile-func mobile-arg))
+  
   (def-macro! "c" #/fn
     fault unique-name qualify text-input-stream then
     
@@ -2411,16 +2630,17 @@
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "perffx-done" fault result
-    (sink-perffx #/sink-getfx #/fn result))
+    (sink-perffx-done result))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "perffx-bind" fault effects then
-    (expect effects (sink-perffx effects)
+    (expect (sink-perffx? effects) #t
       (cene-err fault "Expected effects to be a perffx effectful computation")
-    #/sink-perffx #/sink-getfx-bind effects #/fn intermediate
-      (expect (sink-call fault then intermediate) (sink-perffx getfx)
-        (cene-err fault "Expected the return value of a perffx-bind callback to be a perffx effects value")
-        getfx)))
+    #/sink-perffx-bind effects #/fn intermediate
+    #/w- effects (sink-call fault then intermediate)
+    #/expect (sink-perffx? effects) #t
+      (cene-err fault "Expected the return value of a perffx-bind callback to be a perffx effects value")
+      effects))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `no-effects`.
@@ -2586,6 +2806,89 @@
   ;   procure-claim
   ;   procure-macro-implementation-getdef
   
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func-fault! "mobile-reified" fault value
+    (sink-mobile-reified fault value))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  ;
+  ; NOTE EVAL: This can construct (certain) arbitrary structs given a
+  ; name at run time, which means the program can rely on more modules
+  ; than can be anticipated at compile time. Many compilation targets
+  ; won't support this operation, and those that do might have it
+  ; cause run time errors.
+  ;
+  (def-func-fault! "perffx-mobile-evaluated" fault mobile-expr
+    (expect mobile-expr (sink-mobile expr _ _)
+      (cene-err fault "Expected mobile-expr to be a mobile value")
+    #/expect expr (sink-cexpr expr)
+      (cene-err fault "Expected mobile-expr to be a mobile expression")
+    #/expect (cexpr-is-closed? expr) #t
+      (cene-err fault "Expected mobile-expr to be a mobile expression which had all the information it needed for evaluation")
+    ; TODO: See if we can make a variation of this that passes an
+    ; `explicit-fault` parameter to `cexpr-eval`.
+    #/w- perffx-value (cexpr-eval fault expr)
+    #/expect (sink-perffx? perffx-value) #t
+      (cene-err fault "Expected the evaluation result of mobile-expr to be a perffx effectful computation")
+    #/sink-perffx-bind perffx-value #/fn value
+    #/sink-perffx-done #/make-sink-mobile-perffx value
+      (sink-perffx-done mobile-expr)
+      (fn
+        (sink-mobile-built-in-call fault "perffx-mobile-evaluated"
+          mobile-expr))))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  ;
+  ; NOTE EVAL: This can construct (certain) arbitrary structs given a
+  ; name at run time, which means the program can rely on more modules
+  ; than can be anticipated at compile time. Many compilation targets
+  ; won't support this operation, and those that do might have it
+  ; cause run time errors.
+  ;
+  (def-func-fault! "pure-mobile-evaluated" fault mobile-expr
+    (expect mobile-expr (sink-mobile expr _ _)
+      (cene-err fault "Expected mobile-expr to be a mobile value")
+    #/expect expr (sink-cexpr expr)
+      (cene-err fault "Expected mobile-expr to be a mobile expression")
+    #/expect (cexpr-is-closed? expr) #t
+      (cene-err fault "Expected mobile-expr to be a mobile expression which had all the information it needed for evaluation")
+    ; TODO: See if we can make a variation of this that passes an
+    ; `explicit-fault` parameter to `cexpr-eval`.
+    #/make-sink-mobile fault (cexpr-eval fault expr)
+      (sink-perffx-done
+        (sink-mobile-built-in-call fault "perffx-done" mobile-expr))
+      (fn
+        (sink-mobile-built-in-call fault "pure-mobile-evaluated"
+          mobile-expr))))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func-fault! "mobile-get-value" fault mobile
+    (expect mobile
+      (sink-mobile value make-expr get-mobile-perffx-mobile)
+      (cene-err fault "Expected mobile to be a mobile value")
+      value))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func-fault! "perffx-mobile-make-expr" fault mobile
+    (expect mobile
+      (sink-mobile value make-expr get-mobile-perffx-mobile)
+      (cene-err fault "Expected mobile to be a mobile value")
+      make-expr))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  ;
+  ; NOTE EVAL: This can construct (certain) arbitrary structs given a
+  ; name at run time, which means the program can rely on more modules
+  ; than can be anticipated at compile time. Many compilation targets
+  ; won't support this operation, and those that do might have it
+  ; cause run time errors.
+  ;
+  (def-func-fault! "mobile-get-mobile-perffx-mobile" fault mobile
+    (expect mobile
+      (sink-mobile value make-expr get-mobile-perffx-mobile)
+      (cene-err fault "Expected mobile to be a mobile value")
+    #/get-mobile-perffx-mobile))
+  
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-var`.
   (def-func-fault! "expr-var" fault var
@@ -2663,6 +2966,13 @@
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `eval-cexpr`, and it took a mode parameter.
+  ;
+  ; NOTE EVAL: This can construct (certain) arbitrary structs given a
+  ; name at run time, which means the program can rely on more modules
+  ; than can be anticipated at compile time. Many compilation targets
+  ; won't support this operation, and those that do might have it
+  ; cause run time errors.
+  ;
   (def-func-fault! "expr-eval-blame" caller-fault explicit-fault expr
     (expect expr (sink-cexpr expr)
       (cene-err caller-fault "Expected expr to be an expression")
