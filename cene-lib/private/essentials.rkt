@@ -58,10 +58,9 @@
   dex-fix dex-fuse dex-give-up dex-merge dex-name dex-opaque
   dex-struct dex-table fusable-function? fuse-by-merge fuse-opaque
   fuse-struct fuse-table in-cline? in-dex? get-dex-from-cline
-  make-fusable-function make-ordering-private-gt
-  make-ordering-private-lt merge-by-dex merge-opaque merge-struct
+  make-fusable-function merge-by-dex merge-opaque merge-struct
   merge-table name? name-of ordering-eq ordering-gt ordering-lt
-  ordering-private? table? table-empty table-get table-map-fuse
+  ordering-private table? table-empty table-get table-map-fuse
   table-shadow table-sort)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe
   autoname-cline autoname-dex autoname-fuse autoname-merge cline
@@ -132,6 +131,8 @@
 
 (define s-ordering-lt (core-sink-struct "ordering-lt" #/list))
 (define s-ordering-eq (core-sink-struct "ordering-eq" #/list))
+(define s-ordering-private
+  (core-sink-struct "ordering-private" #/list))
 (define s-ordering-gt (core-sink-struct "ordering-gt" #/list))
 
 (define s-dexable (core-sink-struct "dexable" #/list "dex" "val"))
@@ -221,8 +222,6 @@
   #/dexable dex val))
 
 
-(struct-easy (sink-ordering-private racket-ordering-private)
-  #:other #:methods gen:sink [])
 (struct-easy (sink-cline cline)
   #:other #:methods gen:sink [])
 (struct-easy (sink-merge merge)
@@ -1747,16 +1746,8 @@
   
   (def-data-struct! "ordering-lt" #/list)
   (def-data-struct! "ordering-eq" #/list)
+  (def-data-struct! "ordering-private" #/list)
   (def-data-struct! "ordering-gt" #/list)
-  
-  (def-func! "is-ordering-private" v
-    (racket-boolean->sink #/sink-ordering-private? v))
-  
-  (def-nullary-func! "make-ordering-private-lt"
-    (sink-ordering-private #/make-ordering-private-lt))
-  
-  (def-nullary-func! "make-ordering-private-gt"
-    (sink-ordering-private #/make-ordering-private-gt))
   
   (def-func-fault! "in-dex" fault dex v
     (expect dex (sink-dex dex)
@@ -1785,8 +1776,8 @@
       (with-current-fault fault #/fn
       #/compare-by-dex dex a b)
     #/fn dex-result
-      (if (ordering-private? dex-result)
-        (sink-ordering-private dex-result)
+      (mat dex-result (ordering-private)
+        (make-sink-struct (s-ordering-private) #/list)
       #/dissect dex-result (ordering-eq)
       #/make-sink-struct (s-ordering-eq) #/list)))
   
@@ -1860,8 +1851,8 @@
       (with-current-fault fault #/fn
       #/compare-by-cline cline a b)
     #/fn cline-result
-      (if (ordering-private? cline-result)
-        (sink-ordering-private cline-result)
+      (mat cline-result (ordering-private)
+        (make-sink-struct (s-ordering-private) #/list)
       #/mat cline-result (ordering-lt)
         (make-sink-struct (s-ordering-lt) #/list)
       #/mat cline-result (ordering-gt)
