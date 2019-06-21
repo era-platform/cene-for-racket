@@ -49,8 +49,8 @@
   authorized-name-get-name getfx-bind)
 (require #/only-in effection/order
   assocs->table-if-mutually-unique cline-exact-rational
-  dex-exact-rational dex-immutable-string fuse-exact-rational-by-plus
-  fuse-exact-rational-by-times)
+  dex-exact-rational dex-immutable-string dexed-of
+  fuse-exact-rational-by-plus fuse-exact-rational-by-times)
 (require #/only-in effection/order/base
   call-fuse call-merge cline-by-dex cline-default cline-give-up
   cline-opaque cline-result? cline-struct compare-by-cline
@@ -70,7 +70,7 @@
   cline-fix-unchecked dex dexableof-unchecked
   dex-by-own-method-thorough-unchecked dex-by-own-method::get-method
   dex-by-own-method::raise-different-methods-error dex-fix-unchecked
-  fuse fuse-by-own-method-thorough-unchecked
+  dexed fuse fuse-by-own-method-thorough-unchecked
   fuse-by-own-method::get-method
   fuse-by-own-method::raise-cannot-get-output-method-error
   fuse-by-own-method::raise-different-input-methods-error
@@ -711,18 +711,48 @@
           (dissect tags (cons (unsafe:name main-tag-rep) proj-tags)
           #/dissect
             (normalize-proj-tags-and-vals
-              proj-tags (reverse rev-result))
+              proj-tags
+              (reverse rev-result))
             (list proj-tags field-name-reps)
-          #/just #/unsafe:name
-          #/list* 'name:sink-struct
+          #/just #/unsafe:name #/list* 'name:sink-struct
             (cons main-tag-rep
-            #/list-map proj-tags
-            #/dissectfn (unsafe:name proj-tag-rep) proj-tag-rep)
+              (list-map proj-tags
+              #/dissectfn (unsafe:name proj-tag-rep)
+                proj-tag-rep))
             field-name-reps)
         #/dissect field-vals (cons field-val field-vals)
         #/maybe-bind (name-of dex-field field-val)
         #/dissectfn (unsafe:name rep)
-        #/next field-dexes field-vals #/cons rep rev-result)))
+        #/next field-dexes field-vals (cons rep rev-result))))
+    
+    (define (dex-internals-dexed-of this x)
+      (dissect this (dex-internals-sink-struct tags fields)
+      #/maybe-bind (unmake-sink-struct-maybe tags x) #/fn field-vals
+      #/w-loop next
+        field-dexes fields
+        field-vals field-vals
+        rev-result (list)
+        
+        (expect field-dexes (cons dex-field field-dexes)
+          (w- result (reverse rev-result)
+          #/dissect tags (cons main-tag proj-tags)
+          #/dissect (normalize-proj-tags-and-vals proj-tags result)
+            (list proj-tags field-dexeds)
+          #/w- tags (cons main-tag proj-tags)
+          #/just #/unsafe:dexed
+            (unsafe:dex #/dex-internals-sink-struct tags
+              (list-map field-dexeds
+              #/dissectfn (unsafe:dexed dex name val)
+                dex))
+            (unsafe:name #/list* 'name:sink-struct
+              (list-map tags #/dissectfn (unsafe:name rep) rep)
+              (list-map field-dexeds
+              #/dissectfn (unsafe:dexed dex (unsafe:name rep) val)
+                rep))
+            x)
+        #/dissect field-vals (cons field-val field-vals)
+        #/maybe-bind (dexed-of dex-field field-val) #/fn dexed
+        #/next field-dexes field-vals (cons dexed rev-result))))
     
     (define (dex-internals-compare this a b)
       (dissect this (dex-internals-sink-struct tags fields)
