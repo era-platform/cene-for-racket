@@ -1852,6 +1852,8 @@
       (cene-err fault "Expected dex to be a dex")
     #/sink-dex #/dex-opaque name dex))
   
+  ; NOTE: In the JavaScript version of Cene, this took a dexable value
+  ; (a pair of a dex and a value).
   (def-func-fault! "dex-by-own-method" fault dexed-get-method
     (expect dexed-get-method (sink-dexed dexed-get-method)
       (cene-err fault "Expected dexed-get-method to be a dexed value")
@@ -1859,6 +1861,8 @@
       (dexed-struct sink-dex-by-own-method-unthorough
         dexed-get-method)))
   
+  ; NOTE: In the JavaScript version of Cene, this took a dexable value
+  ; (a pair of a dex and a value).
   (def-func-fault! "dex-fix" fault dexed-unwrap
     (expect dexed-unwrap (sink-dexed dexed-unwrap)
       (cene-err fault "Expected dexed-unwrap to be a dexed value")
@@ -1931,6 +1935,8 @@
       (cene-err fault "Expected cline to be a cline")
     #/sink-cline #/cline-opaque name cline))
   
+  ; NOTE: In the JavaScript version of Cene, this took a dexable value
+  ; (a pair of a dex and a value).
   (def-func-fault! "cline-by-own-method" fault dexed-get-method
     (expect dexed-get-method (sink-dexed dexed-get-method)
       (cene-err fault "Expected dexed-get-method to be a dexed value")
@@ -1938,6 +1944,8 @@
       (dexed-struct sink-cline-by-own-method-unthorough
         dexed-get-method)))
   
+  ; NOTE: In the JavaScript version of Cene, this took a dexable value
+  ; (a pair of a dex and a value).
   (def-func-fault! "cline-fix" fault dexed-unwrap
     (expect dexed-unwrap (sink-dexed dexed-unwrap)
       (cene-err fault "Expected dexed-unwrap to be a dexed value")
@@ -1994,6 +2002,8 @@
       (cene-err fault "Expected fuse to be a fuse")
     #/sink-fuse #/fuse-opaque name fuse))
   
+  ; NOTE: In the JavaScript version of Cene, this took a dexable value
+  ; (a pair of a dex and a value).
   (def-func-fault! "merge-by-own-method" fault dexed-get-method
     (expect dexed-get-method (sink-dexed dexed-get-method)
       (cene-err fault "Expected dexed-get-method to be a dexed value")
@@ -2001,6 +2011,8 @@
       (dexed-struct sink-merge-by-own-method-unthorough
         dexed-get-method)))
   
+  ; NOTE: In the JavaScript version of Cene, this took a dexable value
+  ; (a pair of a dex and a value).
   (def-func-fault! "fuse-by-own-method" fault dexed-get-method
     (expect dexed-get-method (sink-dexed dexed-get-method)
       (cene-err fault "Expected dexed-get-method to be a dexed value")
@@ -2008,12 +2020,16 @@
       (dexed-struct sink-fuse-by-own-method-unthorough
         dexed-get-method)))
   
+  ; NOTE: In the JavaScript version of Cene, this took a dexable value
+  ; (a pair of a dex and a value).
   (def-func-fault! "merge-fix" fault dexed-unwrap
     (expect dexed-unwrap (sink-dexed dexed-unwrap)
       (cene-err fault "Expected dexed-unwrap to be a dexed value")
     #/sink-merge #/merge-fix
       (dexed-struct converter-for-merge-fix dexed-unwrap)))
   
+  ; NOTE: In the JavaScript version of Cene, this took a dexable value
+  ; (a pair of a dex and a value).
   (def-func-fault! "fuse-fix" fault dexed-unwrap
     (expect dexed-unwrap (sink-dexed dexed-unwrap)
       (cene-err fault "Expected dexed-unwrap to be a dexed value")
