@@ -49,14 +49,14 @@
   extfx-ct-continue extfx-noop extfx-pub-write extfx-run-getfx
   extfx-put extfx-split-list extfx-sub-write fuse-extfx getfx?
   getfx-bind getfx-done getfx-err getfx-establish-pubsub getfx-get
-  optionally-dexable-dexable optionally-dexable-once
+  optionally-dexed-dexed optionally-dexed-once
   success-or-error-definer)
 (require #/only-in effection/order
   assocs->table-if-mutually-unique dex-immutable-string dex-trivial)
 (require #/only-in effection/order/base
-  call-fuse compare-by-dex dex? dexable dex-give-up dex-dex dex-name
-  dex-struct dex-table fuse-by-merge in-dex? merge-by-dex merge-table
-  name? name-of ordering-eq? table? table-empty? table-empty table-get
+  call-fuse compare-by-dex dex? dexed-of dex-give-up dex-dex dex-name
+  dex-struct dex-table fuse-by-merge merge-by-dex merge-table name?
+  name-of ordering-eq? table? table-empty? table-empty table-get
   table-map-fuse table-shadow)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe name)
 
@@ -718,7 +718,7 @@
   (dissect name (sink-authorized-name name)
   #/dissect dex (sink-dex dex)
   #/make-sink-extfx #/fn
-    ; NOTE: We need this restorer because the `in-dex?` call can
+    ; NOTE: We need this restorer because the `dexed-of` call can
     ; invoke Cene code (or even Racket code like the implementation of
     ; `sink-dex-list`) that can depend on `cene-definition-get-param`.
     (extfx-with-cene-definition-restorer #/fn restore
@@ -735,9 +735,9 @@
             (success-or-error-definer
               (error-definer-uninformative)
               (extfx-noop))
-            (if (in-dex? dex value)
-              (optionally-dexable-dexable #/dexable dex value)
-              (optionally-dexable-once value))))))))
+            (mat (dexed-of dex value) (just d)
+              (optionally-dexed-dexed d)
+              (optionally-dexed-once value))))))))
 
 (define/contract (sink-extfx-noop)
   (-> sink-extfx?)
