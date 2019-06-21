@@ -49,15 +49,16 @@
   authorized-name-get-name getfx-bind)
 (require #/only-in effection/order
   assocs->table-if-mutually-unique cline-exact-rational
-  dex-exact-rational dex-immutable-string dexed-of
-  fuse-exact-rational-by-plus fuse-exact-rational-by-times)
+  dex-exact-rational dex-immutable-string fuse-exact-rational-by-plus
+  fuse-exact-rational-by-times)
 (require #/only-in effection/order/base
   call-fuse call-merge cline-by-dex cline-default cline-give-up
   cline-opaque cline-result? cline-struct compare-by-cline
   compare-by-dex dex? dexable dexable? dex-cline dex-default dex-dex
-  dex-fix dex-fuse dex-give-up dex-merge dex-name dex-opaque
-  dex-struct dex-table fusable-function? fuse-by-merge fuse-opaque
-  fuse-struct fuse-table in-cline? in-dex? get-dex-from-cline
+  dexed? dexed-get-dex dexed-get-name dexed-get-value dexed-of dex-fix
+  dex-fuse dex-give-up dex-merge dex-name dex-opaque dex-struct
+  dex-table fusable-function? fuse-by-merge fuse-opaque fuse-struct
+  fuse-table in-cline? in-dex? get-dex-from-cline
   make-fusable-function merge-by-dex merge-opaque merge-struct
   merge-table name? name-of ordering-eq ordering-gt ordering-lt
   ordering-private table? table-empty table-get table-map-fuse
@@ -222,6 +223,8 @@
   #/dexable dex val))
 
 
+(struct-easy (sink-dexed dexed)
+  #:other #:methods gen:sink [])
 (struct-easy (sink-cline cline)
   #:other #:methods gen:sink [])
 (struct-easy (sink-merge merge)
@@ -1796,6 +1799,17 @@
       #/fn name
         (sink-name name))))
   
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func-fault! "dexed-of" fault dex v
+    (expect dex (sink-dex dex)
+      (cene-err fault "Expected dex to be a dex")
+    #/racket-maybe->sink
+      (maybe-map
+        (with-current-fault fault #/fn
+        #/dexed-of dex v)
+      #/fn dexed
+        (sink-dexed dexed))))
+  
   ; NOTE: In the JavaScript version of Cene, this was called
   ; `call-dex`.
   (def-func-fault! "compare-by-dex" fault dex a b
@@ -1810,6 +1824,28 @@
         (make-sink-struct (s-ordering-private) #/list)
       #/dissect dex-result (ordering-eq)
       #/make-sink-struct (s-ordering-eq) #/list)))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func! "is-dexed" v
+    (racket-boolean->sink #/sink-dexed? v))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func-fault! "dexed-get-dex" fault d
+    (expect d (sink-dexed d)
+      (cene-err fault "Expected d to be a dexed value")
+    #/sink-dex #/dexed-get-dex d))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func-fault! "dexed-get-name" fault d
+    (expect d (sink-dexed d)
+      (cene-err fault "Expected d to be a dexed value")
+    #/sink-name #/dexed-get-name d))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func-fault! "dexed-get-value" fault d
+    (expect d (sink-dexed d)
+      (cene-err fault "Expected d to be a dexed value")
+    #/dexed-get-value d))
   
   (def-data-struct! "dexable" #/list "dex" "val")
   
