@@ -52,40 +52,36 @@
   dex-exact-rational dex-immutable-string fuse-exact-rational-by-plus
   fuse-exact-rational-by-times)
 (require #/only-in effection/order/base
-  call-fuse call-merge cline-by-dex cline-default cline-give-up
-  cline-opaque cline-result? cline-struct compare-by-cline
-  compare-by-dex dex? dexable dexable? dex-cline dex-default dex-dex
-  dexed? dexed-get-dex dexed-get-name dexed-get-value dexed-of dex-fix
-  dex-fuse dex-give-up dex-merge dex-name dex-opaque dex-struct
-  dex-table fusable-function? fuse-by-merge fuse-opaque fuse-struct
-  fuse-table in-cline? in-dex? get-dex-from-cline
-  make-fusable-function merge-by-dex merge-opaque merge-struct
-  merge-table name? name-of ordering-eq ordering-gt ordering-lt
-  ordering-private table? table-empty table-get table-map-fuse
-  table-shadow table-sort)
+  call-fuse call-merge cline-by-dex cline-default cline-fix
+  cline-give-up cline-opaque cline-result? cline-struct
+  compare-by-cline compare-by-dex dex? dex-cline dex-default
+  dex-dex dexed? dexed-get-dex dexed-get-name dexed-get-value dexed-of
+  dex-fix dex-fuse dex-give-up dex-merge dex-name dex-opaque
+  dex-struct dex-table fusable-function? fuse-by-merge fuse-fix
+  fuse-opaque fuse-struct fuse-table in-cline? in-dex?
+  get-dex-from-cline make-fusable-function merge-by-dex merge-fix
+  merge-opaque merge-struct merge-table name? name-of ordering-eq
+  ordering-gt ordering-lt ordering-private table? table-empty
+  table-get table-map-fuse table-shadow table-sort)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe
   autoname-cline autoname-dex autoname-fuse autoname-merge cline
-  cline-by-own-method-thorough-unchecked
-  cline-by-own-method::get-method
-  cline-by-own-method::raise-different-methods-error
-  cline-fix-unchecked dex dexableof-unchecked
-  dex-by-own-method-thorough-unchecked dex-by-own-method::get-method
-  dex-by-own-method::raise-different-methods-error dex-fix-unchecked
-  dexed fuse fuse-by-own-method-thorough-unchecked
-  fuse-by-own-method::get-method
+  cline-by-own-method-thorough cline-by-own-method::get-method
+  cline-by-own-method::raise-different-methods-error dex
+  dex-by-own-method-thorough dex-by-own-method::get-method
+  dex-by-own-method::raise-different-methods-error dexed fuse
+  fuse-by-own-method-thorough fuse-by-own-method::get-method
   fuse-by-own-method::raise-cannot-get-output-method-error
   fuse-by-own-method::raise-different-input-methods-error
   fuse-by-own-method::raise-different-output-method-error
-  fuse-fix-unchecked fuse-fusable-function-thorough-unchecked
+  fuse-fusable-function-thorough
   fuse-fusable-function::raise-cannot-combine-results-error
   fuse-fusable-function::arg-to-method gen:cline-internals
   gen:dex-internals gen:furge-internals merge
-  merge-by-own-method-thorough-unchecked
-  merge-by-own-method::get-method
+  merge-by-own-method-thorough merge-by-own-method::get-method
   merge-by-own-method::raise-different-input-methods-error
   merge-by-own-method::raise-different-output-method-error
-  merge-by-own-method::raise-cannot-get-output-method-error
-  merge-fix-unchecked name table->sorted-list)
+  merge-by-own-method::raise-cannot-get-output-method-error name
+  table->sorted-list)
 
 (require cene/private)
 (require #/only-in cene/private/reader-utils
@@ -136,8 +132,6 @@
   (core-sink-struct "ordering-private" #/list))
 (define s-ordering-gt (core-sink-struct "ordering-gt" #/list))
 
-(define s-dexable (core-sink-struct "dexable" #/list "dex" "val"))
-
 (define s-struct-metadata
   (core-sink-struct "struct-metadata"
   #/list "main-tag-name" "projections"))
@@ -168,22 +162,18 @@
   #/maybe-compare-aligned-lists as bs maybe-compare-elems))
 
 ; TODO: See if we should put something like this in Effection.
-(define-syntax (dexable-struct stx)
-  (syntax-parse stx #/ (_ tag:id dexable-field ...)
+(define-syntax (dexed-struct stx)
+  (syntax-parse stx #/ (_ tag:id dexed-field ...)
     
-    #:declare dexable-field (expr/c #'dexable? #:name "a field")
+    #:declare dexed-field (expr/c #'dexed? #:name "a field")
     
-    #:with (dexable-field-result ...)
-    (generate-temporaries #'(dexable-field ...))
+    #:with (dexed-field-result ...)
+    (generate-temporaries #'(dexed-field ...))
     
-    #'(let ([dexable-field-result dexable-field.c] ...)
-        (dexable
-          (dex-struct tag
-            (dissect dexable-field-result (dexable dex val) dex)
-            ...)
-          (tag
-            (dissect dexable-field-result (dexable dex val) val)
-            ...)))))
+    #'(let ([dexed-field-result dexed-field.c] ...)
+        (just-value #/dexed-of
+          (dex-struct tag (dexed-get-dex dexed-field-result) ...)
+          (tag (dexed-get-value dexed-field-result) ...)))))
 
 (define/contract (racket-boolean->sink racket-boolean)
   (-> boolean? sink?)
@@ -211,16 +201,6 @@
   #/mat racket-maybe (just val)
     (make-sink-struct (s-just) #/list val)
     (make-sink-struct (s-nothing) #/list)))
-
-(define/contract (sink-valid-dexable->maybe-racket sink-dexable)
-  (-> sink? #/unsafe:dexableof-unchecked sink?)
-  (begin (assert-can-get-cene-definitions!)
-  #/expect (unmake-sink-struct-maybe (s-dexable) sink-dexable)
-    (just #/list dex val)
-    (nothing)
-  #/expect dex (sink-dex dex) (nothing)
-  #/expect (in-dex? dex val) #t (nothing)
-  #/dexable dex val))
 
 
 (struct-easy (sink-dexed dexed)
@@ -1057,8 +1037,8 @@
 (define/contract (sink-dex-list dex-elem)
   (-> sink-dex? sink-dex?)
   (dissect dex-elem (sink-dex dex-elem)
-  #/sink-dex #/dex-fix #/dexable-struct fix-for-sink-dex-list
-  #/dexable (dex-dex) dex-elem))
+  #/sink-dex #/dex-fix #/dexed-struct fix-for-sink-dex-list
+    (just-value #/dexed-of (dex-dex) dex-elem)))
 
 (define/contract (sink-dex-name)
   (-> sink-dex?)
@@ -1276,7 +1256,7 @@
     (set! init-essentials-steps (cons step init-essentials-steps)))
   
   (define/contract
-    (sink-extfx-def-dexable-value-for-lang-impl
+    (sink-extfx-def-fallibly-dexed-value-for-lang-impl
       unique-name target-name dex value)
     (-> sink-authorized-name? sink-authorized-name? sink-dex? sink?
       sink-extfx?)
@@ -1284,7 +1264,7 @@
     #/sink-extfx-put target-name dex value))
   
   (define/contract
-    (sink-extfx-def-dexable-value-for-package
+    (sink-extfx-def-fallibly-dexed-value-for-package
       unique-name target-name dex value)
     (-> sink-authorized-name? sink-name? sink-dex? sink? sink-extfx?)
     (sink-extfx-claim-freshen unique-name #/fn unique-name
@@ -1297,14 +1277,14 @@
     (sink-extfx-def-value-for-lang-impl unique-name target-name value)
     (-> sink-authorized-name? sink-authorized-name? sink? sink-extfx?)
     (sink-extfx-claim-freshen unique-name #/fn unique-name
-    #/sink-extfx-def-dexable-value-for-lang-impl
+    #/sink-extfx-def-fallibly-dexed-value-for-lang-impl
       unique-name target-name (sink-dex #/dex-give-up) value))
   
   (define/contract
     (sink-extfx-def-value-for-package unique-name target-name value)
     (-> sink-authorized-name? sink-name? sink? sink-extfx?)
     (sink-extfx-claim-freshen unique-name #/fn unique-name
-    #/sink-extfx-def-dexable-value-for-package
+    #/sink-extfx-def-fallibly-dexed-value-for-package
       unique-name target-name (sink-dex #/dex-give-up) value))
   
   (define/contract (def-value-for-package! name value)
@@ -1604,7 +1584,7 @@
       ; TODO: We haven't even tried to store this in the same format
       ; as the JavaScript version of Cene does. See if we should.
       ;
-      (sink-extfx-def-dexable-value-for-package
+      (sink-extfx-def-fallibly-dexed-value-for-package
         unique-name-for-metadata
         (sink-name-for-struct-metadata main-tag-name)
         (sink-dex-struct (s-struct-metadata) #/list
@@ -1847,8 +1827,6 @@
       (cene-err fault "Expected d to be a dexed value")
     #/dexed-get-value d))
   
-  (def-data-struct! "dexable" #/list "dex" "val")
-  
   (def-nullary-func! "dex-name"
     (sink-dex #/dex-struct sink-name #/dex-name))
   
@@ -1874,20 +1852,18 @@
       (cene-err fault "Expected dex to be a dex")
     #/sink-dex #/dex-opaque name dex))
   
-  (def-func-fault! "dex-by-own-method" fault dexable-get-method
-    (expect (sink-valid-dexable->maybe-racket dexable-get-method)
-      (just dexable-get-method)
-      (cene-err fault "Expected dexable-get-method to be a valid dexable")
-    #/sink-dex #/unsafe:dex-by-own-method-thorough-unchecked
-    #/dexable-struct sink-dex-by-own-method-unthorough
-      dexable-get-method))
+  (def-func-fault! "dex-by-own-method" fault dexed-get-method
+    (expect dexed-get-method (sink-dexed dexed-get-method)
+      (cene-err fault "Expected dexed-get-method to be a dexed value")
+    #/sink-dex #/unsafe:dex-by-own-method-thorough
+      (dexed-struct sink-dex-by-own-method-unthorough
+        dexed-get-method)))
   
-  (def-func-fault! "dex-fix" fault dexable-unwrap
-    (expect (sink-valid-dexable->maybe-racket dexable-unwrap)
-      (just dexable-unwrap)
-      (cene-err fault "Expected dexable-unwrap to be a valid dexable")
-    #/sink-dex #/unsafe:dex-fix-unchecked
-    #/dexable-struct converter-for-dex-fix dexable-unwrap))
+  (def-func-fault! "dex-fix" fault dexed-unwrap
+    (expect dexed-unwrap (sink-dexed dexed-unwrap)
+      (cene-err fault "Expected dexed-unwrap to be a dexed value")
+    #/sink-dex #/dex-fix
+      (dexed-struct converter-for-dex-fix dexed-unwrap)))
   
   ; NOTE: In the JavaScript version of Cene, there was a similar
   ; operation called `dex-by-cline`.
@@ -1955,20 +1931,18 @@
       (cene-err fault "Expected cline to be a cline")
     #/sink-cline #/cline-opaque name cline))
   
-  (def-func-fault! "cline-by-own-method" fault dexable-get-method
-    (expect (sink-valid-dexable->maybe-racket dexable-get-method)
-      (just dexable-get-method)
-      (cene-err fault "Expected dexable-get-method to be a valid dexable")
-    #/sink-cline #/unsafe:cline-by-own-method-thorough-unchecked
-    #/dexable-struct sink-cline-by-own-method-unthorough
-      dexable-get-method))
+  (def-func-fault! "cline-by-own-method" fault dexed-get-method
+    (expect dexed-get-method (sink-dexed dexed-get-method)
+      (cene-err fault "Expected dexed-get-method to be a dexed value")
+    #/sink-cline #/unsafe:cline-by-own-method-thorough
+      (dexed-struct sink-cline-by-own-method-unthorough
+        dexed-get-method)))
   
-  (def-func-fault! "cline-fix" fault dexable-unwrap
-    (expect (sink-valid-dexable->maybe-racket dexable-unwrap)
-      (just dexable-unwrap)
-      (cene-err fault "Expected dexable-unwrap to be a valid dexable")
-    #/sink-cline #/unsafe:cline-fix-unchecked
-    #/dexable-struct converter-for-cline-fix dexable-unwrap))
+  (def-func-fault! "cline-fix" fault dexed-unwrap
+    (expect dexed-unwrap (sink-dexed dexed-unwrap)
+      (cene-err fault "Expected dexed-unwrap to be a dexed value")
+    #/sink-cline #/cline-fix
+      (dexed-struct converter-for-cline-fix dexed-unwrap)))
   
   (def-func-fault! "call-merge" fault merge a b
     (expect merge (sink-merge merge)
@@ -2020,35 +1994,31 @@
       (cene-err fault "Expected fuse to be a fuse")
     #/sink-fuse #/fuse-opaque name fuse))
   
-  (def-func-fault! "merge-by-own-method" fault dexable-get-method
-    (expect (sink-valid-dexable->maybe-racket dexable-get-method)
-      (just dexable-get-method)
-      (cene-err fault "Expected dexable-get-method to be a valid dexable")
-    #/sink-merge #/unsafe:merge-by-own-method-thorough-unchecked
-    #/dexable-struct sink-merge-by-own-method-unthorough
-      dexable-get-method))
+  (def-func-fault! "merge-by-own-method" fault dexed-get-method
+    (expect dexed-get-method (sink-dexed dexed-get-method)
+      (cene-err fault "Expected dexed-get-method to be a dexed value")
+    #/sink-merge #/unsafe:merge-by-own-method-thorough
+      (dexed-struct sink-merge-by-own-method-unthorough
+        dexed-get-method)))
   
-  (def-func-fault! "fuse-by-own-method" fault dexable-get-method
-    (expect (sink-valid-dexable->maybe-racket dexable-get-method)
-      (just dexable-get-method)
-      (cene-err fault "Expected dexable-get-method to be a valid dexable")
-    #/sink-fuse #/unsafe:fuse-by-own-method-thorough-unchecked
-    #/dexable-struct sink-fuse-by-own-method-unthorough
-      dexable-get-method))
+  (def-func-fault! "fuse-by-own-method" fault dexed-get-method
+    (expect dexed-get-method (sink-dexed dexed-get-method)
+      (cene-err fault "Expected dexed-get-method to be a dexed value")
+    #/sink-fuse #/unsafe:fuse-by-own-method-thorough
+      (dexed-struct sink-fuse-by-own-method-unthorough
+        dexed-get-method)))
   
-  (def-func-fault! "merge-fix" fault dexable-unwrap
-    (expect (sink-valid-dexable->maybe-racket dexable-unwrap)
-      (just dexable-unwrap)
-      (cene-err fault "Expected dexable-unwrap to be a valid dexable")
-    #/sink-merge #/unsafe:merge-fix-unchecked
-    #/dexable-struct converter-for-merge-fix dexable-unwrap))
+  (def-func-fault! "merge-fix" fault dexed-unwrap
+    (expect dexed-unwrap (sink-dexed dexed-unwrap)
+      (cene-err fault "Expected dexed-unwrap to be a dexed value")
+    #/sink-merge #/merge-fix
+      (dexed-struct converter-for-merge-fix dexed-unwrap)))
   
-  (def-func-fault! "fuse-fix" fault dexable-unwrap
-    (expect (sink-valid-dexable->maybe-racket dexable-unwrap)
-      (just dexable-unwrap)
-      (cene-err fault "Expected dexable-unwrap to be a valid dexable")
-    #/sink-fuse #/unsafe:fuse-fix-unchecked
-    #/dexable-struct converter-for-fuse-fix dexable-unwrap))
+  (def-func-fault! "fuse-fix" fault dexed-unwrap
+    (expect dexed-unwrap (sink-dexed dexed-unwrap)
+      (cene-err fault "Expected dexed-unwrap to be a dexed value")
+    #/sink-fuse #/fuse-fix
+      (dexed-struct converter-for-fuse-fix dexed-unwrap)))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func! "is-fusable-fn" v
@@ -2065,25 +2035,23 @@
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "fuse-fusable-fn-fault"
-    fault dexable-fault-and-arg-to-method
+    fault dexed-fault-and-arg-to-method
     
-    (expect
-      (sink-valid-dexable->maybe-racket
-        dexable-fault-and-arg-to-method)
-      (just dexable-fault-and-arg-to-method)
-      (cene-err fault "Expected dexable-fault-and-arg-to-method to be a valid dexable")
+    (expect dexed-fault-and-arg-to-method
+      (sink-dexed dexed-fault-and-arg-to-method)
+      (cene-err fault "Expected dexed-fault-and-arg-to-method to be a dexed value")
     #/sink-fuse #/fuse-struct sink-opaque-fn
-    #/unsafe:fuse-fusable-function-thorough-unchecked
-    #/dexable-struct sink-fuse-fusable-fn-unthorough
-      dexable-fault-and-arg-to-method))
+    #/unsafe:fuse-fusable-function-thorough
+      (dexed-struct sink-fuse-fusable-fn-unthorough
+        dexed-fault-and-arg-to-method)))
   
   
   ; Authorized names
   ;
   ; NOTE: The JavaScript version of Cene doesn't have any of these.
   
-  ; TODO: See if we need authorized names to be dexable. If we do,
-  ; expose a `dex-authorized-name` to Cene instead of this.
+  ; TODO: See if we need to expose a `dex-authorized-name` to Cene
+  ; instead of this.
   (def-func! "is-authorized-name" v
     (racket-boolean->sink #/sink-authorized-name? v))
   

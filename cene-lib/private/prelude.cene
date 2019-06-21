@@ -211,7 +211,7 @@
         [c-blame bl-implicit err /str-prim:Expected the return value of an extfx-read-bounded-specific-number-of-exprs callback to be an extfx effectful computation]
         effects))
   
-  /let extfx-def-dexable-value-for-lang-impl
+  /let extfx-def-fallibly-dexed-value-for-lang-impl
     (fn-blame bl unique-name target-name dex value
       (cast (is-authorized-name unique-name) yep -
         [c-blame bl err /str-prim:Expected unique-name to be an authorized name]
@@ -221,7 +221,7 @@
         [c-blame bl err /str-prim:Expected dex to be a dex]
       /extfx-claim unique-name /fn -
       /extfx-put target-name dex value))
-  /let extfx-def-dexable-value-for-package
+  /let extfx-def-fallibly-dexed-value-for-package
     (fn-blame bl unique-name target-name dex value
       (cast (is-authorized-name unique-name) yep -
         [c-blame bl err /str-prim:Expected unique-name to be an authorized name]
@@ -241,7 +241,7 @@
       /cast (is-authorized-name target-name) yep -
         [c-blame bl err /str-prim:Expected target-name to be an authorized name]
       /c extfx-claim-freshen unique-name /fn unique-name
-      /c extfx-def-dexable-value-for-lang-impl
+      /c extfx-def-fallibly-dexed-value-for-lang-impl
         unique-name target-name (dex-give-up) value))
   /let extfx-def-value-for-package
     (fn-blame bl unique-name target-name value
@@ -250,7 +250,7 @@
       /cast (c is-name target-name) yep -
         [c-blame bl err /str-prim:Expected target-name to be a name]
       /c extfx-claim-freshen unique-name /fn unique-name
-      /c extfx-def-dexable-value-for-package
+      /c extfx-def-fallibly-dexed-value-for-package
         unique-name target-name (dex-give-up) value))
   /let macro-impl
     (fn-blame bl-body body
