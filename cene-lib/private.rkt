@@ -48,7 +48,7 @@
   error-definer-uninformative extfx? extfx-claim-unique
   extfx-ct-continue extfx-noop extfx-pub-write extfx-run-getfx
   extfx-put extfx-split-list extfx-sub-write fuse-extfx getfx?
-  getfx-bind getfx-done getfx-err getfx-establish-pubsub getfx-get
+  getfx-bind getfx-done getfx-err getfx-get make-pub make-sub
   optionally-dexed-dexed optionally-dexed-once
   success-or-error-definer)
 (require #/only-in effection/order
@@ -342,30 +342,24 @@
   #/dissect effects (sink-getfx go)
   #/run-getfx #/go))
 
-(define/contract (sink-getfx-establish-pubsub pubsub-name)
-  (-> sink-authorized-name? sink-getfx?)
-  (dissect pubsub-name (sink-authorized-name pubsub-name)
-  #/sink-getfx #/fn
-    (getfx-with-cene-definition-restorer #/fn restore
-    #/getfx-bind
-      (getfx-establish-pubsub (cene-definition-dspace) pubsub-name)
-    #/dissectfn (list p s)
-    #/restore #/fn
-    #/getfx-done
-      (racket-list->sink #/list (sink-pub p) (sink-sub s)))))
+(define/contract (make-sink-pub pubsub-name)
+  (-> sink-authorized-name? sink-pub?)
+  (begin (assert-can-get-cene-definitions!)
+  #/dissect pubsub-name (sink-authorized-name pubsub-name)
+  #/sink-pub #/make-pub (cene-definition-dspace) pubsub-name))
 
-(define/contract (sink-extfx-establish-init-package-pubsub then)
-  (-> (-> sink-pub? sink-sub? sink-extfx?) sink-extfx?)
-  (sink-extfx-later #/fn
-  #/sink-extfx-run-getfx
-    (sink-getfx-establish-pubsub
-      (sink-authorized-name-subname
-        (sink-name #/just-value #/name-of (dex-immutable-string)
-          "init-package-pubsub")
-        (cene-definition-lang-impl-qualify-root)))
-  #/fn pubsub
-  #/dissect (sink-list->maybe-racket pubsub) (just #/list p s)
-  #/then p s))
+(define/contract (make-sink-sub pubsub-name)
+  (-> sink-authorized-name? sink-sub?)
+  (begin (assert-can-get-cene-definitions!)
+  #/dissect pubsub-name (sink-authorized-name pubsub-name)
+  #/sink-sub #/make-sub (cene-definition-dspace) pubsub-name))
+
+(define/contract (sink-authorized-name-for-init-package-pubsub)
+  (-> sink-authorized-name?)
+  (sink-authorized-name-subname
+    (sink-name #/just-value #/name-of (dex-immutable-string)
+      "init-package-pubsub")
+    (cene-definition-lang-impl-qualify-root)))
 
 (define cene-definition-get-prompt-tag (make-continuation-prompt-tag))
 

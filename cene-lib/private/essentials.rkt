@@ -1204,7 +1204,8 @@
     sink-extfx?)
   (sink-extfx-claim-and-split unique-name 2
   #/dissectfn (list unique-name-for-sub-write unique-name-for-step)
-  #/sink-extfx-establish-init-package-pubsub #/fn p s
+  #/w- s
+    (make-sink-sub #/sink-authorized-name-for-init-package-pubsub)
   #/sink-extfx-sub-write s unique-name-for-sub-write #/fn entry
     (expect (unmake-sink-struct-maybe (s-command-init-package) entry)
       (just #/list key qualify)
@@ -1226,7 +1227,8 @@
     sink-extfx?)
   (sink-extfx-claim-and-split unique-name 2
   #/dissectfn (list unique-name-for-pub-write unique-name-for-step)
-  #/sink-extfx-establish-init-package-pubsub #/fn p s
+  #/w- p
+    (make-sink-pub #/sink-authorized-name-for-init-package-pubsub)
   #/sink-extfx-pub-write p unique-name-for-pub-write
     (make-sink-struct (s-command-init-package) #/list
       (sink-authorized-name-get-name unique-name-for-step)
@@ -2765,16 +2767,16 @@
     #/sink-extfx-put name dex value))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
-  ;
-  ; TODO: It's a little more cumbersome to destructure lists in Cene
-  ; rather than Racket. See if, instead, we should have this return a
-  ; struct or replace this with separate `establish-pub` and
-  ; `establish-sub` functions.
-  ;
-  (def-func-fault! "getfx-establish-pubsub" fault name
+  (def-func-fault! "make-pub" fault name
     (expect (sink-authorized-name? name) #t
       (cene-err fault "Expected name to be an authorized name")
-    #/sink-getfx-establish-pubsub name))
+    #/make-sink-pub name))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func-fault! "make-sub" fault name
+    (expect (sink-authorized-name? name) #t
+      (cene-err fault "Expected name to be an authorized name")
+    #/make-sink-sub name))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "extfx-pub-write" fault p unique-name arg
