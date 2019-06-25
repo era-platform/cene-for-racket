@@ -44,20 +44,20 @@
 
 (require #/only-in effection/extensibility/base
   authorized-name? authorized-name-get-name authorized-name-subname
-  dspace? error-definer? error-definer-from-message
-  error-definer-uninformative extfx? extfx-claim-unique
-  extfx-ct-continue extfx-noop extfx-pub-write extfx-run-getfx
-  extfx-put extfx-split-list extfx-sub-write fuse-extfx getfx?
-  getfx-bind getfx-done getfx-err getfx-get make-pub make-sub
-  optionally-dexed-dexed optionally-dexed-once
+  dspace? error-definer? error-definer-from-exn
+  error-definer-from-message error-definer-uninformative extfx?
+  extfx-claim-unique extfx-ct-continue extfx-noop extfx-pub-write
+  extfx-run-getfx extfx-put extfx-split-list extfx-sub-write
+  fuse-extfx getfx? getfx-bind getfx-done getfx-err getfx-get make-pub
+  make-sub optionally-dexed-dexed optionally-dexed-once pure-run-getfx
   success-or-error-definer)
 (require #/only-in effection/order
   assocs->table-if-mutually-unique dex-immutable-string dex-trivial)
 (require #/only-in effection/order/base
-  call-fuse compare-by-dex dex? dexed-of dex-give-up dex-dex dex-name
-  dex-struct dex-table fuse-by-merge merge-by-dex merge-table name?
-  name-of ordering-eq? table? table-empty? table-empty table-get
-  table-map-fuse table-shadow)
+  compare-by-dex dex? dexed-of dex-give-up dex-dex dex-name dex-struct
+  dex-table fuse-by-merge getfx-call-fuse getfx-table-map-fuse
+  merge-by-dex merge-table name? name-of ordering-eq? table?
+  table-empty? table-empty table-get table-shadow)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe name)
 
 (require #/only-in cene/private/textpat
@@ -84,11 +84,12 @@
 (define/contract (table-kv-map table kv-to-v)
   (-> table? (-> name? any/c any/c) table?)
   (mat
-    (table-map-fuse table
+    (pure-run-getfx #/getfx-table-map-fuse table
       (fuse-by-merge #/merge-table #/merge-by-dex #/dex-give-up)
     #/fn k
       (dissect (table-get k table) (just v)
-      #/table-shadow k (just #/kv-to-v k v) #/table-empty))
+      #/getfx-done
+        (table-shadow k (just #/kv-to-v k v) #/table-empty)))
     (just result)
     result
   #/table-empty))
@@ -311,8 +312,8 @@
     (error "Expected every call to `cene-definition-lang-impl-qualify-root` to occur with an implementation in the dynamic scope")
     lang-impl-qualify-root))
 
-(define/contract (sink-getfx-err clamor)
-  (-> sink? sink-getfx?)
+(define/contract (getfx-err-from-clamor clamor)
+  (-> sink? getfx?)
   (dissect
     (expect (unmake-sink-struct-maybe (s-clamor-err) clamor)
       (just #/list (sink-fault maybe-marks) (sink-string message))
@@ -322,9 +323,7 @@
   #/w- marks
     (mat maybe-marks (just marks) marks
     #/current-continuation-marks)
-  ; TODO: Do smething with `marks` here. Maybe use it to add a stack
-  ; trace to the message somehow.
-  #/sink-getfx #/fn #/getfx-err #/error-definer-from-message message))
+  #/getfx-err #/error-definer-from-exn #/exn:fail message marks))
 
 (define/contract (sink-getfx-get name)
   (-> sink-name? sink-getfx?)
@@ -677,7 +676,8 @@
 ; TODO: Put this in Effection.
 (define/contract (extfx-fuse-binary a b)
   (-> extfx? extfx? extfx?)
-  (dissect (call-fuse (fuse-extfx) a b) (just result)
+  (dissect (pure-run-getfx #/getfx-call-fuse (fuse-extfx) a b)
+    (just result)
     result))
 
 ; TODO: Put this in Effection.
@@ -978,15 +978,22 @@
   (-> sink-fault?)
   (sink-fault #/just #/current-continuation-marks))
 
+(define/contract (getfx-err-clamor fault message)
+  (-> sink-fault? immutable-string? getfx?)
+  (getfx-err-from-clamor #/make-sink-struct (s-clamor-err) #/list
+    fault
+    (sink-string message)))
+
+(define/contract (sink-getfx-err-clamor fault message)
+  (-> sink-fault? immutable-string? sink-getfx?)
+  (sink-getfx #/fn #/getfx-err-clamor fault message))
+
 (define-simple-macro (cene-err fault:expr message:string)
   ; TODO: See if there's a way we can either stop depending on
   ; `s-clamor-err` here or move this code after the place where
   ; `s-clamor-err` is defined.
   (begin (assert-can-get-cene-definitions!)
-  #/cene-definition-run-getfx #/sink-getfx-err
-    (make-sink-struct (s-clamor-err) #/list
-      fault
-      (sink-string message))))
+  #/cene-definition-run-getfx #/sink-getfx-err-clamor fault message))
 
 (define/contract
   (sink-call-fault-binary caller-fault explicit-fault func arg)

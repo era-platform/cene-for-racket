@@ -40,48 +40,48 @@
   list-all list-any list-foldl list-foldr list-kv-map list-map
   list-zip-map)
 (require #/only-in lathe-comforts/maybe
-  just just-value maybe-bind maybe/c maybe-map nothing)
+  just just-value maybe? maybe-bind maybe/c maybe-map nothing)
 (require #/only-in lathe-comforts/string immutable-string?)
 (require #/only-in lathe-comforts/struct struct-easy)
 (require #/only-in lathe-comforts/trivial trivial)
 
 (require #/only-in effection/extensibility/base
-  authorized-name-get-name getfx-bind)
+  authorized-name-get-name getfx-bind getfx/c getfx-done)
 (require #/only-in effection/order
   assocs->table-if-mutually-unique cline-exact-rational
   dex-exact-rational dex-immutable-string fuse-exact-rational-by-plus
   fuse-exact-rational-by-times)
 (require #/only-in effection/order/base
-  call-fuse call-merge cline-by-dex cline-default cline-fix
-  cline-give-up cline-opaque cline-result? cline-struct
-  compare-by-cline compare-by-dex dex? dex-cline dex-default
-  dex-dex dexed? dexed-get-dex dexed-get-name dexed-get-value dexed-of
-  dex-fix dex-fuse dex-give-up dex-merge dex-name dex-opaque
-  dex-struct dex-table fusable-function? fuse-by-merge fuse-fix
-  fuse-opaque fuse-struct fuse-table in-cline? in-dex?
-  get-dex-from-cline make-fusable-function merge-by-dex merge-fix
+  cline-by-dex cline-default cline-fix cline-give-up cline-opaque
+  cline-result? cline-struct compare-by-cline compare-by-dex dex?
+  dex-cline dex-default dex-dex dexed? dexed-get-dex dexed-get-name
+  dexed-get-value dexed-of dex-fix dex-fuse dex-give-up dex-merge
+  dex-name dex-opaque dex-struct dex-table fusable-function?
+  fuse-by-merge fuse-fix fuse-opaque fuse-struct fuse-table in-cline?
+  in-dex? get-dex-from-cline getfx-call-fuse getfx-call-merge
+  getfx-table-map-fuse make-fusable-function merge-by-dex merge-fix
   merge-opaque merge-struct merge-table name? name-of ordering-eq
   ordering-gt ordering-lt ordering-private table? table-empty
-  table-get table-map-fuse table-shadow table-sort)
+  table-get table-shadow table-sort)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe
   autoname-cline autoname-dex autoname-fuse autoname-merge cline
   cline-by-own-method-thorough cline-by-own-method::get-method
   cline-by-own-method::raise-different-methods-error dex
   dex-by-own-method-thorough dex-by-own-method::get-method
   dex-by-own-method::raise-different-methods-error dexed fuse
-  fuse-by-own-method-thorough fuse-by-own-method::get-method
-  fuse-by-own-method::raise-cannot-get-output-method-error
-  fuse-by-own-method::raise-different-input-methods-error
-  fuse-by-own-method::raise-different-output-method-error
-  fuse-fusable-function-thorough
-  fuse-fusable-function::raise-cannot-combine-results-error
-  fuse-fusable-function::arg-to-method gen:cline-internals
+  fuse-by-own-method-thorough
+  fuse-by-own-method::getfx-err-cannot-get-output-method
+  fuse-by-own-method::getfx-err-different-input-methods
+  fuse-by-own-method::getfx-err-different-output-method
+  fuse-by-own-method::getfx-get-method fuse-fusable-function-thorough
+  fuse-fusable-function::getfx-err-cannot-combine-results
+  fuse-fusable-function::getfx-arg-to-method gen:cline-internals
   gen:dex-internals gen:furge-internals merge
-  merge-by-own-method-thorough merge-by-own-method::get-method
-  merge-by-own-method::raise-different-input-methods-error
-  merge-by-own-method::raise-different-output-method-error
-  merge-by-own-method::raise-cannot-get-output-method-error name
-  table->sorted-list)
+  merge-by-own-method-thorough
+  merge-by-own-method::getfx-err-cannot-get-output-method
+  merge-by-own-method::getfx-err-different-input-methods
+  merge-by-own-method::getfx-err-different-output-method
+  merge-by-own-method::getfx-get-method name table->sorted-list)
 
 (require cene/private)
 (require #/only-in cene/private/reader-utils
@@ -160,6 +160,21 @@
     (just #/ordering-eq)
   #/maybe-ordering-or (maybe-compare-elems a b)
   #/maybe-compare-aligned-lists as bs maybe-compare-elems))
+
+; TODO: We used this in `effection/order/base`, and we're using it
+; again here. See if it should be an export of Effection.
+(define (getfx-map effects func)
+  (getfx-bind effects #/fn result
+  #/getfx-done #/func result))
+
+; TODO: We used this in `effection/order/base`, and we're using it
+; again here. See if it should be an export of Effection.
+(define/contract (getmaybefx-bind effects then)
+  (-> (getfx/c maybe?) (-> any/c #/getfx/c maybe?) #/getfx/c maybe?)
+  (getfx-bind effects #/fn maybe-intermediate
+  #/expect maybe-intermediate (just intermediate)
+    (getfx-done #/nothing)
+  #/then intermediate))
 
 ; TODO: See if we should put something like this in Effection.
 (define-syntax (dexed-struct stx)
@@ -859,7 +874,7 @@
 
 (struct-easy
   (furge-internals-sink-struct
-    autoname-furge dex-furge call-furge tags fields)
+    autoname-furge dex-furge getfx-call-furge tags fields)
   #:other
   
   #:methods unsafe:gen:furge-internals
@@ -882,19 +897,23 @@
       #/sink-struct-op-autodex a-tags a-fields b-tags b-fields
         dex-furge))
     
-    (define (furge-internals-call this a b)
+    (define (getfx-furge-internals-call this a b)
       (dissect this
-        (furge-internals-sink-struct _ _ call-furge tags fields)
-      #/maybe-bind (unmake-sink-struct-maybe tags a) #/fn as
-      #/maybe-bind (unmake-sink-struct-maybe tags b) #/fn bs
+        (furge-internals-sink-struct _ _ getfx-call-furge tags fields)
+      #/expect (unmake-sink-struct-maybe tags a) (just as)
+        (getfx-done #/nothing)
+      #/expect (unmake-sink-struct-maybe tags b) (just bs)
+        (getfx-done #/nothing)
       #/w- n (length fields)
       #/w-loop next as as bs bs fields fields rev-furged (list)
         (expect fields (cons furge-field fields)
-          (just #/make-sink-struct tags #/reverse rev-furged)
+          (getfx-done #/just
+            (make-sink-struct tags #/reverse rev-furged))
         #/dissect as (cons a as)
         #/dissect bs (cons b bs)
-        #/next fields as bs
-        #/cons (call-furge furge-field a b) rev-furged)))
+        #/getmaybefx-bind (getfx-call-furge furge-field a b)
+        #/fn elem-furged
+        #/next fields as bs (cons elem-furged rev-furged))))
   ])
 
 (struct-easy (cexpr-merge-struct main-tag-name projs)
@@ -916,7 +935,7 @@
       (expect this (cexpr-merge-struct main-tag-name projs)
         (error "Expected this to be a cexpr-merge-struct")
       #/sink-merge #/unsafe:merge #/furge-internals-sink-struct
-        unsafe:autoname-merge (dex-merge) call-merge
+        unsafe:autoname-merge (dex-merge) getfx-call-merge
         (cons main-tag-name
         #/list-map projs #/dissectfn (list proj-name proj-cexpr)
           proj-name)
@@ -943,7 +962,7 @@
       (expect this (cexpr-fuse-struct main-tag-name projs)
         (error "Expected this to be a cexpr-fuse-struct")
       #/sink-fuse #/unsafe:fuse #/furge-internals-sink-struct
-        unsafe:autoname-fuse (dex-fuse) call-fuse
+        unsafe:autoname-fuse (dex-fuse) getfx-call-fuse
         (cons main-tag-name
         #/list-map projs #/dissectfn (list proj-name proj-cexpr)
           proj-name)
@@ -967,10 +986,11 @@
     (define (furge-internals-autodex this other)
       (just #/ordering-eq))
     
-    (define (furge-internals-call this a b)
-      (expect (sink-extfx? a) #t (nothing)
-      #/expect (sink-extfx? b) #t (nothing)
-      #/just #/sink-extfx-fuse a b))
+    (define (getfx-furge-internals-call this a b)
+      (getfx-done
+        (expect (sink-extfx? a) #t (nothing)
+        #/expect (sink-extfx? b) #t (nothing)
+        #/just #/sink-extfx-fuse a b)))
   ])
 
 
@@ -1070,7 +1090,7 @@
 
 
 (define-syntax-rule
-  (define-fix-converter converter constructor error-message)
+  (define-cmp-fix-converter converter constructor error-message)
   (struct-easy (converter unwrap)
     #:other
     
@@ -1082,13 +1102,33 @@
         (cene-err fault error-message)
         result))))
 
-(define-fix-converter converter-for-dex-fix sink-dex
+(define-syntax-rule
+  (define-furge-fix-converter
+    converter constructor expected-getfx expected-method)
+  (struct-easy (converter unwrap)
+    #:other
+    
+    #:property prop:procedure
+    (fn this x
+      (dissect this (converter unwrap)
+      #/w- fault (get-current-fault)
+      #/w- sink-getfx-unwrapped (sink-call fault unwrap x)
+      #/expect sink-getfx-unwrapped (sink-getfx go-getfx-unwrapped)
+        (getfx-err-clamor fault expected-getfx)
+      #/getfx-bind (go-getfx-unwrapped) #/fn unwrapped
+      #/expect unwrapped (constructor result)
+        (getfx-err-clamor fault expected-method)
+      #/getfx-done result))))
+
+(define-cmp-fix-converter converter-for-dex-fix sink-dex
   "Expected the result of a dex-fix body to be a dex")
-(define-fix-converter converter-for-cline-fix sink-cline
+(define-cmp-fix-converter converter-for-cline-fix sink-cline
   "Expected the result of a cline-fix body to be a cline")
-(define-fix-converter converter-for-merge-fix sink-merge
+(define-furge-fix-converter converter-for-merge-fix sink-merge
+  "Expected the pure result of a merge-fix body to be a getfx effectful computation"
   "Expected the result of a merge-fix body to be a merge")
-(define-fix-converter converter-for-fuse-fix sink-fuse
+(define-furge-fix-converter converter-for-fuse-fix sink-fuse
+  "Expected the pure result of a fuse-fix body to be a getfx effectful computation"
   "Expected the result of a fuse-fix body to be a fuse")
 
 (struct-easy (sink-dex-by-own-method-unthorough get-method)
@@ -1123,52 +1163,64 @@
       (cene-err fault "Expected the result of a cline-by-own-method body to be a cline")
       method)))
 
-(struct-easy (sink-merge-by-own-method-unthorough get-method)
+(struct-easy (sink-merge-by-own-method-unthorough getfx-get-method)
   #:other
   
   #:property prop:procedure
   (fn this command
-    (dissect this (sink-merge-by-own-method-unthorough get-method)
+    (dissect this
+      (sink-merge-by-own-method-unthorough getfx-get-method)
     #/w- fault (get-current-fault)
     #/mat command
-      (unsafe:merge-by-own-method::raise-different-input-methods-error
+      (unsafe:merge-by-own-method::getfx-err-different-input-methods
         a b a-method b-method)
-      (cene-err fault "Obtained two different methods from the two input values")
+      (getfx-err-clamor fault "Obtained two different methods from the two input values")
     #/mat command
-      (unsafe:merge-by-own-method::raise-cannot-get-output-method-error
+      (unsafe:merge-by-own-method::getfx-err-cannot-get-output-method
         a b result input-method)
-      (cene-err fault "Could not obtain a method from the result value")
+      (getfx-err-clamor fault "Could not obtain a method from the result value")
     #/mat command
-      (unsafe:merge-by-own-method::raise-different-output-method-error
+      (unsafe:merge-by-own-method::getfx-err-different-output-method
         a b result input-method output-method)
-      (cene-err fault "Obtained two different methods from the input and the output")
-    #/dissect command (unsafe:merge-by-own-method::get-method source)
-    #/expect (sink-call fault get-method source) (sink-merge method)
-      (cene-err fault "Expected the result of a merge-by-own-method body to be a merge")
+      (getfx-err-clamor fault "Obtained two different methods from the input and the output")
+    #/dissect command
+      (unsafe:merge-by-own-method::getfx-get-method source)
+    #/w- sink-getfx-method (sink-call fault getfx-get-method source)
+    #/expect (sink-getfx? sink-getfx-method) #t
+      (getfx-err-clamor fault "Expected the pure result of a merge-by-own-method body to be a getfx effectful computation")
+    #/getfx-bind (sink-getfx-run sink-getfx-method) #/fn method
+    #/expect method (sink-merge method)
+      (getfx-err-clamor fault "Expected the result of a merge-by-own-method body to be a merge")
       method)))
 
-(struct-easy (sink-fuse-by-own-method-unthorough get-method)
+(struct-easy (sink-fuse-by-own-method-unthorough getfx-get-method)
   #:other
   
   #:property prop:procedure
   (fn this command
-    (dissect this (sink-fuse-by-own-method-unthorough get-method)
+    (dissect this
+      (sink-fuse-by-own-method-unthorough getfx-get-method)
     #/w- fault (get-current-fault)
     #/mat command
-      (unsafe:fuse-by-own-method::raise-different-input-methods-error
+      (unsafe:fuse-by-own-method::getfx-err-different-input-methods
         a b a-method b-method)
-      (cene-err fault "Obtained two different methods from the two input values")
+      (getfx-err-clamor fault "Obtained two different methods from the two input values")
     #/mat command
-      (unsafe:fuse-by-own-method::raise-cannot-get-output-method-error
+      (unsafe:fuse-by-own-method::getfx-err-cannot-get-output-method
         a b result input-method)
-      (cene-err fault "Could not obtain a method from the result value")
+      (getfx-err-clamor fault "Could not obtain a method from the result value")
     #/mat command
-      (unsafe:fuse-by-own-method::raise-different-output-method-error
+      (unsafe:fuse-by-own-method::getfx-err-different-output-method
         a b result input-method output-method)
-      (cene-err fault "Obtained two different methods from the input and the output")
-    #/dissect command (unsafe:fuse-by-own-method::get-method source)
-    #/expect (sink-call fault get-method source) (sink-fuse method)
-      (cene-err fault "Expected the result of a fuse-by-own-method body to be a fuse")
+      (getfx-err-clamor fault "Obtained two different methods from the input and the output")
+    #/dissect command
+      (unsafe:fuse-by-own-method::getfx-get-method source)
+    #/w- sink-getfx-method (sink-call fault getfx-get-method source)
+    #/expect (sink-getfx? sink-getfx-method) #t
+      (getfx-err-clamor fault "Expected the pure result of a fuse-by-own-method body to be a getfx effectful computation")
+    #/getfx-bind (sink-getfx-run sink-getfx-method) #/fn method
+    #/expect method (sink-fuse method)
+      (getfx-err-clamor fault "Expected the result of a fuse-by-own-method body to be a fuse")
       method)))
 
 (struct-easy (sink-fuse-fusable-fn-unthorough arg-to-method)
@@ -1179,14 +1231,18 @@
     (dissect this (sink-fuse-fusable-fn-unthorough arg-to-method)
     #/w- fault (get-current-fault)
     #/mat command
-      (unsafe:fuse-fusable-function::raise-cannot-combine-results-error
+      (unsafe:fuse-fusable-function::getfx-err-cannot-combine-results
         method a b a-result b-result)
-      (cene-err fault "Could not combine the result values")
+      (getfx-err-clamor fault "Could not combine the result values")
     #/dissect command
-      (unsafe:fuse-fusable-function::arg-to-method arg)
-    #/expect (sink-call fault arg-to-method arg) (sink-fuse method)
-      (cene-err fault "Expected the result of a fuse-fusable-fn body to be a fuse")
-      method)))
+      (unsafe:fuse-fusable-function::getfx-arg-to-method arg)
+    #/w- sink-getfx-method (sink-call fault arg-to-method arg)
+    #/expect (sink-getfx? sink-getfx-method) #t
+      (getfx-err-clamor fault "Expected the pure result of a fuse-fusable-fn body to be a getfx effectful computation")
+    #/getfx-bind (sink-getfx-run sink-getfx-method) #/fn method
+    #/expect method (sink-fuse method)
+      (getfx-err-clamor fault "Expected the result of a fuse-fusable-fn body to be a fuse")
+    #/getfx-done method)))
 
 
 (define str-prim-pat
@@ -1715,6 +1771,10 @@
       effects))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func! "is-getfx" v
+    (racket-boolean->sink #/sink-getfx? v))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func! "getfx-done" result
     (sink-getfx-done result))
   
@@ -1727,14 +1787,14 @@
       intermediate))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
-  (def-func-fault! "run-getfx" fault effects
+  (def-func-fault! "pure-run-getfx" fault effects
     (expect effects (sink-getfx go)
       (cene-err fault "Expected effects to be a getfx effects value")
     #/cene-definition-run-getfx #/go))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func! "getfx-err" clamor
-    (sink-getfx-err clamor))
+    (sink-getfx #/fn #/getfx-err-from-clamor clamor))
   
   ; TODO: Test this.
   ;
@@ -1744,7 +1804,8 @@
   ; operations.
   ;
   (def-func! "follow-heart" clamor
-    (cene-definition-run-getfx #/sink-getfx-err clamor))
+    (cene-definition-run-getfx
+      (sink-getfx #/fn #/getfx-err-from-clamor clamor)))
   
   (def-data-struct! "clamor-err" #/list "blame" "message")
   
@@ -1954,19 +2015,25 @@
     #/sink-cline #/cline-fix
       (dexed-struct converter-for-cline-fix dexed-unwrap)))
   
-  (def-func-fault! "call-merge" fault merge a b
+  (def-func-fault! "getfx-call-merge" fault merge a b
     (expect merge (sink-merge merge)
       (cene-err fault "Expected merge to be a merge")
-    #/racket-maybe->sink
-    #/with-current-fault fault #/fn
-    #/call-merge merge a b))
+    #/sink-getfx #/fn
+      (getfx-map
+        (with-current-fault fault #/fn
+        #/getfx-call-merge merge a b)
+      #/fn result
+        (racket-maybe->sink result))))
   
-  (def-func-fault! "call-fuse" fault fuse a b
+  (def-func-fault! "getfx-call-fuse" fault fuse a b
     (expect fuse (sink-fuse fuse)
       (cene-err fault "Expected fuse to be a fuse")
-    #/racket-maybe->sink
-    #/with-current-fault fault #/fn
-    #/call-fuse fuse a b))
+    #/sink-getfx #/fn
+      (getfx-map
+        (with-current-fault fault #/fn
+        #/getfx-call-fuse fuse a b)
+      #/fn result
+        (racket-maybe->sink result))))
   
   (def-nullary-func! "dex-merge"
     (sink-dex #/dex-struct sink-merge #/dex-merge))
@@ -2006,21 +2073,21 @@
   
   ; NOTE: In the JavaScript version of Cene, this took a dexable value
   ; (a pair of a dex and a value).
-  (def-func-fault! "merge-by-own-method" fault dexed-get-method
-    (expect dexed-get-method (sink-dexed dexed-get-method)
-      (cene-err fault "Expected dexed-get-method to be a dexed value")
+  (def-func-fault! "merge-by-own-method" fault dexed-getfx-get-method
+    (expect dexed-getfx-get-method (sink-dexed dexed-getfx-get-method)
+      (cene-err fault "Expected dexed-getfx-get-method to be a dexed value")
     #/sink-merge #/unsafe:merge-by-own-method-thorough
       (dexed-struct sink-merge-by-own-method-unthorough
-        dexed-get-method)))
+        dexed-getfx-get-method)))
   
   ; NOTE: In the JavaScript version of Cene, this took a dexable value
   ; (a pair of a dex and a value).
-  (def-func-fault! "fuse-by-own-method" fault dexed-get-method
-    (expect dexed-get-method (sink-dexed dexed-get-method)
-      (cene-err fault "Expected dexed-get-method to be a dexed value")
+  (def-func-fault! "fuse-by-own-method" fault dexed-getfx-get-method
+    (expect dexed-getfx-get-method (sink-dexed dexed-getfx-get-method)
+      (cene-err fault "Expected dexed-getfx-get-method to be a dexed value")
     #/sink-fuse #/unsafe:fuse-by-own-method-thorough
       (dexed-struct sink-fuse-by-own-method-unthorough
-        dexed-get-method)))
+        dexed-getfx-get-method)))
   
   ; NOTE: In the JavaScript version of Cene, this took a dexable value
   ; (a pair of a dex and a value).
@@ -2049,7 +2116,9 @@
   (def-func-fault! "make-fusable-fn" caller-fault func
     (sink-opaque-fn-fault
       (make-fusable-function #/dissectfn (list explicit-fault arg)
-        (sink-call-fault caller-fault explicit-fault func arg))))
+        (w- sink-getfx-result
+          (sink-call-fault caller-fault explicit-fault func arg)
+        #/sink-getfx-run sink-getfx-result))))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "fuse-fusable-fn-fault"
@@ -2639,13 +2708,19 @@
       (cene-err fault "Expected table to be a table")
     #/racket-maybe->sink #/sink-table-get-maybe table key))
   
-  (def-func-fault! "table-map-fuse" fault table fuse key-to-operand
+  (def-func-fault! "getfx-table-map-fuse"
+    fault table fuse getfx-key-to-operand
+    
     (expect table (sink-table table)
       (cene-err fault "Expected table to be a table")
     #/expect fuse (sink-fuse fuse)
       (cene-err fault "Expected fuse to be a fuse")
-    #/table-map-fuse table fuse #/fn k
-      (sink-call fault key-to-operand #/sink-name k)))
+    #/sink-getfx #/fn #/getfx-table-map-fuse table fuse #/fn k
+      (w- sink-getfx-result
+        (sink-call fault getfx-key-to-operand #/sink-name k)
+      #/expect (sink-getfx? sink-getfx-result) #t
+        (getfx-err-clamor "Expected the pure result of a getfx-table-map-fuse body to be a getfx effectful computation")
+      #/sink-getfx-run sink-getfx-result)))
   
   (def-func-fault! "table-sort" fault cline table
     (expect cline (sink-cline cline)

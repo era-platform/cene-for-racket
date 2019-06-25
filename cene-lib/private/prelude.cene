@@ -74,7 +74,7 @@
       (case xs nil (int-zero)
       /cast xs cons x xs
         [c-blame bl err /str-prim:Expected xs to be a cons list]
-      /call-fuse (fuse-int-by-plus) (int-one)
+      /pure-run-getfx /getfx-call-fuse (fuse-int-by-plus) (int-one)
         (c-blame bl list-length xs)))
   /let is-name
     (fn x
@@ -106,16 +106,23 @@
   /let is-gte
     (fn-blame bl cline a b
       (c-blame bl is-lte cline b a))
-  /let in-fuse
+  /let getfx-map
+    (fn-blame bl effects func
+      (cast (is-getfx effects) yep -
+        [c-blame bl err /str-prim:Expected effects to be a getfx value]
+      /getfx-bind effects /fn intermediate
+      /getfx-done /c-blame bl func intermediate))
+  /let getfx-in-fuse
     \= TODO: See if this is really the way we want to implement this.
     \= What if calling the fuse is expensive?
     (fn fuse x
-      (case (call-fuse fuse x x) just -
-        (yep/nil)
-        (nope/nil)))
+      (c getfx-map (getfx-call-fuse fuse x x) /fn maybe-fused
+        (case maybe-fused just -
+          (yep/nil)
+          (nope/nil))))
   /let is-extfx
     (fn x
-      (c in-fuse (fuse-extfx) x))
+      (pure-run-getfx /c getfx-in-fuse (fuse-extfx) x))
   /let is-int
     (fn x
       (in-dex (dex-int) x))
