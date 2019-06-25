@@ -240,7 +240,7 @@
 
 (define/contract (sink-getfx-done result)
   (-> sink? sink-getfx?)
-  (sink-getfx #/fn result))
+  (sink-getfx #/fn #/getfx-done result))
 
 (define/contract (sink-getfx-bind effects then)
   (-> sink-getfx? (-> any/c sink-getfx?) sink-getfx?)
@@ -252,8 +252,8 @@
     #/getfx-run-sink-getfx #/then intermediate)))
 
 (define/contract (sink-perffx-done result)
-  (-> sink? sink-getfx?)
-  (sink-perffx #/sink-getfx #/fn result))
+  (-> sink? sink-perffx?)
+  (sink-perffx #/sink-getfx-done result))
 
 (define/contract (sink-perffx-bind effects then)
   (-> sink-perffx? (-> any/c sink-perffx?) sink-perffx?)
@@ -1780,7 +1780,7 @@
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "getfx-bind" fault effects then
-    (expect effects (sink-getfx go)
+    (expect (sink-getfx? effects) #t
       (cene-err fault "Expected effects to be a getfx effectful computation")
     #/sink-getfx-bind effects #/fn intermediate
     #/verify-callback-getfx! fault #/sink-call fault then
@@ -1788,9 +1788,9 @@
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "pure-run-getfx" fault effects
-    (expect effects (sink-getfx go)
+    (expect (sink-getfx? effects) #t
       (cene-err fault "Expected effects to be a getfx effects value")
-    #/cene-definition-run-getfx #/go))
+    #/cene-definition-run-getfx effects))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func! "getfx-err" clamor
@@ -2118,6 +2118,8 @@
       (make-fusable-function #/dissectfn (list explicit-fault arg)
         (w- sink-getfx-result
           (sink-call-fault caller-fault explicit-fault func arg)
+        #/expect (sink-getfx? sink-getfx-result) #t
+          (getfx-err-clamor caller-fault "Expected the pure result of a fusable-fn body to be a getfx effectful computation")
         #/getfx-run-sink-getfx sink-getfx-result))))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
@@ -2831,7 +2833,7 @@
   (def-func-fault! "getfx-get" fault name
     (expect (sink-name? name) #t
       (cene-err fault "Expected name to be a name")
-    #/sink-getfx #/fn #/sink-getfx-get name))
+    #/sink-getfx-get name))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "extfx-put" fault name dex value
@@ -3177,7 +3179,7 @@
       (cene-err fault "Expected a to be a string")
     #/expect b (sink-string b)
       (cene-err fault "Expected b to be a string")
-    #/sink-perffx #/sink-getfx #/fn
+    #/sink-perffx #/sink-getfx #/fn #/getfx-done
       (sink-string #/string->immutable-string #/string-append a b)))
   
   ; This is an extremely basic string syntax. It doesn't have any
@@ -3320,7 +3322,7 @@
   (def-func-fault! "perffx-optimize-textpat" fault t
     (expect t (sink-textpat t)
       (cene-err fault "Expected t to be a text pattern")
-    #/sink-perffx #/sink-getfx #/fn
+    #/sink-perffx #/sink-getfx #/fn #/getfx-done
       (sink-optimized-textpat #/optimize-textpat t)))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
@@ -3347,15 +3349,15 @@
       (cene-err fault "Expected stop to be less than or equal to the length of the string")
     #/expect (<= start stop) #t
       (cene-err fault "Expected start to be less than or equal to stop")
-    #/sink-perffx #/sink-getfx #/fn
-    #/w- result (optimized-textpat-match ot str start stop)
-    #/mat result (textpat-result-matched stop)
-      (make-sink-struct (s-textpat-result-matched) #/list
-      #/sink-int stop)
-    #/mat result (textpat-result-failed)
-      (make-sink-struct (s-textpat-result-failed) #/list)
-    #/dissect result (textpat-result-passed-end)
-      (make-sink-struct (s-textpat-result-passed-end) #/list)))
+    #/sink-perffx #/sink-getfx #/fn #/getfx-done
+      (w- result (optimized-textpat-match ot str start stop)
+      #/mat result (textpat-result-matched stop)
+        (make-sink-struct (s-textpat-result-matched) #/list
+        #/sink-int stop)
+      #/mat result (textpat-result-failed)
+        (make-sink-struct (s-textpat-result-failed) #/list)
+      #/dissect result (textpat-result-passed-end)
+        (make-sink-struct (s-textpat-result-passed-end) #/list))))
   
   (def-data-struct! "textpat-result-matched" #/list "stop")
   (def-data-struct! "textpat-result-failed" #/list)
@@ -3543,7 +3545,7 @@
     
     (expect (sink-located-string? located-string) #t
       (cene-err fault "Expected located-string to be a located string")
-    #/sink-perffx #/sink-getfx #/fn
+    #/sink-perffx #/sink-getfx #/fn #/getfx-done
       (sink-string-from-located-string located-string)))
   
   ; TODO BUILTINS: Make sure we have a sufficient set of operations
