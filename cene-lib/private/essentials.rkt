@@ -1143,9 +1143,14 @@
         a b a-method b-method)
       (cene-err fault "Obtained two different methods from the two values being compared")
     #/dissect command (unsafe:dex-by-own-method::get-method source)
-    #/expect (sink-call fault get-method source) (sink-dex method)
-      (cene-err fault "Expected the result of a dex-by-own-method body to be a dex")
-      method)))
+    #/w- sink-maybe-method (sink-call fault get-method source)
+    #/expect (sink-maybe->maybe-racket sink-maybe-method)
+      (just maybe-method)
+      (getfx-err-clamor fault "Expected the result of a dex-by-own-method body to be a nothing or a just")
+    #/getfx-done #/maybe-map maybe-method #/fn method
+      (expect method (sink-dex method)
+        (getfx-err-clamor fault "Expected the result of a dex-by-own-method body to be a maybe of a dex")
+        method))))
 
 (struct-easy (sink-cline-by-own-method-unthorough get-method)
   #:other
@@ -1159,9 +1164,14 @@
         a b a-method b-method)
       (cene-err fault "Obtained two different methods from the two values being compared")
     #/dissect command (unsafe:cline-by-own-method::get-method source)
-    #/expect (sink-call fault get-method source) (sink-cline method)
-      (cene-err fault "Expected the result of a cline-by-own-method body to be a cline")
-      method)))
+    #/w- sink-maybe-method (sink-call fault get-method source)
+    #/expect (sink-maybe->maybe-racket sink-maybe-method)
+      (just maybe-method)
+      (getfx-err-clamor fault "Expected the result of a cline-by-own-method body to be a nothing or a just")
+    #/getfx-done #/maybe-map maybe-method #/fn method
+      (expect method (sink-cline method)
+        (getfx-err-clamor fault "Expected the result of a cline-by-own-method body to be a maybe of a cline")
+        method))))
 
 (struct-easy (sink-merge-by-own-method-unthorough getfx-get-method)
   #:other
@@ -1185,13 +1195,19 @@
       (getfx-err-clamor fault "Obtained two different methods from the input and the output")
     #/dissect command
       (unsafe:merge-by-own-method::getfx-get-method source)
-    #/w- sink-getfx-method (sink-call fault getfx-get-method source)
-    #/expect (sink-getfx? sink-getfx-method) #t
+    #/w- sink-getfx-maybe-method
+      (sink-call fault getfx-get-method source)
+    #/expect (sink-getfx? sink-getfx-maybe-method) #t
       (getfx-err-clamor fault "Expected the pure result of a merge-by-own-method body to be a getfx effectful computation")
-    #/getfx-bind (getfx-run-sink-getfx sink-getfx-method) #/fn method
-    #/expect method (sink-merge method)
-      (getfx-err-clamor fault "Expected the result of a merge-by-own-method body to be a merge")
-      method)))
+    #/getfx-bind (getfx-run-sink-getfx sink-getfx-maybe-method)
+    #/fn sink-maybe-method
+    #/expect (sink-maybe->maybe-racket sink-maybe-method)
+      (just maybe-method)
+      (getfx-err-clamor fault "Expected the result of a merge-by-own-method body to be a nothing or a just")
+    #/getfx-done #/maybe-map maybe-method #/fn method
+      (expect method (sink-merge method)
+        (getfx-err-clamor fault "Expected the result of a merge-by-own-method body to be a maybe of a merge")
+        method))))
 
 (struct-easy (sink-fuse-by-own-method-unthorough getfx-get-method)
   #:other
@@ -1215,13 +1231,19 @@
       (getfx-err-clamor fault "Obtained two different methods from the input and the output")
     #/dissect command
       (unsafe:fuse-by-own-method::getfx-get-method source)
-    #/w- sink-getfx-method (sink-call fault getfx-get-method source)
-    #/expect (sink-getfx? sink-getfx-method) #t
+    #/w- sink-getfx-maybe-method
+      (sink-call fault getfx-get-method source)
+    #/expect (sink-getfx? sink-getfx-maybe-method) #t
       (getfx-err-clamor fault "Expected the pure result of a fuse-by-own-method body to be a getfx effectful computation")
-    #/getfx-bind (getfx-run-sink-getfx sink-getfx-method) #/fn method
-    #/expect method (sink-fuse method)
-      (getfx-err-clamor fault "Expected the result of a fuse-by-own-method body to be a fuse")
-      method)))
+    #/getfx-bind (getfx-run-sink-getfx sink-getfx-maybe-method)
+    #/fn sink-maybe-method
+    #/expect (sink-maybe->maybe-racket sink-maybe-method)
+      (just maybe-method)
+      (getfx-err-clamor fault "Expected the result of a fuse-by-own-method body to be a nothing or a just")
+    #/getfx-done #/maybe-map maybe-method #/fn method
+      (expect method (sink-fuse method)
+        (getfx-err-clamor fault "Expected the result of a fuse-by-own-method body to be a maybe of a fuse")
+        method))))
 
 (struct-easy (sink-fuse-fusable-fn-unthorough arg-to-method)
   #:other
