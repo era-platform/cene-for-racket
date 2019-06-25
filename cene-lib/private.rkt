@@ -435,7 +435,7 @@
   #/reset-at cene-definition-get-prompt-tag
     (body unique-name)))
 
-(define/contract (sink-getfx-run effects)
+(define/contract (getfx-run-sink-getfx effects)
   (-> sink-getfx? getfx?)
   (begin (assert-can-get-cene-definitions!)
   #/dissect effects (sink-getfx go)

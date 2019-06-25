@@ -249,7 +249,7 @@
     (getfx-with-cene-definition-restorer #/fn restore
     #/getfx-bind (go) #/fn intermediate
     #/restore #/fn
-    #/sink-getfx-run #/then intermediate)))
+    #/getfx-run-sink-getfx #/then intermediate)))
 
 (define/contract (sink-perffx-done result)
   (-> sink? sink-getfx?)
@@ -1188,7 +1188,7 @@
     #/w- sink-getfx-method (sink-call fault getfx-get-method source)
     #/expect (sink-getfx? sink-getfx-method) #t
       (getfx-err-clamor fault "Expected the pure result of a merge-by-own-method body to be a getfx effectful computation")
-    #/getfx-bind (sink-getfx-run sink-getfx-method) #/fn method
+    #/getfx-bind (getfx-run-sink-getfx sink-getfx-method) #/fn method
     #/expect method (sink-merge method)
       (getfx-err-clamor fault "Expected the result of a merge-by-own-method body to be a merge")
       method)))
@@ -1218,7 +1218,7 @@
     #/w- sink-getfx-method (sink-call fault getfx-get-method source)
     #/expect (sink-getfx? sink-getfx-method) #t
       (getfx-err-clamor fault "Expected the pure result of a fuse-by-own-method body to be a getfx effectful computation")
-    #/getfx-bind (sink-getfx-run sink-getfx-method) #/fn method
+    #/getfx-bind (getfx-run-sink-getfx sink-getfx-method) #/fn method
     #/expect method (sink-fuse method)
       (getfx-err-clamor fault "Expected the result of a fuse-by-own-method body to be a fuse")
       method)))
@@ -1239,7 +1239,7 @@
     #/w- sink-getfx-method (sink-call fault arg-to-method arg)
     #/expect (sink-getfx? sink-getfx-method) #t
       (getfx-err-clamor fault "Expected the pure result of a fuse-fusable-fn body to be a getfx effectful computation")
-    #/getfx-bind (sink-getfx-run sink-getfx-method) #/fn method
+    #/getfx-bind (getfx-run-sink-getfx sink-getfx-method) #/fn method
     #/expect method (sink-fuse method)
       (getfx-err-clamor fault "Expected the result of a fuse-fusable-fn body to be a fuse")
     #/getfx-done method)))
@@ -2118,7 +2118,7 @@
       (make-fusable-function #/dissectfn (list explicit-fault arg)
         (w- sink-getfx-result
           (sink-call-fault caller-fault explicit-fault func arg)
-        #/sink-getfx-run sink-getfx-result))))
+        #/getfx-run-sink-getfx sink-getfx-result))))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "fuse-fusable-fn-fault"
@@ -2720,7 +2720,7 @@
         (sink-call fault getfx-key-to-operand #/sink-name k)
       #/expect (sink-getfx? sink-getfx-result) #t
         (getfx-err-clamor "Expected the pure result of a getfx-table-map-fuse body to be a getfx effectful computation")
-      #/sink-getfx-run sink-getfx-result)))
+      #/getfx-run-sink-getfx sink-getfx-result)))
   
   (def-func-fault! "table-sort" fault cline table
     (expect cline (sink-cline cline)
