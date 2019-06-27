@@ -1146,10 +1146,10 @@
     #/w- sink-maybe-method (sink-call fault get-method source)
     #/expect (sink-maybe->maybe-racket sink-maybe-method)
       (just maybe-method)
-      (getfx-err-clamor fault "Expected the result of a dex-by-own-method body to be a nothing or a just")
-    #/getfx-done #/maybe-map maybe-method #/fn method
+      (cene-err fault "Expected the result of a dex-by-own-method body to be a nothing or a just")
+    #/maybe-map maybe-method #/fn method
       (expect method (sink-dex method)
-        (getfx-err-clamor fault "Expected the result of a dex-by-own-method body to be a maybe of a dex")
+        (cene-err fault "Expected the result of a dex-by-own-method body to be a maybe of a dex")
         method))))
 
 (struct-easy (sink-cline-by-own-method-unthorough get-method)
@@ -1167,10 +1167,10 @@
     #/w- sink-maybe-method (sink-call fault get-method source)
     #/expect (sink-maybe->maybe-racket sink-maybe-method)
       (just maybe-method)
-      (getfx-err-clamor fault "Expected the result of a cline-by-own-method body to be a nothing or a just")
-    #/getfx-done #/maybe-map maybe-method #/fn method
+      (cene-err fault "Expected the result of a cline-by-own-method body to be a nothing or a just")
+    #/maybe-map maybe-method #/fn method
       (expect method (sink-cline method)
-        (getfx-err-clamor fault "Expected the result of a cline-by-own-method body to be a maybe of a cline")
+        (cene-err fault "Expected the result of a cline-by-own-method body to be a maybe of a cline")
         method))))
 
 (struct-easy (sink-merge-by-own-method-unthorough getfx-get-method)
