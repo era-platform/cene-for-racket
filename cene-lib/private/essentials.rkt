@@ -2752,7 +2752,10 @@
     #/expect table (sink-table table)
       (cene-err fault "Expected table to be a table")
     #/racket-maybe->sink
-    #/maybe-map (table-sort cline table) #/fn ranks
+    #/maybe-map
+      (with-current-fault fault #/fn
+      #/table-sort cline table)
+    #/fn ranks
       (racket-list->sink #/list-map ranks #/fn rank
         (sink-table rank))))
   
