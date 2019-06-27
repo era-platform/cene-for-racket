@@ -46,29 +46,32 @@
 (require #/only-in lathe-comforts/trivial trivial)
 
 (require #/only-in effection/extensibility/base
-  authorized-name-get-name getfx-bind getfx/c getfx-done)
+  authorized-name-get-name getfx-bind getfx/c getfx-done
+  pure-run-getfx)
 (require #/only-in effection/order
   assocs->table-if-mutually-unique cline-exact-rational
   dex-exact-rational dex-immutable-string fuse-exact-rational-by-plus
-  fuse-exact-rational-by-times)
+  fuse-exact-rational-by-times getfx-is-eq-by-dex)
 (require #/only-in effection/order/base
   cline-by-dex cline-default cline-fix cline-give-up cline-opaque
-  cline-result? cline-struct compare-by-cline compare-by-dex dex?
-  dex-cline dex-default dex-dex dexed? dexed-get-dex dexed-get-name
-  dexed-get-value dexed-of dex-fix dex-fuse dex-give-up dex-merge
-  dex-name dex-opaque dex-struct dex-table fusable-function?
-  fuse-by-merge fuse-fix fuse-opaque fuse-struct fuse-table in-cline?
-  in-dex? get-dex-from-cline getfx-call-fuse getfx-call-merge
-  getfx-table-map-fuse make-fusable-function merge-by-dex merge-fix
-  merge-opaque merge-struct merge-table name? name-of ordering-eq
-  ordering-gt ordering-lt ordering-private table? table-empty
-  table-get table-shadow table-sort)
+  cline-result? cline-struct dex? dex-cline dex-default dex-dex dexed?
+  dexed-get-dex dexed-get-name dexed-get-value dex-fix dex-fuse
+  dex-give-up dex-merge dex-name dex-opaque dex-struct dex-table
+  fusable-function? fuse-by-merge fuse-fix fuse-opaque fuse-struct
+  fuse-table get-dex-from-cline getfx-call-fuse getfx-call-merge
+  getfx-compare-by-cline getfx-compare-by-dex getfx-dexed-of
+  getfx-is-in-cline getfx-is-in-dex getfx-name-of getfx-table-map-fuse
+  getfx-table-sort make-fusable-function merge-by-dex merge-fix
+  merge-opaque merge-struct merge-table name? ordering-eq ordering-gt
+  ordering-lt ordering-private table? table-empty table-get
+  table-shadow)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe
   autoname-cline autoname-dex autoname-fuse autoname-merge cline
-  cline-by-own-method-thorough cline-by-own-method::get-method
-  cline-by-own-method::raise-different-methods-error dex
-  dex-by-own-method-thorough dex-by-own-method::get-method
-  dex-by-own-method::raise-different-methods-error dexed fuse
+  cline-by-own-method-thorough
+  cline-by-own-method::getfx-err-different-methods
+  cline-by-own-method::getfx-get-method dex dex-by-own-method-thorough
+  dex-by-own-method::getfx-err-different-methods
+  dex-by-own-method::getfx-get-method dexed fuse
   fuse-by-own-method-thorough
   fuse-by-own-method::getfx-err-cannot-get-output-method
   fuse-by-own-method::getfx-err-different-input-methods
@@ -186,7 +189,7 @@
     (generate-temporaries #'(dexed-field ...))
     
     #'(let ([dexed-field-result dexed-field.c] ...)
-        (just-value #/dexed-of
+        (just-value #/pure-run-getfx #/getfx-dexed-of
           (dex-struct tag (dexed-get-dex dexed-field-result) ...)
           (tag (dexed-get-value dexed-field-result) ...)))))
 
@@ -579,67 +582,74 @@
       (= (length b-tags) (add1 #/length b-fields))
     [_ (maybe/c cline-result?)])
   (maybe-ordering-or
-    (compare-by-dex (dex-name)
+    (pure-run-getfx #/getfx-compare-by-dex (dex-name)
       (unsafe:name
       #/list-map a-tags #/dissectfn (unsafe:name tag) tag)
       (unsafe:name
       #/list-map b-tags #/dissectfn (unsafe:name tag) tag))
   #/maybe-compare-aligned-lists a-fields b-fields #/fn a-field b-field
-    (compare-by-dex dex-field a-field b-field)))
+    (pure-run-getfx
+      (getfx-compare-by-dex dex-field a-field b-field))))
 
 (define/contract
-  (sink-struct-in? tags comparators in-comparator? x)
+  (getfx-sink-struct-is-in tags comparators getfx-is-in-comparator x)
   (->i
     (
       [tags (listof name?)]
       [comparators list?]
-      [in-comparator? (-> any/c any/c boolean?)]
+      [getfx-is-in-comparator (-> any/c any/c #/getfx/c boolean?)]
       [x any/c])
     #:pre (tags comparators)
       (= (length tags) (add1 #/length comparators))
-    [_ boolean?])
-  (expect (unmake-sink-struct-maybe tags x) (just field-vals) #f
+    [_ (getfx/c boolean?)])
+  (expect (unmake-sink-struct-maybe tags x) (just field-vals)
+    (getfx-done #f)
   #/w-loop next field-comparators comparators field-vals field-vals
     (expect field-comparators
       (cons comparator-field field-comparators)
-      #t
+      (getfx-done #t)
     #/dissect field-vals (cons field-val field-vals)
     
     ; We do a tail call if we can.
     #/mat field-comparators (list)
-      (in-comparator? comparator-field field-val)
+      (getfx-is-in-comparator comparator-field field-val)
     
-    #/and (in-comparator? comparator-field field-val)
+    #/getfx-bind (getfx-is-in-comparator comparator-field field-val)
+    #/expectfn #t (getfx-done #f)
     #/next field-comparators field-vals)))
 
 (define/contract
-  (sink-struct-compare
-    tags comparators in-comparator? compare-by-comparator a b)
+  (getfx-sink-struct-compare
+    tags comparators getfx-is-in-comparator
+    getfx-compare-by-comparator a b)
   (->i
     (
       [tags (listof name?)]
       [comparators list?]
-      [in-comparator? (-> any/c any/c boolean?)]
-      [compare-by-comparator
-        (-> any/c any/c any/c #/maybe/c cline-result?)]
+      [getfx-is-in-comparator (-> any/c any/c #/getfx/c boolean?)]
+      [getfx-compare-by-comparator
+        (-> any/c any/c any/c #/getfx/c #/maybe/c cline-result?)]
       [a any/c]
       [b any/c])
     #:pre (tags comparators)
       (= (length tags) (add1 #/length comparators))
     [_ (maybe/c cline-result?)])
-  (maybe-bind (unmake-sink-struct-maybe tags a) #/fn as
-  #/maybe-bind (unmake-sink-struct-maybe tags b) #/fn bs
+  (getmaybefx-bind (getfx-done #/unmake-sink-struct-maybe tags a)
+  #/fn as
+  #/getmaybefx-bind (getfx-done #/unmake-sink-struct-maybe tags b)
+  #/fn bs
   #/w-loop next as as bs bs comparators comparators
     (expect comparators (cons comparator-field comparators)
-      (just #/ordering-eq)
+      (getfx-done #/just #/ordering-eq)
     #/dissect as (cons a as)
     #/dissect bs (cons b bs)
     
     ; We do a tail call if we can.
     #/mat comparators (list)
-      (compare-by-comparator comparator-field a b)
+      (getfx-compare-by-comparator comparator-field a b)
     
-    #/maybe-bind (compare-by-comparator comparator-field a b)
+    #/getmaybefx-bind
+      (getfx-compare-by-comparator comparator-field a b)
     #/fn result
     #/expect result (ordering-eq)
       ; We have a potential result to use, but first we check that
@@ -649,15 +659,13 @@
       ; result is `(nothing)`.
       (w-loop next as as bs bs comparators comparators
         (expect comparators (cons comparator-field comparators)
-          (just result)
+          (getfx-done #/just result)
         #/dissect as (cons a as)
         #/dissect bs (cons b bs)
-        #/expect
-          (and
-            (in-comparator? comparator-field a)
-            (in-comparator? comparator-field b))
-          #t
-          (nothing)
+        #/getfx-bind (getfx-is-in-comparator comparator-field a)
+        #/expectfn #t (getfx-done #/nothing)
+        #/getfx-bind (getfx-is-in-comparator comparator-field b)
+        #/expectfn #t (getfx-done #/nothing)
         #/next as bs comparators))
     #/next as bs comparators)))
 
@@ -693,13 +701,14 @@
       #/sink-struct-op-autodex a-tags a-fields b-tags b-fields
         (dex-dex)))
     
-    (define (dex-internals-in? this x)
+    (define (getfx-dex-internals-is-in this x)
       (dissect this (dex-internals-sink-struct tags fields)
-      #/sink-struct-in? tags fields in-dex? x))
+      #/getfx-sink-struct-is-in tags fields getfx-is-in-dex x))
     
-    (define (dex-internals-name-of this x)
+    (define (getfx-dex-internals-name-of this x)
       (dissect this (dex-internals-sink-struct tags fields)
-      #/maybe-bind (unmake-sink-struct-maybe tags x) #/fn field-vals
+      #/getmaybefx-bind (getfx-done #/unmake-sink-struct-maybe tags x)
+      #/fn field-vals
       #/w-loop next
         field-dexes fields
         field-vals field-vals
@@ -712,20 +721,21 @@
               proj-tags
               (reverse rev-result))
             (list proj-tags field-name-reps)
-          #/just #/unsafe:name #/list* 'name:sink-struct
+          #/getfx-done #/just #/unsafe:name #/list* 'name:sink-struct
             (cons main-tag-rep
               (list-map proj-tags
               #/dissectfn (unsafe:name proj-tag-rep)
                 proj-tag-rep))
             field-name-reps)
         #/dissect field-vals (cons field-val field-vals)
-        #/maybe-bind (name-of dex-field field-val)
+        #/getmaybefx-bind (getfx-name-of dex-field field-val)
         #/dissectfn (unsafe:name rep)
         #/next field-dexes field-vals (cons rep rev-result))))
     
-    (define (dex-internals-dexed-of this x)
+    (define (getfx-dex-internals-dexed-of this x)
       (dissect this (dex-internals-sink-struct tags fields)
-      #/maybe-bind (unmake-sink-struct-maybe tags x) #/fn field-vals
+      #/getmaybefx-bind (getfx-done #/unmake-sink-struct-maybe tags x)
+      #/fn field-vals
       #/w-loop next
         field-dexes fields
         field-vals field-vals
@@ -737,7 +747,7 @@
           #/dissect (normalize-proj-tags-and-vals proj-tags result)
             (list proj-tags field-dexeds)
           #/w- tags (cons main-tag proj-tags)
-          #/just #/unsafe:dexed
+          #/getfx-done #/just #/unsafe:dexed
             (unsafe:dex #/dex-internals-sink-struct tags
               (list-map field-dexeds
               #/dissectfn (unsafe:dexed dex name val)
@@ -749,12 +759,14 @@
                 rep))
             x)
         #/dissect field-vals (cons field-val field-vals)
-        #/maybe-bind (dexed-of dex-field field-val) #/fn dexed
+        #/getmaybefx-bind (getfx-dexed-of dex-field field-val)
+        #/fn dexed
         #/next field-dexes field-vals (cons dexed rev-result))))
     
-    (define (dex-internals-compare this a b)
+    (define (getfx-dex-internals-compare this a b)
       (dissect this (dex-internals-sink-struct tags fields)
-      #/sink-struct-compare tags fields in-dex? compare-by-dex a b))
+      #/getfx-sink-struct-compare
+        tags fields getfx-is-in-dex getfx-compare-by-dex a b))
   ])
 
 (define/contract (dex-sink-struct tags fields)
@@ -829,20 +841,20 @@
       #/sink-struct-op-autodex a-tags a-fields b-tags b-fields
         (dex-cline)))
     
-    (define (cline-internals-in? this x)
-      (dissect this (cline-internals-sink-struct tags fields)
-      #/sink-struct-in? tags fields in-cline? x))
-    
     (define (cline-internals-dex this)
       (dissect this (cline-internals-sink-struct tags fields)
       #/dex-internals-sink-struct tags
       #/list-map fields #/fn cline-field
         (get-dex-from-cline cline-field)))
     
-    (define (cline-internals-compare this a b)
+    (define (getfx-cline-internals-is-in this x)
       (dissect this (cline-internals-sink-struct tags fields)
-      #/sink-struct-compare
-        tags fields in-cline? compare-by-cline a b))
+      #/getfx-sink-struct-is-in tags fields getfx-is-in-cline x))
+    
+    (define (getfx-cline-internals-compare this a b)
+      (dissect this (cline-internals-sink-struct tags fields)
+      #/getfx-sink-struct-compare
+        tags fields getfx-is-in-cline getfx-compare-by-cline a b))
   ])
 
 (struct-easy (cexpr-cline-struct main-tag-name projs)
@@ -1050,7 +1062,7 @@
   #:property prop:procedure
   (fn this dex
     (dissect this (fix-for-sink-dex-list dex-elem)
-    #/dex-default
+    #/getfx-done #/dex-default
       (dex-sink-struct (s-nil) #/list)
       (dex-sink-struct (s-cons) #/list dex-elem dex))))
 
@@ -1058,7 +1070,8 @@
   (-> sink-dex? sink-dex?)
   (dissect dex-elem (sink-dex dex-elem)
   #/sink-dex #/dex-fix #/dexed-struct fix-for-sink-dex-list
-    (just-value #/dexed-of (dex-dex) dex-elem)))
+    (just-value #/pure-run-getfx #/getfx-dexed-of (dex-dex)
+      dex-elem)))
 
 (define/contract (sink-dex-name)
   (-> sink-dex?)
@@ -1090,20 +1103,7 @@
 
 
 (define-syntax-rule
-  (define-cmp-fix-converter converter constructor error-message)
-  (struct-easy (converter unwrap)
-    #:other
-    
-    #:property prop:procedure
-    (fn this x
-      (dissect this (converter unwrap)
-      #/w- fault (get-current-fault)
-      #/expect (sink-call fault unwrap x) (constructor result)
-        (cene-err fault error-message)
-        result))))
-
-(define-syntax-rule
-  (define-furge-fix-converter
+  (define-fix-converter
     converter constructor expected-getfx expected-method)
   (struct-easy (converter unwrap)
     #:other
@@ -1113,64 +1113,79 @@
       (dissect this (converter unwrap)
       #/w- fault (get-current-fault)
       #/w- sink-getfx-unwrapped (sink-call fault unwrap x)
-      #/expect sink-getfx-unwrapped (sink-getfx go-getfx-unwrapped)
+      #/expect (sink-getfx? sink-getfx-unwrapped) #t
         (getfx-err-clamor fault expected-getfx)
-      #/getfx-bind (go-getfx-unwrapped) #/fn unwrapped
+      #/getfx-run-sink-getfx sink-getfx-unwrapped #/fn unwrapped
       #/expect unwrapped (constructor result)
         (getfx-err-clamor fault expected-method)
       #/getfx-done result))))
 
-(define-cmp-fix-converter converter-for-dex-fix sink-dex
+(define-fix-converter converter-for-dex-fix sink-dex
+  "Expected the pure result of a dex-fix body to be a getfx effectful computation"
   "Expected the result of a dex-fix body to be a dex")
-(define-cmp-fix-converter converter-for-cline-fix sink-cline
+(define-fix-converter converter-for-cline-fix sink-cline
+  "Expected the pure result of a cline-fix body to be a getfx effectful computation"
   "Expected the result of a cline-fix body to be a cline")
-(define-furge-fix-converter converter-for-merge-fix sink-merge
+(define-fix-converter converter-for-merge-fix sink-merge
   "Expected the pure result of a merge-fix body to be a getfx effectful computation"
   "Expected the result of a merge-fix body to be a merge")
-(define-furge-fix-converter converter-for-fuse-fix sink-fuse
+(define-fix-converter converter-for-fuse-fix sink-fuse
   "Expected the pure result of a fuse-fix body to be a getfx effectful computation"
   "Expected the result of a fuse-fix body to be a fuse")
 
-(struct-easy (sink-dex-by-own-method-unthorough get-method)
+(struct-easy (sink-dex-by-own-method-unthorough getfx-get-method)
   #:other
   
   #:property prop:procedure
   (fn this command
-    (dissect this (sink-dex-by-own-method-unthorough get-method)
+    (dissect this (sink-dex-by-own-method-unthorough getfx-get-method)
     #/w- fault (get-current-fault)
     #/mat command
-      (unsafe:dex-by-own-method::raise-different-methods-error
+      (unsafe:dex-by-own-method::getfx-err-different-methods
         a b a-method b-method)
-      (cene-err fault "Obtained two different methods from the two values being compared")
-    #/dissect command (unsafe:dex-by-own-method::get-method source)
-    #/w- sink-maybe-method (sink-call fault get-method source)
+      (getfx-err-clamor fault "Obtained two different methods from the two values being compared")
+    #/dissect command
+      (unsafe:dex-by-own-method::getfx-get-method source)
+    #/w- sink-getfx-maybe-method
+      (sink-call fault getfx-get-method source)
+    #/expect (sink-getfx? sink-getfx-maybe-method) #t
+      (getfx-err-clamor fault "Expected the pure result of a dex-by-own-method body to be a getfx effectful computation")
+    #/getfx-run-sink-getfx sink-getfx-maybe-method
+    #/fn sink-maybe-method
     #/expect (sink-maybe->maybe-racket sink-maybe-method)
       (just maybe-method)
-      (cene-err fault "Expected the result of a dex-by-own-method body to be a nothing or a just")
-    #/maybe-map maybe-method #/fn method
+      (getfx-err-clamor fault "Expected the result of a dex-by-own-method body to be a nothing or a just")
+    #/getfx-done #/maybe-map maybe-method #/fn method
       (expect method (sink-dex method)
-        (cene-err fault "Expected the result of a dex-by-own-method body to be a maybe of a dex")
+        (getfx-err-clamor fault "Expected the result of a dex-by-own-method body to be a maybe of a dex")
         method))))
 
-(struct-easy (sink-cline-by-own-method-unthorough get-method)
+(struct-easy (sink-cline-by-own-method-unthorough getfx-get-method)
   #:other
   
   #:property prop:procedure
   (fn this command
-    (dissect this (sink-cline-by-own-method-unthorough get-method)
+    (dissect this
+      (sink-cline-by-own-method-unthorough getfx-get-method)
     #/w- fault (get-current-fault)
     #/mat command
-      (unsafe:cline-by-own-method::raise-different-methods-error
+      (unsafe:cline-by-own-method::getfx-err-different-methods
         a b a-method b-method)
-      (cene-err fault "Obtained two different methods from the two values being compared")
-    #/dissect command (unsafe:cline-by-own-method::get-method source)
-    #/w- sink-maybe-method (sink-call fault get-method source)
+      (getfx-err-clamor fault "Obtained two different methods from the two values being compared")
+    #/dissect command
+      (unsafe:cline-by-own-method::getfx-get-method source)
+    #/w- sink-getfx-maybe-method
+      (sink-call fault getfx-get-method source)
+    #/expect (sink-getfx? sink-getfx-maybe-method) #t
+      (getfx-err-clamor fault "Expected the pure result of a cline-by-own-method body to be a getfx effectful computation")
+    #/getfx-run-sink-getfx sink-getfx-maybe-method
+    #/fn sink-maybe-method
     #/expect (sink-maybe->maybe-racket sink-maybe-method)
       (just maybe-method)
-      (cene-err fault "Expected the result of a cline-by-own-method body to be a nothing or a just")
-    #/maybe-map maybe-method #/fn method
+      (getfx-err-clamor fault "Expected the result of a cline-by-own-method body to be a nothing or a just")
+    #/getfx-done #/maybe-map maybe-method #/fn method
       (expect method (sink-cline method)
-        (cene-err fault "Expected the result of a cline-by-own-method body to be a maybe of a cline")
+        (getfx-err-clamor fault "Expected the result of a cline-by-own-method body to be a maybe of a cline")
         method))))
 
 (struct-easy (sink-merge-by-own-method-unthorough getfx-get-method)
@@ -1847,48 +1862,57 @@
   (def-data-struct! "ordering-private" #/list)
   (def-data-struct! "ordering-gt" #/list)
   
-  (def-func-fault! "in-dex" fault dex v
+  ; NOTE: In the JavaScript version of Cene, this was called `in-dex`.
+  (def-func-fault! "getfx-is-in-dex" fault dex v
     (expect dex (sink-dex dex)
       (cene-err fault "Expected dex to be a dex")
-    #/racket-boolean->sink
-    #/with-current-fault fault #/fn
-    #/in-dex? dex v))
-  
-  (def-func-fault! "name-of" fault dex v
-    (expect dex (sink-dex dex)
-      (cene-err fault "Expected dex to be a dex")
-    #/racket-maybe->sink
-      (maybe-map
+    #/sink-getfx #/fn
+      (getfx-map
         (with-current-fault fault #/fn
-        #/name-of dex v)
-      #/fn name
-        (sink-name name))))
+        #/getfx-is-in-dex dex v)
+      #/fn result
+        (racket-boolean->sink result))))
+  
+  ; NOTE: In the JavaScript version of Cene, this was called
+  ; `name-of`.
+  (def-func-fault! "getfx-name-of" fault dex v
+    (expect dex (sink-dex dex)
+      (cene-err fault "Expected dex to be a dex")
+    #/sink-getfx #/fn
+      (getfx-map
+        (with-current-fault fault #/fn
+        #/getfx-name-of dex v)
+      #/fn maybe-result
+        (racket-maybe->sink #/maybe-map maybe-result #/fn result
+          (sink-name result)))))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
-  (def-func-fault! "dexed-of" fault dex v
+  (def-func-fault! "getfx-dexed-of" fault dex v
     (expect dex (sink-dex dex)
       (cene-err fault "Expected dex to be a dex")
-    #/racket-maybe->sink
-      (maybe-map
+    #/sink-getfx #/fn
+      (getfx-map
         (with-current-fault fault #/fn
-        #/dexed-of dex v)
-      #/fn dexed
-        (sink-dexed dexed))))
+        #/getfx-dexed-of dex v)
+      #/fn maybe-result
+        (racket-maybe->sink #/maybe-map maybe-result #/fn result
+          (sink-dexed result)))))
   
   ; NOTE: In the JavaScript version of Cene, this was called
   ; `call-dex`.
-  (def-func-fault! "compare-by-dex" fault dex a b
+  (def-func-fault! "getfx-compare-by-dex" fault dex a b
     (expect dex (sink-dex dex)
       (cene-err fault "Expected dex to be a dex")
-    #/racket-maybe->sink
-    #/maybe-map
-      (with-current-fault fault #/fn
-      #/compare-by-dex dex a b)
-    #/fn dex-result
-      (mat dex-result (ordering-private)
-        (make-sink-struct (s-ordering-private) #/list)
-      #/dissect dex-result (ordering-eq)
-      #/make-sink-struct (s-ordering-eq) #/list)))
+    #/sink-getfx #/fn
+      (getfx-map
+        (with-current-fault fault #/fn
+        #/getfx-compare-by-dex dex a b)
+      #/fn maybe-result
+        (racket-maybe->sink #/maybe-map maybe-result #/fn result
+          (mat result (ordering-private)
+            (make-sink-struct (s-ordering-private) #/list)
+          #/dissect result (ordering-eq)
+            (make-sink-struct (s-ordering-eq) #/list))))))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func! "is-dexed" v
@@ -1939,12 +1963,12 @@
   
   ; NOTE: In the JavaScript version of Cene, this took a dexable value
   ; (a pair of a dex and a value).
-  (def-func-fault! "dex-by-own-method" fault dexed-get-method
-    (expect dexed-get-method (sink-dexed dexed-get-method)
-      (cene-err fault "Expected dexed-get-method to be a dexed value")
+  (def-func-fault! "dex-by-own-method" fault dexed-getfx-get-method
+    (expect dexed-getfx-get-method (sink-dexed dexed-getfx-get-method)
+      (cene-err fault "Expected dexed-getfx-get-method to be a dexed value")
     #/sink-dex #/unsafe:dex-by-own-method-thorough
       (dexed-struct sink-dex-by-own-method-unthorough
-        dexed-get-method)))
+        dexed-getfx-get-method)))
   
   ; NOTE: In the JavaScript version of Cene, this took a dexable value
   ; (a pair of a dex and a value).
@@ -1965,31 +1989,37 @@
     #/with-current-fault fault #/fn
     #/get-dex-from-cline cline))
   
-  (def-func-fault! "in-cline" fault cline v
+  ; NOTE: In the JavaScript version of Cene, this was called
+  ; `in-cline`.
+  (def-func-fault! "getfx-is-in-cline" fault cline v
     (expect cline (sink-cline cline)
       (cene-err fault "Expected cline to be a cline")
-    #/racket-boolean->sink
-    #/with-current-fault fault #/fn
-    #/in-cline? cline v))
+    #/sink-getfx #/fn
+      (getfx-map
+        (with-current-fault fault #/fn
+        #/getfx-is-in-cline cline v)
+      #/fn result
+        (racket-boolean->sink result))))
   
   ; NOTE: In the JavaScript version of Cene, this was called
   ; `call-cline`.
-  (def-func-fault! "compare-by-cline" fault cline a b
+  (def-func-fault! "getfx-compare-by-cline" fault cline a b
     (expect cline (sink-cline cline)
       (cene-err fault "Expected cline to be a cline")
-    #/racket-maybe->sink
-    #/maybe-map
-      (with-current-fault fault #/fn
-      #/compare-by-cline cline a b)
-    #/fn cline-result
-      (mat cline-result (ordering-private)
-        (make-sink-struct (s-ordering-private) #/list)
-      #/mat cline-result (ordering-lt)
-        (make-sink-struct (s-ordering-lt) #/list)
-      #/mat cline-result (ordering-gt)
-        (make-sink-struct (s-ordering-gt) #/list)
-      #/dissect cline-result (ordering-eq)
-      #/make-sink-struct (s-ordering-eq) #/list)))
+    #/sink-getfx #/fn
+      (getfx-map
+        (with-current-fault fault #/fn
+        #/getfx-compare-by-cline cline a b)
+      #/fn maybe-result
+        (racket-maybe->sink #/maybe-map maybe-result #/fn result
+          (mat result (ordering-private)
+            (make-sink-struct (s-ordering-private) #/list)
+          #/mat result (ordering-lt)
+            (make-sink-struct (s-ordering-lt) #/list)
+          #/mat result (ordering-gt)
+            (make-sink-struct (s-ordering-gt) #/list)
+          #/dissect result (ordering-eq)
+            (make-sink-struct (s-ordering-eq) #/list))))))
   
   (def-nullary-func! "dex-cline"
     (sink-dex #/dex-struct sink-cline #/dex-cline))
@@ -2022,12 +2052,12 @@
   
   ; NOTE: In the JavaScript version of Cene, this took a dexable value
   ; (a pair of a dex and a value).
-  (def-func-fault! "cline-by-own-method" fault dexed-get-method
-    (expect dexed-get-method (sink-dexed dexed-get-method)
-      (cene-err fault "Expected dexed-get-method to be a dexed value")
+  (def-func-fault! "cline-by-own-method" fault dexed-getfx-get-method
+    (expect dexed-getfx-get-method (sink-dexed dexed-getfx-get-method)
+      (cene-err fault "Expected dexed-getfx-get-method to be a dexed value")
     #/sink-cline #/unsafe:cline-by-own-method-thorough
       (dexed-struct sink-cline-by-own-method-unthorough
-        dexed-get-method)))
+        dexed-getfx-get-method)))
   
   ; NOTE: In the JavaScript version of Cene, this took a dexable value
   ; (a pair of a dex and a value).
@@ -2746,18 +2776,19 @@
         (getfx-err-clamor "Expected the pure result of a getfx-table-map-fuse body to be a getfx effectful computation")
       #/getfx-run-sink-getfx sink-getfx-result)))
   
-  (def-func-fault! "table-sort" fault cline table
+  (def-func-fault! "getfx-table-sort" fault cline table
     (expect cline (sink-cline cline)
       (cene-err fault "Expected cline to be a cline")
     #/expect table (sink-table table)
       (cene-err fault "Expected table to be a table")
-    #/racket-maybe->sink
-    #/maybe-map
-      (with-current-fault fault #/fn
-      #/table-sort cline table)
-    #/fn ranks
-      (racket-list->sink #/list-map ranks #/fn rank
-        (sink-table rank))))
+    #/sink-getfx #/fn
+      (getfx-map
+        (with-current-fault fault #/fn
+        #/getfx-table-sort cline table)
+      #/fn maybe-ranks
+        (racket-maybe->sink #/maybe-map maybe-ranks #/fn ranks
+          (racket-list->sink #/list-map ranks #/fn rank
+            (sink-table rank))))))
   
   
   ; Effects
@@ -3455,7 +3486,8 @@
     (expect (sink-name? main-tag-name) #t
       (cene-err fault "Expected main-tag-name to be a name")
     #/expect
-      (in-dex? (sink-dex-table #/sink-dex-struct (s-trivial) #/list)
+      (pure-run-getfx #/getfx-is-in-dex
+        (sink-dex-table #/sink-dex-struct (s-trivial) #/list)
         proj-tag-names)
       #t
       (cene-err fault "Expected proj-tag-names to be a table of trivial values")
@@ -3470,7 +3502,8 @@
     (expect (sink-name? main-tag-name) #t
       (cene-err fault "Expected main-tag-name to be a name")
     #/expect
-      (in-dex? (sink-dex-table #/sink-dex-struct (s-trivial) #/list)
+      (pure-run-getfx #/getfx-is-in-dex
+        (sink-dex-table #/sink-dex-struct (s-trivial) #/list)
         proj-tag-names)
       #t
       (cene-err fault "Expected proj-tag-names to be a table of trivial values")
@@ -3486,7 +3519,9 @@
       (expect v (sink-authorized-name name)
         (cene-err fault "Expected each value of proj-tag-names to be an authorized name")
       #/expect
-        (eq-by-dex? (dex-name) k (authorized-name-get-name name))
+        (pure-run-getfx #/getfx-is-eq-by-dex (dex-name)
+          k
+          (authorized-name-get-name name))
         #t
         (cene-err fault "Expected each value of proj-tag-names to be an authorized name where the name authorized is the same as the name it's filed under")
         name)))
@@ -3705,15 +3740,13 @@
   
   (define prelude-unique-name
     (sink-authorized-name-subname
-      (sink-name #/just-value #/name-of (dex-immutable-string)
-        "prelude-unique-name")
+      (sink-name-of-racket-string "prelude-unique-name")
       (cene-definition-lang-impl-qualify-root)))
   (define/contract (qualify-for-prelude name)
     (-> sink-name? sink-authorized-name?)
     (sink-authorized-name-subname name
     #/sink-authorized-name-subname
-      (sink-name #/just-value #/name-of (dex-immutable-string)
-        "prelude-qualify-root")
+      (sink-name-of-racket-string "prelude-qualify-root")
       (cene-definition-lang-impl-qualify-root)))
   
   (define/contract

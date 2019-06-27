@@ -24,7 +24,8 @@
 (require #/for-syntax #/only-in syntax/parse expr)
 
 (require #/only-in racket/contract/base
-  -> ->* and/c any/c contract? list/c listof none/c or/c parameter/c)
+  -> ->* and/c any any/c contract? list/c listof none/c or/c
+  parameter/c)
 (require #/only-in racket/contract/region define/contract)
 (require #/only-in racket/control reset-at shift-at)
 (require #/only-in racket/generic define/generic define-generics)
@@ -52,12 +53,13 @@
   make-sub optionally-dexed-dexed optionally-dexed-once pure-run-getfx
   success-or-error-definer)
 (require #/only-in effection/order
-  assocs->table-if-mutually-unique dex-immutable-string dex-trivial)
+  assocs->table-if-mutually-unique dex-immutable-string dex-trivial
+  getfx-is-eq-by-dex)
 (require #/only-in effection/order/base
-  compare-by-dex dex? dexed-of dex-give-up dex-dex dex-name dex-struct
-  dex-table fuse-by-merge getfx-call-fuse getfx-table-map-fuse
-  merge-by-dex merge-table name? name-of ordering-eq? table?
-  table-empty? table-empty table-get table-shadow)
+  dex? dex-give-up dex-dex dex-name dex-struct dex-table fuse-by-merge
+  getfx-call-fuse getfx-dexed-of getfx-name-of getfx-table-map-fuse
+  merge-by-dex merge-table name? ordering-eq? table? table-empty?
+  table-empty table-get table-shadow)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe name)
 
 (require #/only-in cene/private/textpat
@@ -71,13 +73,6 @@
 (provide #/all-defined-out)
 
 
-
-; TODO: Put this in the Effection library or something.
-(define/contract (eq-by-dex? dex a b)
-  (-> dex? any/c any/c boolean?)
-  (expect (compare-by-dex dex a b) (just comparison)
-    (error "Expected a and b to be members of the domain of dex")
-  #/ordering-eq? comparison))
 
 ; TODO: Put this into the `effection/order` module or something (maybe
 ; even `effection/order/base`).
@@ -147,7 +142,11 @@
   
   #/dissect tags (cons main-tag proj-tags)
   #/dissect s-tags (cons s-main-tag s-proj-tags)
-  #/expect (eq-by-dex? (dex-name) main-tag s-main-tag) #t (nothing)
+  #/expect
+    (pure-run-getfx
+      (getfx-is-eq-by-dex (dex-name) main-tag s-main-tag))
+    #t
+    (nothing)
   #/expect
     (w-loop next
       s-proj-tags s-proj-tags
@@ -249,6 +248,14 @@
   (dissect name (sink-name #/unsafe:name name)
   #/sink-name #/unsafe:name #/func name))
 
+; TODO: See if we should do `(sink-name-for-string #/sink-string ...)`
+; instead.
+(define/contract (sink-name-of-racket-string string)
+  (-> immutable-string? sink-name?)
+  (sink-name #/just-value #/pure-run-getfx #/getfx-name-of
+    (dex-immutable-string)
+    string))
+
 ; TODO: Once we have the ability to import names, we should make sure
 ; this produces an authorized name whose name is importable from a
 ; UUID-identified import. Modules identified by UUID can only be
@@ -260,8 +267,7 @@
   (-> sink-name? sink-authorized-name?)
   (sink-authorized-name-subname unqualified-name
   #/sink-authorized-name-subname
-    (sink-name #/just-value #/name-of (dex-immutable-string)
-      "qualify")
+    (sink-name-of-racket-string "qualify")
     (cene-definition-lang-impl-qualify-root)))
 
 (define/contract (sink-table-get-maybe table name)
@@ -356,8 +362,7 @@
 (define/contract (sink-authorized-name-for-init-package-pubsub)
   (-> sink-authorized-name?)
   (sink-authorized-name-subname
-    (sink-name #/just-value #/name-of (dex-immutable-string)
-      "init-package-pubsub")
+    (sink-name-of-racket-string "init-package-pubsub")
     (cene-definition-lang-impl-qualify-root)))
 
 (define cene-definition-get-prompt-tag (make-continuation-prompt-tag))
@@ -416,11 +421,9 @@
           #/k value))])
     (body)))
 
-(define/contract (extfx-with-gets-from ds unique-name body)
-  (-> dspace? authorized-name? (-> authorized-name? extfx?) extfx?)
+(define/contract (with-gets-from ds lang-impl-qualify-root body)
+  (-> dspace? sink-authorized-name? (-> any) any)
   (begin (assert-cannot-get-cene-definitions!)
-  #/extfx-claim-and-split unique-name 2
-  #/dissectfn (list unique-name lang-impl-qualify-root)
   #/parameterize
     (
       [
@@ -428,12 +431,11 @@
         (just
           (list
             ds
-            (sink-authorized-name lang-impl-qualify-root)
+            lang-impl-qualify-root
+            ; TODO: See that this is actually true.
             (fn effects
-              (error "Expected `with-extfx-run-getfx` to shadow this implementation of `run-getfx`"))))])
-  #/with-extfx-run-getfx #/fn
-  #/reset-at cene-definition-get-prompt-tag
-    (body unique-name)))
+              (error "Expected `with-getfx-run-getfx` or `with-extfx-run-getfx` to surround every attempt to `cene-definition-run-getfx`"))))])
+    (body)))
 
 (define/contract (getfx-run-sink-getfx effects)
   (-> sink-getfx? getfx?)
@@ -712,16 +714,16 @@
   (dissect name (sink-authorized-name name)
   #/dissect dex (sink-dex dex)
   #/make-sink-extfx #/fn
-    ; NOTE: We need this restorer because the `dexed-of` call can
-    ; invoke Cene code (or even Racket code like the implementation of
-    ; `sink-dex-list`) that can depend on `cene-definition-get-param`.
-    (extfx-with-cene-definition-restorer #/fn restore
+    ; NOTE: We run this `getfx-dexed-of` call here so it can depend on
+    ; `cene-definition-get-param`. (Even `sink-dex-list` is a dex that
+    ; relies on that.) We could alternatively use
+    ; `extfx-with-cene-definition-restorer`.
+    (extfx-run-getfx (getfx-dexed-of dex value) #/fn maybe-dexed
     #/extfx-put (cene-definition-dspace) name
       (error-definer-from-message
         "Internal error: Expected the sink-extfx-put continuation ticket to be written to")
       (fn then
-        (restore #/fn
-        #/extfx-ct-continue then
+        (extfx-ct-continue then
           (error-definer-from-message
             "Internal error: Expected the sink-extfx-put continuation ticket to be written to only once")
           (list
@@ -729,7 +731,7 @@
             (success-or-error-definer
               (error-definer-uninformative)
               (extfx-noop))
-            (mat (dexed-of dex value) (just d)
+            (mat maybe-dexed (just d)
               (optionally-dexed-dexed d)
               (optionally-dexed-once value))))))))
 
@@ -877,15 +879,14 @@
   (dissect proj-tag-names (sink-table proj-tag-names)
   #/sink-authorized-name-get-name
   #/sink-authorized-name-subname
-    (sink-name #/just-value #/name-of (dex-immutable-string)
-      result-tag)
+    (sink-name-of-racket-string result-tag)
   #/sink-authorized-name-subname
-    (sink-name #/just-value #/name-of (dex-table #/dex-trivial)
+    (sink-name #/just-value #/pure-run-getfx #/getfx-name-of
+      (dex-table #/dex-trivial)
       proj-tag-names)
   #/sink-authorized-name-subname main-tag-name
   #/sink-authorized-name-subname
-    (sink-name #/just-value #/name-of (dex-immutable-string)
-      "function-implementation")
+    (sink-name-of-racket-string "function-implementation")
     (cene-definition-lang-impl-qualify-root)))
 
 (define/contract
@@ -910,7 +911,7 @@
     (expect v (sink-authorized-name authorized-name)
       (error "Expected each value of proj-tag-names to be an authorized name")
     #/expect
-      (eq-by-dex? (dex-name)
+      (pure-run-getfx #/getfx-is-eq-by-dex (dex-name)
         k
         (authorized-name-get-name authorized-name))
       #t
@@ -926,16 +927,15 @@
     (sink-proj-tag-authorized-names->trivial proj-tag-names)
     (sink-table proj-tag-names)
   #/sink-authorized-name-subname
-    (sink-name #/just-value #/name-of (dex-immutable-string)
-      result-tag)
+    (sink-name-of-racket-string result-tag)
   #/sink-authorized-name-subname
-    (sink-name #/just-value #/name-of (dex-table #/dex-trivial)
+    (sink-name #/just-value #/pure-run-getfx #/getfx-name-of
+      (dex-table #/dex-trivial)
       proj-tag-names)
   #/sink-authorized-name-subname
     (sink-authorized-name-get-name main-tag-name)
   #/sink-authorized-name-subname
-    (sink-name #/just-value #/name-of (dex-immutable-string)
-      "function-implementation")
+    (sink-name-of-racket-string "function-implementation")
     (cene-definition-lang-impl-qualify-root)))
 
 (define/contract
@@ -1074,7 +1074,7 @@
 
 (define/contract (name-for-sink-string string)
   (-> sink-string? name?)
-  (just-value #/name-of
+  (just-value #/pure-run-getfx #/getfx-name-of
     (dex-struct sink-string #/dex-immutable-string)
     string))
 
@@ -1718,9 +1718,9 @@
   
   ; TODO: Currently, we return a function that computes the tags each
   ; and every time. Memoize this. The computation can be perfrmed in
-  ; `extfx-with-gets-from` once, and then the function returned here
-  ; can look it up from the dynamically scoped binding that
-  ; `extfx-with-gets-from` sets up.
+  ; `with-gets-from` once, and then the function returned here can
+  ; look it up from the dynamically scoped binding that
+  ; `with-gets-from` sets up.
   ;
   (fn
     (begin (assert-can-get-cene-definitions!)

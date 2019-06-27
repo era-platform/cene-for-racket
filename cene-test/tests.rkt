@@ -44,11 +44,19 @@
     (error-definer-from-message
       "Internal error: Expected the cene-run-string-sample continuation ticket to be written to")
     (fn ds unique-name then
-      (extfx-with-gets-from ds unique-name #/fn unique-name
+      (w- unique-name (sink-authorized-name unique-name)
+      #/w- lang-impl-qualify-root
+        (sink-authorized-name-subname
+          (sink-name-of-racket-string "lang-impl-qualify-root")
+          unique-name)
+      #/w- unique-name
+        (sink-authorized-name-subname
+          (sink-name-of-racket-string "other-unique-name")
+          unique-name)
+      #/list (fn body #/with-gets-from ds lang-impl-qualify-root body)
+      #/with-gets-from ds lang-impl-qualify-root #/fn
       #/sink-extfx-run!
-      #/sink-extfx-claim-and-split
-        (sink-authorized-name unique-name)
-        4
+      #/sink-extfx-claim-and-split unique-name 4
       #/dissectfn
         (list
           unique-name-root

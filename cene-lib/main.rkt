@@ -25,7 +25,6 @@
 
 
 ; TODO: Document these exports.
-(provide extfx-with-gets-from)
 (provide make-fault-internal)
 (provide make-sink-extfx)
 (provide sink-authorized-name)
@@ -36,3 +35,5 @@
 (provide sink-extfx-init-package)
 (provide sink-extfx-run!)
 (provide sink-extfx-run-string)
+(provide sink-name-of-racket-string)
+(provide with-gets-from)

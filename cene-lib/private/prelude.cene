@@ -78,34 +78,36 @@
         (c-blame bl list-length xs)))
   /let is-name
     (fn x
-      (in-dex (dex-name) x))
+      (pure-run-getfx/getfx-is-in-dex (dex-name) x))
   /let is-dex
     (fn x
-      (in-dex (dex-dex) x))
+      (pure-run-getfx/getfx-is-in-dex (dex-dex) x))
   /let is-cline
     (fn x
-      (in-dex (dex-cline) x))
-  /let compare-by-cline-force
+      (pure-run-getfx/getfx-is-in-dex (dex-cline) x))
+  /let pure-compare-by-cline-force
     (fn-blame bl cline a b
       (cast (c is-cline cline) yep -
         [c-blame bl err /str-prim:Expected cline to be a cline]
-      /cast (compare-by-cline cline a b) just result
+      /cast (pure-run-getfx/getfx-compare-by-cline cline a b)
+        just result
         [c-blame bl err /str-prim:Expected a and b to be elements of the given cline]
         result))
-  /let is-lt
+  /let pure-is-lt
     (fn-blame bl cline a b
-      (case (c-blame bl compare-by-cline-force cline a b) ordering-lt
+      (case (c-blame bl pure-compare-by-cline-force cline a b)
+        ordering-lt
         (yep/nil)
         (nope/nil)))
-  /let is-gt
+  /let pure-is-gt
     (fn-blame bl cline a b
-      (c-blame bl is-lt cline b a))
-  /let is-lte
+      (c-blame bl pure-is-lt cline b a))
+  /let pure-is-lte
     (fn-blame bl cline a b
-      (c not /c-blame bl is-gt cline a b))
-  /let is-gte
+      (c not /c-blame bl pure-is-gt cline a b))
+  /let pure-is-gte
     (fn-blame bl cline a b
-      (c-blame bl is-lte cline b a))
+      (c-blame bl pure-is-lte cline b a))
   /let getfx-map
     (fn-blame bl effects func
       (cast (is-getfx effects) yep -
@@ -125,19 +127,21 @@
       (pure-run-getfx /c getfx-in-fuse (fuse-extfx) x))
   /let is-int
     (fn x
-      (in-dex (dex-int) x))
+      (pure-run-getfx/getfx-is-in-dex (dex-int) x))
   /let is-nat
     (fn x
-      (c and (c is-int x) /fn - /c is-lte (cline-int) (int-zero) x))
+      (c and (c is-int x) /fn -
+      /c pure-is-lte (cline-int) (int-zero) x))
   /let nat-to-maybe
     (fn-blame bl n
       (cast (c is-nat n) yep -
         [c-blame bl err /str-prim:Expected n to be a natural number]
-      /cast (c is-lt (cline-int) (int-zero) n) yep - (nothing)
+      /cast (c pure-is-lt (cline-int) (int-zero) n) yep - (nothing)
       /just /int-minus n /int-one))
   /let name-of-string
     (fn-blame bl string
-      (cast (name-of (dex-string) string) just result
+      (cast (pure-run-getfx/getfx-name-of (dex-string) string)
+        just result
         [c-blame bl err /str-prim:Expected string to be a string]
         result))
   /let give3
@@ -205,10 +209,10 @@
         bl-explicit unique-name qualify text-input-stream
       /fn unique-name qualify text-input-stream exprs
       /let actual-n (c list-length exprs)
-      /case (c is-lt (cline-int) n actual-n) yep -
+      /case (c pure-is-lt (cline-int) n actual-n) yep -
         \= TODO FAULT: Make this `bl-explicit` more specific.
         [c-blame bl-explicit err /str-prim:Encountered too many expressions]
-      /case (c is-lt (cline-int) actual-n n) yep -
+      /case (c pure-is-lt (cline-int) actual-n n) yep -
         \= TODO FAULT: Make this `bl-explicit` more specific.
         [c-blame bl-explicit err /str-prim:Expected another expression]
       /let effects
