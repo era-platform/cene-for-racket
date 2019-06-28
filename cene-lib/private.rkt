@@ -443,11 +443,11 @@
   #/dissect effects (sink-getfx go)
   #/go))
 
-(define/contract (sink-extfx-run! effects)
+(define/contract (extfx-run-sink-extfx effects)
   (-> sink-extfx? extfx?)
   (begin (assert-can-get-cene-definitions!)
-  #/dissect effects (sink-extfx go!)
-  #/go!))
+  #/dissect effects (sink-extfx go)
+  #/go))
 
 (define-generics cexpr
   (cexpr-has-free-vars? cexpr env)
@@ -707,7 +707,7 @@
     (extfx-with-cene-definition-restorer #/fn restore
     #/extfx-run-getfx (go) #/fn intermediate
     #/restore #/fn
-    #/sink-extfx-run! #/then intermediate)))
+    #/extfx-run-sink-extfx #/then intermediate)))
 
 (define/contract (sink-extfx-put name dex value)
   (-> sink-authorized-name? sink-dex? sink? sink-extfx?)
@@ -741,9 +741,8 @@
 
 (define/contract (sink-extfx-fuse-binary a b)
   (-> sink-extfx? sink-extfx? sink-extfx?)
-  (dissect a (sink-extfx a-go!)
-  #/dissect b (sink-extfx b-go!)
-  #/make-sink-extfx #/fn #/extfx-fuse (a-go!) (b-go!)))
+  (make-sink-extfx #/fn
+    (extfx-fuse (extfx-run-sink-extfx a) (extfx-run-sink-extfx b))))
 
 (define/contract (sink-extfx-fuse-list effects)
   (-> (listof sink-extfx?) sink-extfx?)
@@ -759,7 +758,7 @@
 ; pure.
 (define/contract (sink-extfx-later then)
   (-> (-> sink-extfx?) sink-extfx?)
-  (make-sink-extfx #/fn #/sink-extfx-run! #/then))
+  (make-sink-extfx #/fn #/extfx-run-sink-extfx #/then))
 
 (define/contract (sink-extfx-pub-write p unique-name arg)
   (-> sink-pub? sink-authorized-name? sink? sink-extfx?)
@@ -787,7 +786,7 @@
         (extfx-noop))
       (fn arg
         (restore #/fn
-        #/sink-extfx-run! #/func arg)))))
+        #/extfx-run-sink-extfx #/func arg)))))
 
 (define/contract (sink-cexpr-var name)
   (-> sink-name? sink-cexpr?)
@@ -1815,8 +1814,7 @@
     (extfx-with-cene-definition-restorer #/fn restore
     #/extfx-claim name #/fn
     #/restore #/fn
-    #/sink-extfx-run!
-    #/on-success)))
+    #/extfx-run-sink-extfx #/on-success)))
 
 (define/contract (sink-extfx-claim-and-split unique-name n then)
   (->
@@ -1828,7 +1826,7 @@
     (extfx-with-cene-definition-restorer #/fn restore
     #/extfx-claim-and-split unique-name n #/fn names
     #/restore #/fn
-    #/sink-extfx-run! #/then #/list-map names #/fn name
+    #/extfx-run-sink-extfx #/then #/list-map names #/fn name
       (sink-authorized-name name))))
 
 (define/contract (sink-extfx-claim-freshen unique-name then)

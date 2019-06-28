@@ -55,7 +55,7 @@
           unique-name)
       #/list (fn body #/with-gets-from ds lang-impl-qualify-root body)
       #/with-gets-from ds lang-impl-qualify-root #/fn
-      #/sink-extfx-run!
+      #/extfx-run-sink-extfx
       #/sink-extfx-claim-and-split unique-name 4
       #/dissectfn
         (list
