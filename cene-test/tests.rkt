@@ -53,10 +53,6 @@
         (sink-authorized-name-subname
           (sink-name-of-racket-string "other-unique-name")
           unique-name)
-      ; TODO: Since this parameterizer function is a trivial
-      ; `(fn body #/body) now, let's simplify Effection's `run-extfx!`
-      ; interface by removing support for it again.
-      #/list (fn body #/body)
       #/with-gets-from ds lang-impl-qualify-root #/fn
       #/extfx-run-sink-extfx
       #/sink-extfx-claim-and-split unique-name 4
