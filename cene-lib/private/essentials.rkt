@@ -46,8 +46,8 @@
 (require #/only-in lathe-comforts/trivial trivial)
 
 (require #/only-in effection/extensibility/base
-  authorized-name-get-name getfx-bind getfx/c getfx-done
-  pure-run-getfx)
+  authorized-name-get-name dex-authorized-name dex-dspace getfx?
+  getfx-bind getfx/c getfx-done pure-run-getfx)
 (require #/only-in effection/order
   assocs->table-if-mutually-unique cline-exact-rational
   dex-exact-rational dex-immutable-string fuse-exact-rational-by-plus
@@ -164,11 +164,11 @@
   #/maybe-ordering-or (maybe-compare-elems a b)
   #/maybe-compare-aligned-lists as bs maybe-compare-elems))
 
-; TODO: We used this in `effection/order/base`, and we're using it
-; again here. See if it should be an export of Effection.
-(define (getfx-map effects func)
-  (getfx-bind effects #/fn result
-  #/getfx-done #/func result))
+; TODO: See if this should be an export of Effection.
+(define/contract (getfx-later then)
+  (-> (-> getfx?) getfx?)
+  (getfx-bind (getfx-done #/trivial) #/dissectfn (trivial)
+  #/then))
 
 ; TODO: We used this in `effection/order/base`, and we're using it
 ; again here. See if it should be an export of Effection.
@@ -195,7 +195,7 @@
 
 (define/contract (racket-boolean->sink racket-boolean)
   (-> boolean? sink?)
-  (begin (assert-can-get-cene-definitions!)
+  (begin (assert-can-get-cene-definition-globals!)
   #/if racket-boolean
     (make-sink-struct (s-yep) #/list
       (make-sink-struct (s-nil) #/list))
@@ -204,7 +204,7 @@
 
 (define/contract (sink-maybe->maybe-racket sink-maybe)
   (-> sink? #/maybe/c #/maybe/c sink?)
-  (begin (assert-can-get-cene-definitions!)
+  (begin (assert-can-get-cene-definition-globals!)
   #/mat (unmake-sink-struct-maybe (s-nothing) sink-maybe)
     (just #/list)
     (just #/nothing)
@@ -215,7 +215,7 @@
 
 (define/contract (racket-maybe->sink racket-maybe)
   (-> (maybe/c sink?) sink?)
-  (begin (assert-can-get-cene-definitions!)
+  (begin (assert-can-get-cene-definition-globals!)
   #/mat racket-maybe (just val)
     (make-sink-struct (s-just) #/list val)
     (make-sink-struct (s-nothing) #/list)))
@@ -241,6 +241,18 @@
   #:other #:methods gen:sink [])
 
 
+(define/contract (getfx-bind-restoring effects then)
+  (-> getfx? (-> any/c getfx?) getfx?)
+  (getfx-with-cene-definition-restorer #/fn restore
+  #/getfx-bind effects #/fn intermediate
+  #/restore #/fn
+  #/then intermediate))
+
+(define/contract (getfx-map-restoring effects then)
+  (-> getfx? (-> any/c any/c) getfx?)
+  (getfx-bind-restoring effects #/fn intermediate
+  #/getfx-done #/then intermediate))
+
 (define/contract (sink-getfx-done result)
   (-> sink? sink-getfx?)
   (sink-getfx #/fn #/getfx-done result))
@@ -249,9 +261,7 @@
   (-> sink-getfx? (-> any/c sink-getfx?) sink-getfx?)
   (dissect effects (sink-getfx go)
   #/sink-getfx #/fn
-    (getfx-with-cene-definition-restorer #/fn restore
-    #/getfx-bind (go) #/fn intermediate
-    #/restore #/fn
+    (getfx-bind-restoring (go) #/fn intermediate
     #/getfx-run-sink-getfx #/then intermediate)))
 
 (define/contract (sink-perffx-done result)
@@ -1056,20 +1066,30 @@
   #/sink-cexpr
   #/cexpr-case subject-expr tags vars then-expr else-expr))
 
-(struct-easy (fix-for-sink-dex-list dex-elem)
+(struct-easy
+  (fix-for-sink-dex-list ds lang-impl-qualify-root dex-elem)
   #:other
   
   #:property prop:procedure
   (fn this dex
-    (dissect this (fix-for-sink-dex-list dex-elem)
+    (dissect this
+      (fix-for-sink-dex-list ds lang-impl-qualify-root dex-elem)
+    #/with-gets-from ds lang-impl-qualify-root #/fn
+    #/with-getfx-run-getfx #/fn
     #/getfx-done #/dex-default
       (dex-sink-struct (s-nil) #/list)
       (dex-sink-struct (s-cons) #/list dex-elem dex))))
 
 (define/contract (sink-dex-list dex-elem)
   (-> sink-dex? sink-dex?)
-  (dissect dex-elem (sink-dex dex-elem)
+  (begin (assert-can-get-cene-definition-globals!)
+  #/dissect dex-elem (sink-dex dex-elem)
   #/sink-dex #/dex-fix #/dexed-struct fix-for-sink-dex-list
+    (just-value #/pure-run-getfx #/getfx-dexed-of (dex-dspace)
+      (cene-definition-dspace))
+    (just-value #/pure-run-getfx #/getfx-dexed-of
+      (dex-struct sink-authorized-name #/dex-authorized-name)
+      (cene-definition-lang-impl-qualify-root))
     (just-value #/pure-run-getfx #/getfx-dexed-of (dex-dex)
       dex-elem)))
 
@@ -1102,6 +1122,8 @@
     (body)))
 
 
+; TODO WITH-GETS-FROM: Refactor these to use `with-gets-from` using
+; values obtained when they were constructed.
 (define-syntax-rule
   (define-fix-converter
     converter constructor expected-getfx expected-method)
@@ -1133,6 +1155,10 @@
   "Expected the pure result of a fuse-fix body to be a getfx effectful computation"
   "Expected the result of a fuse-fix body to be a fuse")
 
+; TODO WITH-GETS-FROM: Refactor this to use `with-gets-from` using
+; values obtained when it was constructed. We should also see if it
+; can share an implementation with
+; `sink-cline-by-own-method-unthorough`.
 (struct-easy (sink-dex-by-own-method-unthorough getfx-get-method)
   #:other
   
@@ -1160,6 +1186,10 @@
         (getfx-err-clamor fault "Expected the result of a dex-by-own-method body to be a maybe of a dex")
         method))))
 
+; TODO WITH-GETS-FROM: Refactor this to use `with-gets-from` using
+; values obtained when it was constructed. We should also see if it
+; can share an implementation with
+; `sink-dex-by-own-method-unthorough`.
 (struct-easy (sink-cline-by-own-method-unthorough getfx-get-method)
   #:other
   
@@ -1188,6 +1218,10 @@
         (getfx-err-clamor fault "Expected the result of a cline-by-own-method body to be a maybe of a cline")
         method))))
 
+; TODO WITH-GETS-FROM: Refactor this to use `with-gets-from` using
+; values obtained when it was constructed. We should also see if it
+; can share an implementation with
+; `sink-fuse-by-own-method-unthorough`.
 (struct-easy (sink-merge-by-own-method-unthorough getfx-get-method)
   #:other
   
@@ -1224,6 +1258,10 @@
         (getfx-err-clamor fault "Expected the result of a merge-by-own-method body to be a maybe of a merge")
         method))))
 
+; TODO WITH-GETS-FROM: Refactor this to use `with-gets-from` using
+; values obtained when it was constructed. We should also see if it
+; can share an implementation with
+; `sink-merge-by-own-method-unthorough`.
 (struct-easy (sink-fuse-by-own-method-unthorough getfx-get-method)
   #:other
   
@@ -1260,6 +1298,8 @@
         (getfx-err-clamor fault "Expected the result of a fuse-by-own-method body to be a maybe of a fuse")
         method))))
 
+; TODO WITH-GETS-FROM: See if we need to refactor this to use
+; `with-gets-from` using values obtained when it was constructed.
 (struct-easy (sink-fuse-fusable-fn-unthorough arg-to-method)
   #:other
   
@@ -1867,7 +1907,7 @@
     (expect dex (sink-dex dex)
       (cene-err fault "Expected dex to be a dex")
     #/sink-getfx #/fn
-      (getfx-map
+      (getfx-map-restoring
         (with-current-fault fault #/fn
         #/getfx-is-in-dex dex v)
       #/fn result
@@ -1879,7 +1919,7 @@
     (expect dex (sink-dex dex)
       (cene-err fault "Expected dex to be a dex")
     #/sink-getfx #/fn
-      (getfx-map
+      (getfx-map-restoring
         (with-current-fault fault #/fn
         #/getfx-name-of dex v)
       #/fn maybe-result
@@ -1891,7 +1931,7 @@
     (expect dex (sink-dex dex)
       (cene-err fault "Expected dex to be a dex")
     #/sink-getfx #/fn
-      (getfx-map
+      (getfx-map-restoring
         (with-current-fault fault #/fn
         #/getfx-dexed-of dex v)
       #/fn maybe-result
@@ -1904,7 +1944,7 @@
     (expect dex (sink-dex dex)
       (cene-err fault "Expected dex to be a dex")
     #/sink-getfx #/fn
-      (getfx-map
+      (getfx-map-restoring
         (with-current-fault fault #/fn
         #/getfx-compare-by-dex dex a b)
       #/fn maybe-result
@@ -1995,7 +2035,7 @@
     (expect cline (sink-cline cline)
       (cene-err fault "Expected cline to be a cline")
     #/sink-getfx #/fn
-      (getfx-map
+      (getfx-map-restoring
         (with-current-fault fault #/fn
         #/getfx-is-in-cline cline v)
       #/fn result
@@ -2007,7 +2047,7 @@
     (expect cline (sink-cline cline)
       (cene-err fault "Expected cline to be a cline")
     #/sink-getfx #/fn
-      (getfx-map
+      (getfx-map-restoring
         (with-current-fault fault #/fn
         #/getfx-compare-by-cline cline a b)
       #/fn maybe-result
@@ -2071,7 +2111,7 @@
     (expect merge (sink-merge merge)
       (cene-err fault "Expected merge to be a merge")
     #/sink-getfx #/fn
-      (getfx-map
+      (getfx-map-restoring
         (with-current-fault fault #/fn
         #/getfx-call-merge merge a b)
       #/fn result
@@ -2081,7 +2121,7 @@
     (expect fuse (sink-fuse fuse)
       (cene-err fault "Expected fuse to be a fuse")
     #/sink-getfx #/fn
-      (getfx-map
+      (getfx-map-restoring
         (with-current-fault fault #/fn
         #/getfx-call-fuse fuse a b)
       #/fn result
@@ -2782,7 +2822,7 @@
     #/expect table (sink-table table)
       (cene-err fault "Expected table to be a table")
     #/sink-getfx #/fn
-      (getfx-map
+      (getfx-map-restoring
         (with-current-fault fault #/fn
         #/getfx-table-sort cline table)
       #/fn maybe-ranks

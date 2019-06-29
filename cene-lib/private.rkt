@@ -285,20 +285,39 @@
 (define/contract cene-definition-get-param
   (parameter/c
     (maybe/c
-      (list/c dspace? sink-authorized-name? (-> getfx? any/c))))
+      (list/c
+        dspace?
+        sink-authorized-name?
+        (maybe/c #/-> getfx? any/c))))
   (make-parameter #/nothing))
+
+(define/contract (assert-can-get-cene-definition-globals!)
+  (-> void?)
+  (expect (cene-definition-get-param)
+    (just #/list ds lang-impl-qualify-root maybe-run-getfx)
+    (error "Expected implementations of `cene-definition-dspace` and `cene-definition-lang-impl-qualify-root` to be available in the dynamic scope")
+  #/void))
+
+(define/contract (assert-cannot-get-cene-definition-globals!)
+  (-> void?)
+  (mat (cene-definition-get-param)
+    (just #/list ds lang-impl-qualify-root maybe-run-getfx)
+    ; TODO: Make this error message more visually distinct from the
+    ; `assert-can-get-cene-definition-globals!` error message.
+    (error "Expected no implementations of `cene-definition-dspace` and `cene-definition-lang-impl-qualify-root` to be available in the dynamic scope")
+  #/void))
 
 (define/contract (assert-can-get-cene-definitions!)
   (-> void?)
   (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root run-getfx)
+    (just #/list ds lang-impl-qualify-root #/just run-getfx)
     (error "Expected an implementation of `cene-definition-get` to be available in the dynamic scope")
   #/void))
 
 (define/contract (assert-cannot-get-cene-definitions!)
   (-> void?)
   (mat (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root run-getfx)
+    (just #/list ds lang-impl-qualify-root #/just run-getfx)
     ; TODO: Make this error message more visually distinct from the
     ; `assert-can-get-cene-definitions!` error message.
     (error "Expected no implementation of `cene-definition-get` to be available in the dynamic scope")
@@ -307,14 +326,14 @@
 (define/contract (cene-definition-dspace)
   (-> dspace?)
   (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root run-getfx)
+    (just #/list ds lang-impl-qualify-root maybe-run-getfx)
     (error "Expected every call to `cene-definition-dspace` to occur with an implementation in the dynamic scope")
     ds))
 
 (define/contract (cene-definition-lang-impl-qualify-root)
   (-> sink-authorized-name?)
   (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root run-getfx)
+    (just #/list ds lang-impl-qualify-root maybe-run-getfx)
     (error "Expected every call to `cene-definition-lang-impl-qualify-root` to occur with an implementation in the dynamic scope")
     lang-impl-qualify-root))
 
@@ -342,20 +361,20 @@
 (define/contract (cene-definition-run-getfx effects)
   (-> sink-getfx? sink?)
   (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root run-getfx)
+    (just #/list ds lang-impl-qualify-root #/just run-getfx)
     (error "Expected every call to `cene-definition-get` to occur with an implementation in the dynamic scope")
   #/dissect effects (sink-getfx go)
   #/run-getfx #/go))
 
 (define/contract (make-sink-pub pubsub-name)
   (-> sink-authorized-name? sink-pub?)
-  (begin (assert-can-get-cene-definitions!)
+  (begin (assert-can-get-cene-definition-globals!)
   #/dissect pubsub-name (sink-authorized-name pubsub-name)
   #/sink-pub #/make-pub (cene-definition-dspace) pubsub-name))
 
 (define/contract (make-sink-sub pubsub-name)
   (-> sink-authorized-name? sink-sub?)
-  (begin (assert-can-get-cene-definitions!)
+  (begin (assert-can-get-cene-definition-globals!)
   #/dissect pubsub-name (sink-authorized-name pubsub-name)
   #/sink-sub #/make-sub (cene-definition-dspace) pubsub-name))
 
@@ -390,13 +409,13 @@
 (define/contract (with-getfx-run-getfx body)
   (-> (-> any/c) any/c)
   (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root run-getfx)
+    (just #/list ds lang-impl-qualify-root maybe-run-getfx)
     (error "Expected every call to `with-getfx-run-getfx` to occur with an implementation in the dynamic scope")
   #/parameterize
     (
       [
         cene-definition-get-param
-        (just #/list ds lang-impl-qualify-root #/fn effects
+        (just #/list ds lang-impl-qualify-root #/just #/fn effects
           (shift-at cene-definition-get-prompt-tag k
           #/getfx-with-cene-definition-restorer #/fn restore
           #/getfx-bind effects #/fn value
@@ -407,13 +426,13 @@
 (define/contract (with-extfx-run-getfx body)
   (-> (-> any/c) any/c)
   (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root run-getfx)
+    (just #/list ds lang-impl-qualify-root maybe-run-getfx)
     (error "Expected every call to `with-extfx-run-getfx` to occur with an implementation in the dynamic scope")
   #/parameterize
     (
       [
         cene-definition-get-param
-        (just #/list ds lang-impl-qualify-root #/fn effects
+        (just #/list ds lang-impl-qualify-root #/just #/fn effects
           (shift-at cene-definition-get-prompt-tag k
           #/extfx-with-cene-definition-restorer #/fn restore
           #/extfx-run-getfx effects #/fn value
@@ -423,30 +442,26 @@
 
 (define/contract (with-gets-from ds lang-impl-qualify-root body)
   (-> dspace? sink-authorized-name? (-> any) any)
-  (begin (assert-cannot-get-cene-definitions!)
+  (begin (assert-cannot-get-cene-definition-globals!)
   #/parameterize
     (
       [
         cene-definition-get-param
-        (just
-          (list
-            ds
-            lang-impl-qualify-root
-            ; TODO: See that this is actually true.
-            (fn effects
-              (error "Expected `with-getfx-run-getfx` or `with-extfx-run-getfx` to surround every attempt to `cene-definition-run-getfx`"))))])
+        (just #/list ds lang-impl-qualify-root #/nothing)])
     (body)))
 
 (define/contract (getfx-run-sink-getfx effects)
   (-> sink-getfx? getfx?)
-  (begin (assert-can-get-cene-definitions!)
+  (begin (assert-can-get-cene-definition-globals!)
   #/dissect effects (sink-getfx go)
+  #/with-getfx-run-getfx #/fn
   #/go))
 
 (define/contract (extfx-run-sink-extfx effects)
   (-> sink-extfx? extfx?)
-  (begin (assert-can-get-cene-definitions!)
+  (begin (assert-can-get-cene-definition-globals!)
   #/dissect effects (sink-extfx go)
+  #/with-extfx-run-getfx #/fn
   #/go))
 
 (define-generics cexpr
@@ -714,16 +729,30 @@
   (dissect name (sink-authorized-name name)
   #/dissect dex (sink-dex dex)
   #/make-sink-extfx #/fn
-    ; NOTE: We run this `getfx-dexed-of` call here so it can depend on
-    ; `cene-definition-get-param`. (Even `sink-dex-list` is a dex that
-    ; relies on that.) We could alternatively use
-    ; `extfx-with-cene-definition-restorer`.
-    (extfx-run-getfx (getfx-dexed-of dex value) #/fn maybe-dexed
-    #/extfx-put (cene-definition-dspace) name
+    (extfx-put (cene-definition-dspace) name
       (error-definer-from-message
         "Internal error: Expected the sink-extfx-put continuation ticket to be written to")
       (fn then
-        (extfx-ct-continue then
+        
+        ; NOTE: There is no dex that should rely on
+        ; `cene-definition-get-param`, since even the dex combinators
+        ; in Effection do nothing to help us restore that parameter as
+        ; they go along. Instead of relying on
+        ; `cene-definition-get-param`, dexes like `sink-dex-list`
+        ; store the values of `cene-definition-get-param` when they're
+        ; constructed and then restore them again using their own
+        ; `with-gets-from` call. Because of that, it's fine for us to
+        ; call `getfx-dexed-of` here in an
+        ; `assert-cannot-get-cene-definition-globals!` zone.
+        ;
+        ; TODO WITH-GETS-FROM: We should refactor Cene's
+        ; `{dex,cline,merge,fuse}-{by-own-method,fix}` and maybe even
+        ; `fuse-fusable-fn` so they're implemented with that
+        ; technique. For now, they're buggy, and we only get away with
+        ; it because we don't use them or run tests on them yet.
+        ;
+        (extfx-run-getfx (getfx-dexed-of dex value) #/fn maybe-dexed
+        #/extfx-ct-continue then
           (error-definer-from-message
             "Internal error: Expected the sink-extfx-put continuation ticket to be written to only once")
           (list
@@ -1722,7 +1751,7 @@
   ; `with-gets-from` sets up.
   ;
   (fn
-    (begin (assert-can-get-cene-definitions!)
+    (begin (assert-can-get-cene-definition-globals!)
     #/w- main-tag-authorized-name
       (sink-name-qualify-for-lang-impl #/sink-name-for-struct-main-tag
       #/sink-name-for-string #/sink-string main-tag-string)
@@ -1753,7 +1782,7 @@
   ; (`rev-racket-list`) of a recursive helper function (`next`) so
   ; that we keep the call stack at a constant size throughout the list
   ; traversal.
-  (begin (assert-can-get-cene-definitions!)
+  (begin (assert-can-get-cene-definition-globals!)
   #/w-loop next sink-list sink-list rev-racket-list (list)
   #/mat (unmake-sink-struct-maybe (s-nil) sink-list) (just #/list)
     (just #/reverse rev-racket-list)
@@ -1764,7 +1793,7 @@
 
 (define/contract (racket-list->sink racket-list)
   (-> (listof sink?) sink?)
-  (begin (assert-can-get-cene-definitions!)
+  (begin (assert-can-get-cene-definition-globals!)
   #/list-foldr racket-list (make-sink-struct (s-nil) #/list)
   #/fn elem rest
     (make-sink-struct (s-cons) #/list elem rest)))
