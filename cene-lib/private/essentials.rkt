@@ -1882,7 +1882,7 @@
   (def-func-fault! "pure-run-getfx" fault effects
     (expect (sink-getfx? effects) #t
       (cene-err fault "Expected effects to be a getfx effects value")
-    #/cene-definition-run-getfx effects))
+    #/cene-run-sink-getfx effects))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func! "getfx-err" clamor
@@ -1896,8 +1896,7 @@
   ; operations.
   ;
   (def-func! "follow-heart" clamor
-    (cene-definition-run-getfx
-      (sink-getfx #/fn #/getfx-err-from-clamor clamor)))
+    (cene-run-getfx #/getfx-err-from-clamor clamor))
   
   (def-data-struct! "clamor-err" #/list "blame" "message")
   

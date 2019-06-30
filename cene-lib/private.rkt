@@ -375,13 +375,12 @@
       #;on-stall (error-definer-uninformative)
       )))
 
-(define/contract (cene-definition-run-getfx effects)
-  (-> sink-getfx? sink?)
+(define/contract (cene-run-getfx effects)
+  (-> getfx? sink?)
   (expect (cene-definition-get-param)
     (just #/list rinfo #/just run-getfx)
-    (error "Expected every call to `cene-definition-get` to occur with an implementation in the dynamic scope")
-  #/dissect effects (sink-getfx go)
-  #/run-getfx #/go))
+    (error "Expected every call to `cene-run-getfx` to occur with an implementation in the dynamic scope")
+  #/run-getfx effects))
 
 (define/contract (make-sink-pub pubsub-name)
   (-> sink-authorized-name? sink-pub?)
@@ -478,6 +477,11 @@
   #/dissect effects (sink-extfx go)
   #/with-extfx-run-getfx #/fn
   #/go))
+
+(define/contract (cene-run-sink-getfx effects)
+  (-> sink-getfx? sink?)
+  (begin (assert-can-get-cene-definitions!)
+  #/cene-run-getfx #/getfx-run-sink-getfx effects))
 
 (define-generics cexpr
   (cexpr-has-free-vars? cexpr env)
@@ -1021,16 +1025,12 @@
     fault
     (sink-string message)))
 
-(define/contract (sink-getfx-err-clamor fault message)
-  (-> sink-fault? immutable-string? sink-getfx?)
-  (sink-getfx #/fn #/getfx-err-clamor fault message))
-
 (define-simple-macro (cene-err fault:expr message:string)
   ; TODO: See if there's a way we can either stop depending on
   ; `s-clamor-err` here or move this code after the place where
   ; `s-clamor-err` is defined.
   (begin (assert-can-get-cene-definitions!)
-  #/cene-definition-run-getfx #/sink-getfx-err-clamor fault message))
+  #/cene-run-getfx #/getfx-err-clamor fault message))
 
 (define/contract
   (sink-call-fault-binary caller-fault explicit-fault func arg)
@@ -1047,7 +1047,7 @@
     ; TODO: This lookup might be expensive. See if we should memoize
     ; it.
     #/w- impl
-      (cene-definition-run-getfx #/sink-getfx-get
+      (cene-run-sink-getfx #/sink-getfx-get
       #/sink-name-for-function-implementation-value
         main-tag
         (list-foldr proj-tags (sink-table #/table-empty)
