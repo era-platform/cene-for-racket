@@ -422,6 +422,25 @@
     #/reset-at cene-definition-get-prompt-tag
       (body))))
 
+(define/contract (getfx-bind-restoring effects then)
+  (-> getfx? (-> any/c getfx?) getfx?)
+  (getfx-with-cene-definition-restorer #/fn restore
+  #/getfx-bind effects #/fn intermediate
+  #/restore #/fn
+  #/then intermediate))
+
+(define/contract (getfx-map-restoring effects then)
+  (-> getfx? (-> any/c any/c) getfx?)
+  (getfx-bind-restoring effects #/fn intermediate
+  #/getfx-done #/then intermediate))
+
+(define/contract (extfx-run-getfx-restoring effects then)
+  (-> getfx? (-> any/c extfx?) extfx?)
+  (extfx-with-cene-definition-restorer #/fn restore
+  #/extfx-run-getfx effects #/fn intermediate
+  #/restore #/fn
+  #/then intermediate))
+
 (define/contract (with-getfx-run-getfx body)
   (-> (-> any/c) any/c)
   (expect (cene-definition-get-param)
@@ -433,9 +452,7 @@
         cene-definition-get-param
         (just #/list rinfo #/just #/fn effects
           (shift-at cene-definition-get-prompt-tag k
-          #/getfx-with-cene-definition-restorer #/fn restore
-          #/getfx-bind effects #/fn value
-          #/restore #/fn
+          #/getfx-bind-restoring effects #/fn value
           #/k value))])
     (body)))
 
@@ -450,9 +467,7 @@
         cene-definition-get-param
         (just #/list rinfo #/just #/fn effects
           (shift-at cene-definition-get-prompt-tag k
-          #/extfx-with-cene-definition-restorer #/fn restore
-          #/extfx-run-getfx effects #/fn value
-          #/restore #/fn
+          #/extfx-run-getfx-restoring effects #/fn value
           #/k value))])
     (body)))
 
@@ -482,18 +497,6 @@
   (-> sink-getfx? sink?)
   (begin (assert-can-get-cene-definitions!)
   #/cene-run-getfx #/getfx-run-sink-getfx effects))
-
-(define/contract (getfx-bind-restoring effects then)
-  (-> getfx? (-> any/c getfx?) getfx?)
-  (getfx-with-cene-definition-restorer #/fn restore
-  #/getfx-bind effects #/fn intermediate
-  #/restore #/fn
-  #/then intermediate))
-
-(define/contract (getfx-map-restoring effects then)
-  (-> getfx? (-> any/c any/c) getfx?)
-  (getfx-bind-restoring effects #/fn intermediate
-  #/getfx-done #/then intermediate))
 
 (define-generics cexpr
   (cexpr-has-free-vars? cexpr env)
