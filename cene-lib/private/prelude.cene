@@ -76,6 +76,9 @@
         [c-blame bl err /str-prim:Expected xs to be a cons list]
       /pure-run-getfx /getfx-call-fuse (fuse-int-by-plus) (int-one)
         (c-blame bl list-length xs)))
+  /let is-blame
+    (fn x
+      (pure-run-getfx/getfx-is-in-dex (dex-blame) x))
   /let is-name
     (fn x
       (pure-run-getfx/getfx-is-in-dex (dex-name) x))
@@ -197,7 +200,7 @@
     (fn-blame bl-implicit
       bl-explicit unique-name qualify text-input-stream n then
       
-      (cast (is-blame bl-explicit) yep -
+      (cast (c is-blame bl-explicit) yep -
         [c-blame bl-implicit err /str-prim:Expected bl-explicit to be a blame value]
       /cast (is-authorized-name unique-name) yep -
         [c-blame bl-implicit err /str-prim:Expected unique-name to be an authorized name]

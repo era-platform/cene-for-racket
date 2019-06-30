@@ -25,7 +25,7 @@
 
 (require #/only-in racket/contract/base
   -> ->* and/c any any/c contract? list/c listof none/c or/c
-  parameter/c)
+  parameter/c struct/c)
 (require #/only-in racket/contract/region define/contract)
 (require #/only-in racket/control reset-at shift-at)
 (require #/only-in racket/generic define/generic define-generics)
@@ -39,27 +39,27 @@
 (require #/only-in lathe-comforts/maybe
   just just-value maybe-bind maybe/c maybe-map nothing nothing?)
 (require #/only-in lathe-comforts/string immutable-string?)
-(require #/only-in lathe-comforts/struct
-  auto-write define-imitation-simple-struct struct-easy)
+(require #/only-in lathe-comforts/struct struct-easy)
 (require #/only-in lathe-comforts/trivial trivial)
 
 (require #/only-in effection/extensibility/base
   authorized-name? authorized-name-get-name authorized-name-subname
-  dspace? error-definer? error-definer-from-exn
-  error-definer-from-message error-definer-uninformative extfx?
-  extfx-claim-unique extfx-ct-continue extfx-noop extfx-pub-write
-  extfx-run-getfx extfx-put extfx-split-list extfx-sub-write
-  fuse-extfx getfx? getfx-bind getfx-done getfx-err getfx-get make-pub
-  make-sub optionally-dexed-dexed optionally-dexed-once pure-run-getfx
+  dex-authorized-name dex-dspace dspace? error-definer?
+  error-definer-from-exn error-definer-from-message
+  error-definer-uninformative extfx? extfx-claim-unique
+  extfx-ct-continue extfx-noop extfx-pub-write extfx-run-getfx
+  extfx-put extfx-split-list extfx-sub-write fuse-extfx getfx?
+  getfx-bind getfx-done getfx-err getfx-get make-pub make-sub
+  optionally-dexed-dexed optionally-dexed-once pure-run-getfx
   success-or-error-definer)
 (require #/only-in effection/order
   assocs->table-if-mutually-unique dex-immutable-string dex-trivial
   getfx-is-eq-by-dex)
 (require #/only-in effection/order/base
-  dex? dex-give-up dex-dex dex-name dex-struct dex-table fuse-by-merge
-  getfx-call-fuse getfx-dexed-of getfx-name-of getfx-table-map-fuse
-  merge-by-dex merge-table name? ordering-eq? table? table-empty?
-  table-empty table-get table-shadow)
+  dex? dexed-first-order/c dex-give-up dex-dex dex-name dex-struct
+  dex-table fuse-by-merge getfx-call-fuse getfx-dexed-of getfx-name-of
+  getfx-table-map-fuse merge-by-dex merge-table name? ordering-eq?
+  table? table-empty? table-empty table-get table-shadow)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe name)
 
 (require #/only-in cene/private/textpat
@@ -282,26 +282,26 @@
   #/dissect name (sink-name name)
   #/sink-table #/table-shadow name maybe-value table))
 
+(struct-easy #/cene-root-info dspace lang-impl-qualify-root)
+
 (define/contract cene-definition-get-param
   (parameter/c
     (maybe/c
       (list/c
-        dspace?
-        sink-authorized-name?
+        (struct/c cene-root-info dspace? sink-authorized-name?)
         (maybe/c #/-> getfx? any/c))))
   (make-parameter #/nothing))
 
 (define/contract (assert-can-get-cene-definition-globals!)
   (-> void?)
   (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root maybe-run-getfx)
+    (just #/list rinfo maybe-run-getfx)
     (error "Expected implementations of `cene-definition-dspace` and `cene-definition-lang-impl-qualify-root` to be available in the dynamic scope")
   #/void))
 
 (define/contract (assert-cannot-get-cene-definition-globals!)
   (-> void?)
-  (mat (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root maybe-run-getfx)
+  (mat (cene-definition-get-param) (just #/list rinfo maybe-run-getfx)
     ; TODO: Make this error message more visually distinct from the
     ; `assert-can-get-cene-definition-globals!` error message.
     (error "Expected no implementations of `cene-definition-dspace` and `cene-definition-lang-impl-qualify-root` to be available in the dynamic scope")
@@ -310,30 +310,47 @@
 (define/contract (assert-can-get-cene-definitions!)
   (-> void?)
   (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root #/just run-getfx)
+    (just #/list rinfo #/just run-getfx)
     (error "Expected an implementation of `cene-definition-get` to be available in the dynamic scope")
   #/void))
 
 (define/contract (assert-cannot-get-cene-definitions!)
   (-> void?)
   (mat (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root #/just run-getfx)
+    (just #/list rinfo #/just run-getfx)
     ; TODO: Make this error message more visually distinct from the
     ; `assert-can-get-cene-definitions!` error message.
     (error "Expected no implementation of `cene-definition-get` to be available in the dynamic scope")
   #/void))
 
+(define/contract (cene-definition-dexed-root-info)
+  (->
+    (dexed-first-order/c
+      (struct/c cene-root-info dspace? sink-authorized-name?)))
+  (expect (cene-definition-get-param)
+    (just #/list rinfo maybe-run-getfx)
+    (error "Expected every call to `cene-definition-dexed-root-info` to occur with an implementation in the dynamic scope")
+  #/just-value #/pure-run-getfx #/getfx-dexed-of
+    (dex-struct cene-root-info
+      (dex-dspace)
+      (dex-struct sink-authorized-name #/dex-authorized-name))
+    rinfo))
+
 (define/contract (cene-definition-dspace)
   (-> dspace?)
   (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root maybe-run-getfx)
+    (just #/list
+      (cene-root-info ds lang-impl-qualify-root)
+      maybe-run-getfx)
     (error "Expected every call to `cene-definition-dspace` to occur with an implementation in the dynamic scope")
     ds))
 
 (define/contract (cene-definition-lang-impl-qualify-root)
   (-> sink-authorized-name?)
   (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root maybe-run-getfx)
+    (just #/list
+      (cene-root-info ds lang-impl-qualify-root)
+      maybe-run-getfx)
     (error "Expected every call to `cene-definition-lang-impl-qualify-root` to occur with an implementation in the dynamic scope")
     lang-impl-qualify-root))
 
@@ -361,7 +378,7 @@
 (define/contract (cene-definition-run-getfx effects)
   (-> sink-getfx? sink?)
   (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root #/just run-getfx)
+    (just #/list rinfo #/just run-getfx)
     (error "Expected every call to `cene-definition-get` to occur with an implementation in the dynamic scope")
   #/dissect effects (sink-getfx go)
   #/run-getfx #/go))
@@ -409,13 +426,13 @@
 (define/contract (with-getfx-run-getfx body)
   (-> (-> any/c) any/c)
   (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root maybe-run-getfx)
+    (just #/list rinfo maybe-run-getfx)
     (error "Expected every call to `with-getfx-run-getfx` to occur with an implementation in the dynamic scope")
   #/parameterize
     (
       [
         cene-definition-get-param
-        (just #/list ds lang-impl-qualify-root #/just #/fn effects
+        (just #/list rinfo #/just #/fn effects
           (shift-at cene-definition-get-prompt-tag k
           #/getfx-with-cene-definition-restorer #/fn restore
           #/getfx-bind effects #/fn value
@@ -426,13 +443,13 @@
 (define/contract (with-extfx-run-getfx body)
   (-> (-> any/c) any/c)
   (expect (cene-definition-get-param)
-    (just #/list ds lang-impl-qualify-root maybe-run-getfx)
+    (just #/list rinfo maybe-run-getfx)
     (error "Expected every call to `with-extfx-run-getfx` to occur with an implementation in the dynamic scope")
   #/parameterize
     (
       [
         cene-definition-get-param
-        (just #/list ds lang-impl-qualify-root #/just #/fn effects
+        (just #/list rinfo #/just #/fn effects
           (shift-at cene-definition-get-prompt-tag k
           #/extfx-with-cene-definition-restorer #/fn restore
           #/extfx-run-getfx effects #/fn value
@@ -440,14 +457,12 @@
           #/k value))])
     (body)))
 
-(define/contract (with-gets-from ds lang-impl-qualify-root body)
-  (-> dspace? sink-authorized-name? (-> any) any)
+(define/contract (with-gets-from rinfo body)
+  (-> (struct/c cene-root-info dspace? sink-authorized-name?) (-> any)
+    any)
   (begin (assert-cannot-get-cene-definition-globals!)
   #/parameterize
-    (
-      [
-        cene-definition-get-param
-        (just #/list ds lang-impl-qualify-root #/nothing)])
+    ([cene-definition-get-param (just #/list rinfo #/nothing)])
     (body)))
 
 (define/contract (getfx-run-sink-getfx effects)
@@ -744,12 +759,6 @@
         ; `with-gets-from` call. Because of that, it's fine for us to
         ; call `getfx-dexed-of` here in an
         ; `assert-cannot-get-cene-definition-globals!` zone.
-        ;
-        ; TODO WITH-GETS-FROM: We should refactor Cene's
-        ; `{dex,cline,merge,fuse}-{by-own-method,fix}` and maybe even
-        ; `fuse-fusable-fn` so they're implemented with that
-        ; technique. For now, they're buggy, and we only get away with
-        ; it because we don't use them or run tests on them yet.
         ;
         (extfx-run-getfx (getfx-dexed-of dex value) #/fn maybe-dexed
         #/extfx-ct-continue then
