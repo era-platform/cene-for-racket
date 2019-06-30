@@ -49,7 +49,7 @@
   error-definer-uninformative extfx? extfx-claim-unique
   extfx-ct-continue extfx-noop extfx-pub-write extfx-run-getfx
   extfx-put extfx-split-list extfx-sub-write fuse-extfx getfx?
-  getfx-bind getfx-done getfx-err getfx-get make-pub make-sub
+  getfx-bind getfx/c getfx-done getfx-err getfx-get make-pub make-sub
   optionally-dexed-dexed optionally-dexed-once pure-run-getfx
   success-or-error-definer)
 (require #/only-in effection/order
@@ -483,6 +483,18 @@
   (begin (assert-can-get-cene-definitions!)
   #/cene-run-getfx #/getfx-run-sink-getfx effects))
 
+(define/contract (getfx-bind-restoring effects then)
+  (-> getfx? (-> any/c getfx?) getfx?)
+  (getfx-with-cene-definition-restorer #/fn restore
+  #/getfx-bind effects #/fn intermediate
+  #/restore #/fn
+  #/then intermediate))
+
+(define/contract (getfx-map-restoring effects then)
+  (-> getfx? (-> any/c any/c) getfx?)
+  (getfx-bind-restoring effects #/fn intermediate
+  #/getfx-done #/then intermediate))
+
 (define-generics cexpr
   (cexpr-has-free-vars? cexpr env)
   (cexpr-eval-in-env fault cexpr env))
@@ -576,7 +588,8 @@
       #/w- arg (-eval-in-env fault arg env)
       #/expect (sink-fault? fault-arg) #t
         (cene-err fault "Expected the blame argument to be a blame value")
-      #/sink-call-fault fault fault-arg func arg))
+      #/cene-run-getfx
+        (getfx-sink-call-fault fault fault-arg func arg)))
   ])
 
 (struct-easy (cexpr-call func arg)
@@ -1019,35 +1032,36 @@
   (-> sink-fault?)
   (sink-fault #/just #/current-continuation-marks))
 
-(define/contract (getfx-err-clamor fault message)
+(define/contract (getfx-cene-err fault message)
   (-> sink-fault? immutable-string? getfx?)
-  (getfx-err-from-clamor #/make-sink-struct (s-clamor-err) #/list
+  ; TODO: See if there's a way we can either stop depending on
+  ; `s-clamor-err` here or move this code after the place where
+  ; `s-clamor-err` is defined.
+  (begin (assert-can-get-cene-definition-globals!)
+  #/getfx-err-from-clamor #/make-sink-struct (s-clamor-err) #/list
     fault
     (sink-string message)))
 
 (define-simple-macro (cene-err fault:expr message:string)
-  ; TODO: See if there's a way we can either stop depending on
-  ; `s-clamor-err` here or move this code after the place where
-  ; `s-clamor-err` is defined.
   (begin (assert-can-get-cene-definitions!)
-  #/cene-run-getfx #/getfx-err-clamor fault message))
+  #/cene-run-getfx #/getfx-cene-err fault message))
 
 (define/contract
-  (sink-call-fault-binary caller-fault explicit-fault func arg)
-  (-> sink-fault? sink-fault? sink? sink? sink?)
+  (getfx-sink-call-fault-binary caller-fault explicit-fault func arg)
+  (-> sink-fault? sink-fault? sink? sink? #/getfx/c sink?)
   (begin (assert-can-get-cene-definitions!)
   #/mat func (sink-opaque-fn racket-func)
-    (racket-func arg)
+    (getfx-done #/racket-func arg)
   #/mat func (sink-opaque-fn-fault racket-func)
-    (racket-func #/list explicit-fault arg)
+    (getfx-done #/racket-func #/list explicit-fault arg)
   #/mat func (sink-struct tags projs)
     (dissect (list-map tags #/fn tag #/sink-name tag)
       (cons main-tag proj-tags)
     
     ; TODO: This lookup might be expensive. See if we should memoize
     ; it.
-    #/w- impl
-      (cene-run-sink-getfx #/sink-getfx-get
+    #/getfx-bind-restoring
+      (getfx-run-sink-getfx #/sink-getfx-get
       #/sink-name-for-function-implementation-value
         main-tag
         (list-foldr proj-tags (sink-table #/table-empty)
@@ -1057,40 +1071,47 @@
           ; `s-trivial` here or move this code after the place where
           ; `s-trivial` is defined.
           #/just #/make-sink-struct (s-trivial) #/list)))
+    #/fn impl
     
-    #/sink-call-fault-binary caller-fault explicit-fault
-      (sink-call-fault-binary caller-fault caller-fault impl func)
-      arg)
+    #/getfx-bind-restoring
+      (getfx-sink-call-fault-binary
+        caller-fault caller-fault impl func)
+    #/fn func
+    #/getfx-sink-call-fault-binary
+      caller-fault explicit-fault func arg)
   #/cene-err caller-fault "Tried to call a value that wasn't an opaque function or a struct"))
 
-(define/contract (sink-call-binary caller-fault func arg)
-  (-> sink-fault? sink? sink? sink?)
+(define/contract (getfx-sink-call-binary caller-fault func arg)
+  (-> sink-fault? sink? sink? #/getfx/c sink?)
   (begin (assert-can-get-cene-definitions!)
-  #/sink-call-fault-binary caller-fault caller-fault func arg))
+  #/getfx-sink-call-fault-binary caller-fault caller-fault func arg))
 
 (define/contract
-  (sink-call-fault-list
+  (getfx-sink-call-fault-list
     caller-fault explicit-fault func first-arg args)
-  (-> sink-fault? sink-fault? sink? sink? (listof sink?) sink?)
+  (-> sink-fault? sink-fault? sink? sink? (listof sink?)
+    (getfx/c sink?))
   (begin (assert-can-get-cene-definitions!)
   #/dissect (reverse #/cons first-arg args) (cons last-arg rev-args)
   #/w- func
     (list-foldl func (reverse rev-args) #/fn func arg
-      (sink-call-binary caller-fault func arg))
-  #/sink-call-fault-binary caller-fault explicit-fault func last-arg))
+      (cene-run-getfx #/getfx-sink-call-binary caller-fault func arg))
+  #/getfx-sink-call-fault-binary
+    caller-fault explicit-fault func last-arg))
 
 (define/contract (sink-call-list caller-fault func args)
   (-> sink-fault? sink? (listof sink?) sink?)
   (begin (assert-can-get-cene-definitions!)
   #/list-foldl func args #/fn func arg
-    (sink-call-binary caller-fault func arg)))
+    (cene-run-getfx #/getfx-sink-call-binary caller-fault func arg)))
 
 (define/contract
-  (sink-call-fault caller-fault explicit-fault func first-arg . args)
+  (getfx-sink-call-fault
+    caller-fault explicit-fault func first-arg . args)
   (->* (sink-fault? sink-fault? sink? sink?) #:rest (listof sink?)
-    sink?)
+    (getfx/c sink?))
   (begin (assert-can-get-cene-definitions!)
-  #/sink-call-fault-list
+  #/getfx-sink-call-fault-list
     caller-fault explicit-fault func first-arg args))
 
 (define/contract (sink-call caller-fault func . args)

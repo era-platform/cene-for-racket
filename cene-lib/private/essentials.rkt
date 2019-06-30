@@ -242,18 +242,6 @@
   #:other #:methods gen:sink [])
 
 
-(define/contract (getfx-bind-restoring effects then)
-  (-> getfx? (-> any/c getfx?) getfx?)
-  (getfx-with-cene-definition-restorer #/fn restore
-  #/getfx-bind effects #/fn intermediate
-  #/restore #/fn
-  #/then intermediate))
-
-(define/contract (getfx-map-restoring effects then)
-  (-> getfx? (-> any/c any/c) getfx?)
-  (getfx-bind-restoring effects #/fn intermediate
-  #/getfx-done #/then intermediate))
-
 (define/contract (sink-getfx-done result)
   (-> sink? sink-getfx?)
   (sink-getfx #/fn #/getfx-done result))
@@ -413,11 +401,13 @@
         (sink-mobile-built-in-call fault "mobile-reified" (next))))))
 
 (define/contract
-  (sink-mobile-call-binary fault mobile-func mobile-arg)
-  (-> sink-fault? sink-mobile? sink-mobile? sink-mobile?)
+  (getfx-sink-mobile-call-binary fault mobile-func mobile-arg)
+  (-> sink-fault? sink-mobile? sink-mobile? #/getfx/c sink-mobile?)
   (dissect mobile-func (sink-mobile func make-func-expr _)
   #/dissect mobile-arg (sink-mobile arg make-arg-expr _)
-  #/make-sink-mobile fault (sink-call-binary fault func arg)
+  #/getfx-bind-restoring (getfx-sink-call-binary fault func arg)
+  #/fn func-result
+  #/getfx-done #/make-sink-mobile fault func-result
     (sink-perffx-bind make-func-expr #/fn func-expr
       (sink-perffx-bind make-arg-expr #/fn arg-expr
       #/sink-perffx-done #/sink-cexpr-call func-expr arg-expr))
@@ -428,7 +418,8 @@
 (define/contract (sink-mobile-call-list fault mobile-func mobile-args)
   (-> sink-fault? sink-mobile? (listof sink-mobile?) sink-mobile?)
   (list-foldl mobile-func mobile-args #/fn mobile-func mobile-arg
-    (sink-mobile-call-binary fault mobile-func mobile-arg)))
+    (cene-run-getfx
+      (getfx-sink-mobile-call-binary fault mobile-func mobile-arg))))
 
 (define/contract (sink-mobile-call fault mobile-func . mobile-args)
   (->* (sink-fault? sink-mobile?) #:rest (listof sink-mobile?)
@@ -1163,12 +1154,12 @@
       #/with-gets-from rinfo #/fn
       #/w- sink-getfx-unwrapped (sink-call fault unwrap x)
       #/expect (sink-getfx? sink-getfx-unwrapped) #t
-        (getfx-err-clamor fault expected-getfx)
+        (getfx-cene-err fault expected-getfx)
       #/getfx-bind-restoring
         (getfx-run-sink-getfx sink-getfx-unwrapped)
       #/fn unwrapped
       #/expect unwrapped (sink-type result)
-        (getfx-err-clamor fault expected-method)
+        (getfx-cene-err fault expected-method)
       #/getfx-done result))))
 
 (define-fix-converter converter-for-dex-fix sink-dex
@@ -1207,22 +1198,22 @@
       #/mat command
         (unsafe:cmp-by-own-method::getfx-err-different-methods
           a b a-method b-method)
-        (getfx-err-clamor fault "Obtained two different methods from the two values being compared")
+        (getfx-cene-err fault "Obtained two different methods from the two values being compared")
       #/dissect command
         (unsafe:cmp-by-own-method::getfx-get-method source)
       #/w- sink-getfx-maybe-method
         (sink-call fault getfx-get-method source)
       #/expect (sink-getfx? sink-getfx-maybe-method) #t
-        (getfx-err-clamor fault expected-getfx)
+        (getfx-cene-err fault expected-getfx)
       #/getfx-bind-restoring
         (getfx-run-sink-getfx sink-getfx-maybe-method)
       #/fn sink-maybe-method
       #/expect (sink-maybe->maybe-racket sink-maybe-method)
         (just maybe-method)
-        (getfx-err-clamor fault expected-maybe)
+        (getfx-cene-err fault expected-maybe)
       #/getfx-done #/maybe-map maybe-method #/fn method
         (expect method (sink-cmp method)
-          (getfx-err-clamor fault expected-method)
+          (getfx-cene-err fault expected-method)
           method)))))
 
 (define-syntax-rule
@@ -1249,30 +1240,30 @@
       #/mat command
         (unsafe:furge-by-own-method::getfx-err-different-input-methods
           a b a-method b-method)
-        (getfx-err-clamor fault "Obtained two different methods from the two input values")
+        (getfx-cene-err fault "Obtained two different methods from the two input values")
       #/mat command
         (unsafe:furge-by-own-method::getfx-err-cannot-get-output-method
           a b result input-method)
-        (getfx-err-clamor fault "Could not obtain a method from the result value")
+        (getfx-cene-err fault "Could not obtain a method from the result value")
       #/mat command
         (unsafe:furge-by-own-method::getfx-err-different-output-method
           a b result input-method output-method)
-        (getfx-err-clamor fault "Obtained two different methods from the input and the output")
+        (getfx-cene-err fault "Obtained two different methods from the input and the output")
       #/dissect command
         (unsafe:furge-by-own-method::getfx-get-method source)
       #/w- sink-getfx-maybe-method
         (sink-call fault getfx-get-method source)
       #/expect (sink-getfx? sink-getfx-maybe-method) #t
-        (getfx-err-clamor fault expected-getfx)
+        (getfx-cene-err fault expected-getfx)
       #/getfx-bind-restoring
         (getfx-run-sink-getfx sink-getfx-maybe-method)
       #/fn sink-maybe-method
       #/expect (sink-maybe->maybe-racket sink-maybe-method)
         (just maybe-method)
-        (getfx-err-clamor fault expected-maybe)
+        (getfx-cene-err fault expected-maybe)
       #/getfx-done #/maybe-map maybe-method #/fn method
         (expect method (sink-furge method)
-          (getfx-err-clamor fault expected-method)
+          (getfx-cene-err fault expected-method)
           method)))))
 
 (define-cmp-by-own-method-converter
@@ -1324,16 +1315,16 @@
     #/mat command
       (unsafe:fuse-fusable-function::getfx-err-cannot-combine-results
         method a b a-result b-result)
-      (getfx-err-clamor fault "Could not combine the result values")
+      (getfx-cene-err fault "Could not combine the result values")
     #/dissect command
       (unsafe:fuse-fusable-function::getfx-arg-to-method arg)
     #/w- sink-getfx-method (sink-call fault arg-to-method arg)
     #/expect (sink-getfx? sink-getfx-method) #t
-      (getfx-err-clamor fault "Expected the pure result of a fuse-fusable-fn body to be a getfx effectful computation")
+      (getfx-cene-err fault "Expected the pure result of a fuse-fusable-fn body to be a getfx effectful computation")
     #/getfx-bind-restoring (getfx-run-sink-getfx sink-getfx-method)
     #/fn method
     #/expect method (sink-fuse method)
-      (getfx-err-clamor fault "Expected the result of a fuse-fusable-fn body to be a fuse")
+      (getfx-cene-err fault "Expected the result of a fuse-fusable-fn body to be a fuse")
     #/getfx-done method)))
 
 
@@ -2224,10 +2215,11 @@
   (def-func-fault! "make-fusable-fn" caller-fault func
     (sink-opaque-fn-fault
       (make-fusable-function #/dissectfn (list explicit-fault arg)
-        (w- sink-getfx-result
-          (sink-call-fault caller-fault explicit-fault func arg)
+        (getfx-bind-restoring
+          (getfx-sink-call-fault caller-fault explicit-fault func arg)
+        #/fn sink-getfx-result
         #/expect (sink-getfx? sink-getfx-result) #t
-          (getfx-err-clamor caller-fault "Expected the pure result of a fusable-fn body to be a getfx effectful computation")
+          (getfx-cene-err caller-fault "Expected the pure result of a fusable-fn body to be a getfx effectful computation")
         #/getfx-run-sink-getfx sink-getfx-result))))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
@@ -2664,11 +2656,12 @@
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "mobile-call-binary" fault mobile-func mobile-arg
-    (expect (sink-mobile? mobile-func) #t
-      (cene-err fault "Expected mobile-func to be a mobile value")
+    (cene-run-getfx
+    #/expect (sink-mobile? mobile-func) #t
+      (getfx-cene-err fault "Expected mobile-func to be a mobile value")
     #/expect (sink-mobile? mobile-arg) #t
-      (cene-err fault "Expected mobile-arg to be a mobile value")
-    #/sink-mobile-call-binary fault mobile-func mobile-arg))
+      (getfx-cene-err fault "Expected mobile-arg to be a mobile value")
+    #/getfx-sink-mobile-call-binary fault mobile-func mobile-arg))
   
   (def-macro! "c" #/fn
     fault unique-name qualify text-input-stream then
@@ -2832,7 +2825,7 @@
       (w- sink-getfx-result
         (sink-call fault getfx-key-to-operand #/sink-name k)
       #/expect (sink-getfx? sink-getfx-result) #t
-        (getfx-err-clamor "Expected the pure result of a getfx-table-map-fuse body to be a getfx effectful computation")
+        (getfx-cene-err fault "Expected the pure result of a getfx-table-map-fuse body to be a getfx effectful computation")
       #/getfx-run-sink-getfx sink-getfx-result)))
   
   (def-func-fault! "getfx-table-sort" fault cline table
