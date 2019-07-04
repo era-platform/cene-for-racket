@@ -242,11 +242,6 @@
   #:other #:methods gen:sink [])
 
 
-(define/contract (cenegetfx-run-sink-getfx effects)
-  (-> sink-getfx? cenegetfx?)
-  (dissect effects (sink-getfx cenegetfx-go)
-    cenegetfx-go))
-
 (define/contract (sink-getfx-done result)
   (-> sink? sink-getfx?)
   (sink-getfx #/cenegetfx-done result))
@@ -451,44 +446,49 @@
 (struct-easy
   (cene-struct-metadata tags proj-string-to-name proj-name-to-string))
 
-(define/contract (verify-sink-struct-metadata! fault sink-metadata)
-  (-> sink-fault? sink? cene-struct-metadata?)
-  (begin (assert-can-get-cene-definitions!)
+(define/contract
+  (cenegetfx-verify-sink-struct-metadata fault sink-metadata)
+  (-> sink-fault? sink? #/cenegetfx/c cene-struct-metadata?)
+  (cenegetfx-with-run-getfx #/fn
   #/expect
     (unmake-sink-struct-maybe (s-struct-metadata) sink-metadata)
     (just #/list main-tag-name projs)
-    (cene-err fault "Expected a defined struct metadata entry to be a struct-metadata")
+    (cenegetfx-cene-err fault "Expected a defined struct metadata entry to be a struct-metadata")
   #/expect main-tag-name (sink-name main-tag-name)
-    (cene-err fault "Expected a defined struct metadata entry to have a main tag name that was a name")
+    (cenegetfx-cene-err fault "Expected a defined struct metadata entry to have a main tag name that was a name")
   #/expect (sink-list->maybe-racket projs) (just projs)
-    (cene-err fault "Expected a defined struct metadata entry to have a cons list of projections")
-  #/w- projs
-    (list-map projs #/fn entry
-      (expect (unmake-sink-struct-maybe (s-assoc) entry)
+    (cenegetfx-cene-err fault "Expected a defined struct metadata entry to have a cons list of projections")
+  #/cenegetfx-bind
+    (cenegetfx-list-map #/list-map projs #/fn entry
+      (cenegetfx-with-run-getfx #/fn
+      #/expect (unmake-sink-struct-maybe (s-assoc) entry)
         (just #/list proj-string proj-name)
-        (cene-err fault "Expected a defined struct metadata entry to have a projection list where each entry was an assoc")
+        (cenegetfx-cene-err fault "Expected a defined struct metadata entry to have a projection list where each entry was an assoc")
       #/expect proj-string (sink-string proj-string)
-        (cene-err fault "Expected a defined struct metadata entry to have a projection list where each key was a string")
+        (cenegetfx-cene-err fault "Expected a defined struct metadata entry to have a projection list where each key was a string")
       #/expect proj-name (sink-name proj-name)
-        (cene-err fault "Expected a defined struct metadata entry to have a projection list where each associated value was a name")
+        (cenegetfx-cene-err fault "Expected a defined struct metadata entry to have a projection list where each associated value was a name")
       #/w- proj-string-name
         (name-for-sink-string #/sink-string proj-string)
-      #/list proj-string proj-string-name proj-name))
+      #/cenegetfx-done #/list proj-string proj-string-name proj-name))
+  #/fn projs
+  #/cenegetfx-with-run-getfx #/fn
   #/expect
     (assocs->table-if-mutually-unique
     #/list-map projs #/dissectfn (list string string-name name)
       (cons string-name name))
     (just proj-string-to-name)
-    (cene-err fault "Expected a defined struct metadata entry to have a projection list with mutually unique strings")
+    (cenegetfx-cene-err fault "Expected a defined struct metadata entry to have a projection list with mutually unique strings")
   #/expect
     (assocs->table-if-mutually-unique
     #/list-map projs #/dissectfn (list string string-name name)
       (cons name string))
     (just proj-name-to-string)
-    (cene-err fault "Expected a defined struct metadata entry to have a projection list with mutually unique names")
-  #/cene-struct-metadata
+    (cenegetfx-cene-err fault "Expected a defined struct metadata entry to have a projection list with mutually unique names")
+  #/cenegetfx-done #/cene-struct-metadata
     (cons main-tag-name
-    #/list-map projs #/dissectfn (list string string-name name) name)
+      (list-map projs #/dissectfn (list string string-name name)
+        name))
     proj-string-to-name proj-name-to-string))
 
 (define/contract (sink-name-for-struct-metadata inner-name)
@@ -519,8 +519,10 @@
     (sink-getfx-get #/sink-authorized-name-get-name metadata-name)
   #/fn metadata
   ; TODO FAULT: Make this `fault` more specific.
-  #/then unique-name qualify text-input-stream
-    (verify-sink-struct-metadata! fault metadata)))
+  #/sink-extfx-run-cenegetfx
+    (cenegetfx-verify-sink-struct-metadata fault metadata)
+  #/fn metadata
+  #/then unique-name qualify text-input-stream metadata))
 
 (define/contract (struct-metadata-tags metadata)
   (-> cene-struct-metadata? #/listof name?)
@@ -1119,7 +1121,7 @@
   (fn this dex
     (dissect this (fix-for-sink-dex-list rinfo dex-elem)
     #/with-gets-from rinfo #/fn
-    #/with-getfx-run-getfx #/fn
+    #/getfx-with-run-getfx #/fn
     #/getfx-done #/dex-default
       (dex-sink-struct (s-nil) #/list)
       (dex-sink-struct (s-cons) #/list dex-elem dex))))
@@ -1212,7 +1214,7 @@
       #/cenegetfx-bind
         (cenegetfx-run-sink-getfx sink-getfx-maybe-method)
       #/fn sink-maybe-method
-      #/cenegetfx-with-gets #/fn
+      #/cenegetfx-with-run-getfx #/fn
       #/expect (sink-maybe->maybe-racket sink-maybe-method)
         (just maybe-method)
         (cenegetfx-cene-err fault expected-maybe)
@@ -1262,7 +1264,7 @@
         (cenegetfx-cene-err fault expected-getfx)
       #/getfx-bind (cenegetfx-run-sink-getfx sink-getfx-maybe-method)
       #/fn sink-maybe-method
-      #/cenegetfx-with-gets #/fn
+      #/cenegetfx-with-run-getfx #/fn
       #/expect (sink-maybe->maybe-racket sink-maybe-method)
         (just maybe-method)
         (cenegetfx-cene-err fault expected-maybe)
@@ -1459,8 +1461,11 @@
         (cene-err fault "Expected text-input-stream to be a text input stream")
       #/expect (sink-cexpr-sequence-output-stream? output-stream) #t
         (cene-err fault "Expected output-stream to be an expression sequence output stream")
+      #/w- rinfo (cene-definition-root-info)
       #/body fault unique-name qualify text-input-stream output-stream
       #/fn unique-name qualify text-input-stream output-stream
+      #/with-gets-from rinfo #/fn
+      #/sink-extfx-with-run-getfx #/fn
       #/w- effects
         (sink-call fault then
           unique-name qualify text-input-stream output-stream)
@@ -1479,6 +1484,7 @@
       (sink-extfx-read-bounded-specific-number-of-cexprs
         fault unique-name qualify text-input-stream n-args
       #/fn unique-name qualify text-input-stream args
+      #/sink-extfx-with-run-getfx #/fn
       #/sink-extfx-cexpr-write fault output-stream (body args)
       #/fn output-stream
       #/then unique-name qualify text-input-stream output-stream)))
@@ -1918,7 +1924,7 @@
     (expect dex (sink-dex dex)
       (cene-err fault "Expected dex to be a dex")
     #/sink-getfx
-      (cenegetfx-run-getfx-with-gets #/fn
+      (cenegetfx-run-getfx-with-run-getfx #/fn
       #/getfx-map-restoring (getfx-is-in-dex dex v) #/fn result
         (racket-boolean->sink result))))
   
@@ -1928,7 +1934,7 @@
     (expect dex (sink-dex dex)
       (cene-err fault "Expected dex to be a dex")
     #/sink-getfx
-      (cenegetfx-run-getfx-with-gets #/fn
+      (cenegetfx-run-getfx-with-run-getfx #/fn
       #/getfx-map-restoring (getfx-name-of dex v) #/fn maybe-result
         (racket-maybe->sink #/maybe-map maybe-result #/fn result
           (sink-name result)))))
@@ -1938,7 +1944,7 @@
     (expect dex (sink-dex dex)
       (cene-err fault "Expected dex to be a dex")
     #/sink-getfx
-      (cenegetfx-run-getfx-with-gets #/fn
+      (cenegetfx-run-getfx-with-run-getfx #/fn
       #/getfx-map-restoring (getfx-dexed-of dex v) #/fn maybe-result
         (racket-maybe->sink #/maybe-map maybe-result #/fn result
           (sink-dexed result)))))
@@ -1949,7 +1955,7 @@
     (expect dex (sink-dex dex)
       (cene-err fault "Expected dex to be a dex")
     #/sink-getfx
-      (cenegetfx-run-getfx-with-gets #/fn
+      (cenegetfx-run-getfx-with-run-getfx #/fn
       #/getfx-map-restoring (getfx-compare-by-dex dex a b)
       #/fn maybe-result
         (racket-maybe->sink #/maybe-map maybe-result #/fn result
@@ -2042,7 +2048,7 @@
     (expect cline (sink-cline cline)
       (cene-err fault "Expected cline to be a cline")
     #/sink-getfx
-      (cenegetfx-run-getfx-with-gets #/fn
+      (cenegetfx-run-getfx-with-run-getfx #/fn
       #/getfx-map-restoring (getfx-is-in-cline cline v) #/fn result
         (racket-boolean->sink result))))
   
@@ -2052,7 +2058,7 @@
     (expect cline (sink-cline cline)
       (cene-err fault "Expected cline to be a cline")
     #/sink-getfx
-      (cenegetfx-run-getfx-with-gets #/fn
+      (cenegetfx-run-getfx-with-run-getfx #/fn
       #/getfx-map-restoring (getfx-compare-by-cline cline a b)
       #/fn maybe-result
         (racket-maybe->sink #/maybe-map maybe-result #/fn result
@@ -2122,7 +2128,7 @@
     (expect merge (sink-merge merge)
       (cene-err fault "Expected merge to be a merge")
     #/sink-getfx
-      (cenegetfx-run-getfx-with-gets #/fn
+      (cenegetfx-run-getfx-with-run-getfx #/fn
       #/getfx-map-restoring (getfx-call-merge merge a b) #/fn result
         (racket-maybe->sink result))))
   
@@ -2130,7 +2136,7 @@
     (expect fuse (sink-fuse fuse)
       (cene-err fault "Expected fuse to be a fuse")
     #/sink-getfx
-      (cenegetfx-run-getfx-with-gets #/fn
+      (cenegetfx-run-getfx-with-run-getfx #/fn
       #/getfx-map-restoring (getfx-call-fuse fuse a b) #/fn result
         (racket-maybe->sink result))))
   
@@ -2231,7 +2237,7 @@
       (make-fusable-function #/dissectfn (list explicit-fault arg)
         (getfx-ambient-run-cenegetfx
         #/cenegetfx-bind
-          (cenegetfx-run-getfx-with-gets #/fn
+          (cenegetfx-run-getfx-with-run-getfx #/fn
           #/getfx-sink-call-fault caller-fault explicit-fault func arg)
         #/fn sink-getfx-result
         #/expect (sink-getfx? sink-getfx-result) #t
@@ -2677,7 +2683,7 @@
       (cenegetfx-cene-err fault "Expected mobile-func to be a mobile value")
     #/expect (sink-mobile? mobile-arg) #t
       (cenegetfx-cene-err fault "Expected mobile-arg to be a mobile value")
-    #/cenegetfx-run-getfx-with-gets #/fn
+    #/cenegetfx-run-getfx-with-run-getfx #/fn
       (getfx-sink-mobile-call-binary fault mobile-func mobile-arg)))
   
   (def-macro! "c" #/fn
@@ -2843,6 +2849,7 @@
       #/cenegetfx-run-getfx
       #/getfx-table-map-fuse table fuse #/fn k
         (with-gets-from rinfo #/fn
+        #/getfx-with-run-getfx #/fn
         #/w- sink-getfx-result
           (sink-call fault getfx-key-to-operand #/sink-name k)
         #/getfx-run-cenegetfx rinfo
@@ -2856,7 +2863,7 @@
     #/expect table (sink-table table)
       (cene-err fault "Expected table to be a table")
     #/sink-getfx
-      (cenegetfx-run-getfx-with-gets #/fn
+      (cenegetfx-run-getfx-with-run-getfx #/fn
       #/getfx-map-restoring (getfx-table-sort cline table)
       #/fn maybe-ranks
         (racket-maybe->sink #/maybe-map maybe-ranks #/fn ranks

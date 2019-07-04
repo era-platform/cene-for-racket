@@ -25,6 +25,7 @@
 
 
 ; TODO: Document these exports.
+(provide cenegetfx-done)
 (provide cene-root-info)
 (provide extfx-run-sink-extfx)
 (provide make-fault-internal)

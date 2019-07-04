@@ -69,7 +69,7 @@
         (sink-extfx-init-package fault unique-name-package qualify)
         (sink-extfx-run-string
           fault unique-name-sample qualify code-string)
-      #/make-sink-extfx #/fn
+      #/make-sink-extfx #/cenegetfx-done
         (extfx-ct-continue then
           (error-definer-from-message
             "Internal error: Expected the cene-run-string-sample continuation ticket to be written to only once")
