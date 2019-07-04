@@ -1380,8 +1380,8 @@
       (sink-authorized-name-get-name unique-name-for-step)
       (sink-fn-curried-fault 1 #/fn fault name
         (expect (sink-name? name) #t
-          (cene-err fault "Expected the input to an extfx-put-all-built-in-syntaxes-this-came-with qualify function to be a name")
-        #/qualify-for-package name)))))
+          (cenegetfx-cene-err fault "Expected the input to an extfx-put-all-built-in-syntaxes-this-came-with qualify function to be a name")
+        #/cenegetfx-done #/qualify-for-package name)))))
 
 (define/contract
   (sink-extfx-init-essentials root-fault root-unique-name)
@@ -1455,12 +1455,13 @@
     (sink-fn-curried-fault 5 #/fn
       fault unique-name qualify text-input-stream output-stream then
       
-      (expect (sink-authorized-name? unique-name) #t
-        (cene-err fault "Expected unique-name to be an authorized name")
+      (cenegetfx-done
+      #/expect (sink-authorized-name? unique-name) #t
+        (sink-extfx-cene-err fault "Expected unique-name to be an authorized name")
       #/expect (sink-text-input-stream? text-input-stream) #t
-        (cene-err fault "Expected text-input-stream to be a text input stream")
+        (sink-extfx-cene-err fault "Expected text-input-stream to be a text input stream")
       #/expect (sink-cexpr-sequence-output-stream? output-stream) #t
-        (cene-err fault "Expected output-stream to be an expression sequence output stream")
+        (sink-extfx-cene-err fault "Expected output-stream to be an expression sequence output stream")
       #/w- rinfo (cene-definition-root-info)
       #/body fault unique-name qualify text-input-stream output-stream
       #/fn unique-name qualify text-input-stream output-stream
@@ -1470,7 +1471,7 @@
         (sink-call fault then
           unique-name qualify text-input-stream output-stream)
       #/expect (sink-extfx? effects) #t
-        (cene-err fault "Expected the return value of a macro's callback to be an extfx effectful computation")
+        (sink-extfx-cene-err fault "Expected the return value of a macro's callback to be an extfx effectful computation")
         effects)))
   
   ; This creates a macro implementation function that reads a form
@@ -1561,7 +1562,12 @@
         qualified-main-tag-authorized-name
         (sink-table #/table-empty)
         (sink-opaque-fn #/fn struct-value
-          (sink-fn-curried-fault n-args racket-func)))
+          (cenegetfx-done
+            ; TODO: Avoid this `apply` wrapper by having every call
+            ; site pass in a `racket-func` that returns a cenegetfx
+            ; value.
+            (sink-fn-curried-fault n-args #/lambda args
+              (cenegetfx-done #/apply racket-func args)))))
       
       ))
   
@@ -1634,8 +1640,8 @@
         (sink-fn-curried-fault 2 #/fn fault struct-value arg
           (expect (unmake-sink-struct-maybe (s-trivial) arg)
             (just #/list)
-            (cene-err fault "Expected the argument to a nullary function to be a trivial")
-            result)))
+            (cenegetfx-cene-err fault "Expected the argument to a nullary function to be a trivial")
+          #/cenegetfx-done result)))
       
       ))
   
@@ -1726,7 +1732,7 @@
         qualified-main-tag-authorized-name
         (sink-table qualified-proj-names-table)
         (sink-opaque-fn-fault #/dissectfn (list fault struct-value)
-          (cene-err fault "Called a struct that wasn't intended for calling")))
+          (cenegetfx-cene-err fault "Called a struct that wasn't intended for calling")))
       
       ; We also define something we can use to look up a qualified
       ; main tag name and an ordered list of qualified and unqualified
@@ -2226,23 +2232,21 @@
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func! "is-fusable-fn" v
-    (racket-boolean->sink
-    #/mat v (sink-opaque-fn v) (fusable-function? v)
-    #/mat v (sink-opaque-fn-fault v) (fusable-function? v)
-      #f))
+    (racket-boolean->sink #/sink-opaque-fn-fusable? v))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "make-fusable-fn" caller-fault func
-    (sink-opaque-fn-fault
-      (make-fusable-function #/dissectfn (list explicit-fault arg)
-        (getfx-ambient-run-cenegetfx
-        #/cenegetfx-bind
-          (cenegetfx-run-getfx-with-run-getfx #/fn
-          #/getfx-sink-call-fault caller-fault explicit-fault func arg)
-        #/fn sink-getfx-result
-        #/expect (sink-getfx? sink-getfx-result) #t
-          (cenegetfx-cene-err caller-fault "Expected the pure result of a fusable-fn body to be a getfx effectful computation")
-        #/cenegetfx-run-sink-getfx sink-getfx-result))))
+    (sink-opaque-fn-fusable #/make-fusable-function
+    #/dissectfn (list explicit-fault rinfo arg)
+      (getfx-run-cenegetfx rinfo
+      #/cenegetfx-bind
+        (cenegetfx-run-getfx-with-run-getfx #/fn
+        #/getfx-sink-call-fault caller-fault explicit-fault func
+          arg)
+      #/fn sink-getfx-result
+      #/expect (sink-getfx? sink-getfx-result) #t
+        (cenegetfx-cene-err caller-fault "Expected the pure result of a fusable-fn body to be a getfx effectful computation")
+      #/cenegetfx-run-sink-getfx sink-getfx-result)))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "fuse-fusable-fn-fault"
@@ -2251,7 +2255,7 @@
     (expect dexed-fault-and-arg-to-method
       (sink-dexed dexed-fault-and-arg-to-method)
       (cene-err fault "Expected dexed-fault-and-arg-to-method to be a dexed value")
-    #/sink-fuse #/fuse-struct sink-opaque-fn
+    #/sink-fuse #/fuse-struct sink-opaque-fn-fusable
     #/unsafe:fuse-fusable-function-thorough
       (dexed-struct sink-fuse-fusable-fn-unthorough
         (just-value #/pure-run-getfx #/getfx-dexed-of (dex-sink-fault)
@@ -3709,15 +3713,18 @@
         (verify-callback-extfx! fault #/sink-call fault on-expr
           state
           cexpr
-          (sink-fn-curried 1 #/fn state #/then state)))
+          (sink-fn-curried 1 #/fn state
+            (cenegetfx-done #/then state))))
     #/fn output-stream unwrap
     #/verify-callback-extfx! fault #/sink-call fault then
       output-stream
       (sink-fn-curried-fault 2 #/fn fault output-stream then
       #/expect (sink-cexpr-sequence-output-stream? output-stream) #t
-        (cene-err fault "Expected output-stream to be an expression sequence output stream")
-      #/unwrap output-stream #/fn state
-      #/verify-callback-extfx! fault #/sink-call fault then state)))
+        (cenegetfx-cene-err fault "Expected output-stream to be an expression sequence output stream")
+      #/cenegetfx-done
+        (unwrap output-stream #/fn state
+        #/verify-callback-extfx! fault
+          (sink-call fault then state)))))
   
   (def-func-fault! "extfx-expr-write" fault output-stream expr then
     (expect (sink-cexpr-sequence-output-stream? output-stream) #t
@@ -3859,8 +3866,8 @@
             (sink-call fault step unique-name
               (sink-fn-curried-fault 1 #/fn fault name
                 (expect (sink-name? name) #t
-                  (cene-err fault "Expected the input to an extfx-add-init-package-step qualify function to be a name")
-                #/qualify name))))))))
+                  (cenegetfx-cene-err fault "Expected the input to an extfx-add-init-package-step qualify function to be a name")
+                #/cenegetfx-done #/qualify name))))))))
   
   
   ; Define the other built-ins where the prelude code can see them.
@@ -3876,8 +3883,8 @@
     (sink-extfx-read-top-level root-fault unique-name
       (sink-fn-curried-fault 1 #/fn fault name
         (expect (sink-name? name) #t
-          (cene-err fault "Expected the input to the prelude qualify function to be a name")
-        #/qualify-for-prelude name))
+          (cenegetfx-cene-err fault "Expected the input to the prelude qualify function to be a name")
+        #/cenegetfx-done #/qualify-for-prelude name))
       (sink-text-input-stream #/box #/just
         (open-input-file prelude-path))))
   

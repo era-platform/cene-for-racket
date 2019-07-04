@@ -243,9 +243,8 @@
     (unless (immutable-string? racket-string)
       (error "Expected racket-string to be an immutable string")))
   #:other #:methods gen:sink [])
-; NOTE: Some `sink-opaque-fn-fault` and `sink-opaque-fn` satisfy
-; Cene's `is-fusable-fn` predicate, and some do not, so they're not
-; entirely opaque.
+(struct-easy (sink-opaque-fn-fusable racket-fn)
+  #:other #:methods gen:sink [])
 (struct-easy (sink-opaque-fn-fault racket-fn)
   #:other #:methods gen:sink [])
 (struct-easy (sink-opaque-fn racket-fn)
@@ -782,7 +781,7 @@
       (expect this (cexpr-opaque-fn-fault fault-param param body)
         (error "Expected this to be a cexpr-opaque-fn")
       #/sink-opaque-fn-fault #/dissectfn (list explicit-fault arg)
-        (-eval-in-env caller-fault body
+        (cenegetfx-done #/-eval-in-env caller-fault body
           (table-shadow fault-param (just explicit-fault)
           #/table-shadow param (just arg)
             env))))
@@ -807,7 +806,7 @@
       (expect this (cexpr-opaque-fn param body)
         (error "Expected this to be a cexpr-opaque-fn")
       #/sink-opaque-fn #/fn arg
-        (-eval-in-env caller-fault body
+        (cenegetfx-done #/-eval-in-env caller-fault body
           (table-shadow param (just arg) env))))
   ])
 
@@ -1164,7 +1163,7 @@
       (sink-opaque-fn-fault #/dissectfn (list fault arg)
         (apply racket-func fault #/reverse #/cons arg rev-args))
     #/sink-opaque-fn #/fn arg
-      (next n-args-after-next #/cons arg rev-args))))
+      (cenegetfx-done #/next n-args-after-next #/cons arg rev-args))))
 
 (define/contract (sink-fn-curried n-args racket-func)
   (-> exact-positive-integer? procedure? sink-opaque-fn?)
@@ -1174,7 +1173,7 @@
       (sink-opaque-fn #/fn arg
         (apply racket-func #/reverse #/cons arg rev-args))
     #/sink-opaque-fn #/fn arg
-      (next n-args-after-next #/cons arg rev-args))))
+      (cenegetfx-done #/next n-args-after-next #/cons arg rev-args))))
 
 ; TODO: See if we have to use this as often as we do. Maybe some of
 ; those places should be abstracted over a fault value instead.
@@ -1222,9 +1221,15 @@
   (-> sink-fault? sink-fault? sink? sink? #/getfx/c sink?)
   (begin (assert-can-get-cene-definitions!)
   #/mat func (sink-opaque-fn racket-func)
-    (getfx-done #/racket-func arg)
+    (getfx-ambient-run-cenegetfx #/racket-func arg)
   #/mat func (sink-opaque-fn-fault racket-func)
-    (getfx-done #/racket-func #/list explicit-fault arg)
+    (getfx-ambient-run-cenegetfx
+      (racket-func #/list explicit-fault arg))
+  #/mat func (sink-opaque-fn-fusable racket-func)
+    (getfx-ambient-run-cenegetfx
+    #/cenegetfx-bind (cenegetfx-read-root-info) #/fn rinfo
+    #/cenegetfx-run-getfx
+      (racket-func #/list explicit-fault rinfo arg))
   #/mat func (sink-struct tags projs)
     (dissect (list-map tags #/fn tag #/sink-name tag)
       (cons main-tag proj-tags)
@@ -1707,12 +1712,13 @@
       unique-name qualify text-input-stream output-stream
     #/sink-fn-curried-fault 4
     #/fn fault unique-name qualify text-input-stream output-stream
+    #/cenegetfx-done
     #/expect (sink-authorized-name? unique-name) #t
-      (cene-err fault "Expected the unique name of a macro's callback results to be an authorized name")
+      (sink-extfx-cene-err fault "Expected the unique name of a macro's callback results to be an authorized name")
     #/expect (sink-text-input-stream? text-input-stream) #t
-      (cene-err fault "Expected the text input stream of a macro's callback results to be a text input stream")
+      (sink-extfx-cene-err fault "Expected the text input stream of a macro's callback results to be a text input stream")
     #/expect (sink-cexpr-sequence-output-stream? output-stream) #t
-      (cene-err fault "Expected the expression sequence output stream of a macro's callback results to be an expression sequence output stream")
+      (sink-extfx-cene-err fault "Expected the expression sequence output stream of a macro's callback results to be an expression sequence output stream")
     #/sink-extfx-claim-freshen unique-name #/fn unique-name
     #/then unique-name qualify text-input-stream output-stream)
   #/expect (sink-extfx? result) #t
@@ -2164,6 +2170,6 @@
     unique-name
     (sink-fn-curried-fault 1 #/fn fault name
       (expect (sink-name? name) #t
-        (cene-err fault "Expected the input to the root qualify function to be a name")
-      #/qualify name))
+        (cenegetfx-cene-err fault "Expected the input to the root qualify function to be a name")
+      #/cenegetfx-done #/qualify name))
     (sink-text-input-stream #/box #/just #/open-input-string string)))
