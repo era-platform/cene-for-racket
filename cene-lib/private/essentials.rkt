@@ -242,16 +242,21 @@
   #:other #:methods gen:sink [])
 
 
+(define/contract (cenegetfx-run-sink-getfx effects)
+  (-> sink-getfx? cenegetfx?)
+  (dissect effects (sink-getfx cenegetfx-go)
+    cenegetfx-go))
+
 (define/contract (sink-getfx-done result)
   (-> sink? sink-getfx?)
-  (sink-getfx #/fn #/getfx-done result))
+  (sink-getfx #/cenegetfx-done result))
 
 (define/contract (sink-getfx-bind effects then)
   (-> sink-getfx? (-> any/c sink-getfx?) sink-getfx?)
-  (dissect effects (sink-getfx go)
-  #/sink-getfx #/fn
-    (getfx-bind-restoring (go) #/fn intermediate
-    #/getfx-run-sink-getfx #/then intermediate)))
+  (sink-getfx
+    (cenegetfx-bind (cenegetfx-run-sink-getfx effects)
+    #/fn intermediate
+    #/cenegetfx-run-sink-getfx #/then intermediate)))
 
 (define/contract (sink-perffx-done result)
   (-> sink? sink-perffx?)
@@ -1151,16 +1156,15 @@
     #:property prop:procedure
     (fn this x
       (dissect this (converter-for-type-fix fault rinfo unwrap)
-      #/with-gets-from rinfo #/fn
+      #/getfx-run-cenegetfx rinfo
       #/w- sink-getfx-unwrapped (sink-call fault unwrap x)
       #/expect (sink-getfx? sink-getfx-unwrapped) #t
-        (getfx-cene-err fault expected-getfx)
-      #/getfx-bind-restoring
-        (getfx-run-sink-getfx sink-getfx-unwrapped)
+        (cenegetfx-cene-err fault expected-getfx)
+      #/cenegetfx-bind (cenegetfx-run-sink-getfx sink-getfx-unwrapped)
       #/fn unwrapped
       #/expect unwrapped (sink-type result)
-        (getfx-cene-err fault expected-method)
-      #/getfx-done result))))
+        (cenegetfx-cene-err fault expected-method)
+      #/cenegetfx-done result))))
 
 (define-fix-converter converter-for-dex-fix sink-dex
   "Expected the pure result of a dex-fix body to be a getfx effectful computation"
@@ -1194,27 +1198,28 @@
       (dissect this
         (sink-cmp-by-own-method-unthorough
           fault rinfo getfx-get-method)
-      #/with-gets-from rinfo #/fn
+      #/getfx-run-cenegetfx rinfo
       #/mat command
         (unsafe:cmp-by-own-method::getfx-err-different-methods
           a b a-method b-method)
-        (getfx-cene-err fault "Obtained two different methods from the two values being compared")
+        (cenegetfx-cene-err fault "Obtained two different methods from the two values being compared")
       #/dissect command
         (unsafe:cmp-by-own-method::getfx-get-method source)
       #/w- sink-getfx-maybe-method
         (sink-call fault getfx-get-method source)
       #/expect (sink-getfx? sink-getfx-maybe-method) #t
-        (getfx-cene-err fault expected-getfx)
-      #/getfx-bind-restoring
-        (getfx-run-sink-getfx sink-getfx-maybe-method)
+        (cenegetfx-cene-err fault expected-getfx)
+      #/cenegetfx-bind
+        (cenegetfx-run-sink-getfx sink-getfx-maybe-method)
       #/fn sink-maybe-method
+      #/cenegetfx-with-gets #/fn
       #/expect (sink-maybe->maybe-racket sink-maybe-method)
         (just maybe-method)
-        (getfx-cene-err fault expected-maybe)
-      #/getfx-done #/maybe-map maybe-method #/fn method
-        (expect method (sink-cmp method)
-          (getfx-cene-err fault expected-method)
-          method)))))
+        (cenegetfx-cene-err fault expected-maybe)
+      #/expect maybe-method (just method) (cenegetfx-done #/nothing)
+      #/expect method (sink-cmp method)
+        (cenegetfx-cene-err fault expected-method)
+      #/cenegetfx-done #/just method))))
 
 (define-syntax-rule
   (define-furge-by-own-method-converter
@@ -1236,35 +1241,35 @@
       (dissect this
         (sink-furge-by-own-method-unthorough
           fault rinfo getfx-get-method)
-      #/with-gets-from rinfo #/fn
+      #/getfx-run-cenegetfx rinfo
       #/mat command
         (unsafe:furge-by-own-method::getfx-err-different-input-methods
           a b a-method b-method)
-        (getfx-cene-err fault "Obtained two different methods from the two input values")
+        (cenegetfx-cene-err fault "Obtained two different methods from the two input values")
       #/mat command
         (unsafe:furge-by-own-method::getfx-err-cannot-get-output-method
           a b result input-method)
-        (getfx-cene-err fault "Could not obtain a method from the result value")
+        (cenegetfx-cene-err fault "Could not obtain a method from the result value")
       #/mat command
         (unsafe:furge-by-own-method::getfx-err-different-output-method
           a b result input-method output-method)
-        (getfx-cene-err fault "Obtained two different methods from the input and the output")
+        (cenegetfx-cene-err fault "Obtained two different methods from the input and the output")
       #/dissect command
         (unsafe:furge-by-own-method::getfx-get-method source)
       #/w- sink-getfx-maybe-method
         (sink-call fault getfx-get-method source)
       #/expect (sink-getfx? sink-getfx-maybe-method) #t
-        (getfx-cene-err fault expected-getfx)
-      #/getfx-bind-restoring
-        (getfx-run-sink-getfx sink-getfx-maybe-method)
+        (cenegetfx-cene-err fault expected-getfx)
+      #/getfx-bind (cenegetfx-run-sink-getfx sink-getfx-maybe-method)
       #/fn sink-maybe-method
+      #/cenegetfx-with-gets #/fn
       #/expect (sink-maybe->maybe-racket sink-maybe-method)
         (just maybe-method)
-        (getfx-cene-err fault expected-maybe)
-      #/getfx-done #/maybe-map maybe-method #/fn method
-        (expect method (sink-furge method)
-          (getfx-cene-err fault expected-method)
-          method)))))
+        (cenegetfx-cene-err fault expected-maybe)
+      #/expect maybe-method (just method) (cenegetfx-done #/nothing)
+      #/expect method (sink-furge method)
+        (cenegetfx-cene-err fault expected-method)
+      #/cenegetfx-done #/just method))))
 
 (define-cmp-by-own-method-converter
   sink-dex-by-own-method-unthorough
@@ -1311,21 +1316,21 @@
   (fn this command
     (dissect this
       (sink-fuse-fusable-fn-unthorough fault rinfo arg-to-method)
-    #/with-gets-from rinfo #/fn
+    #/getfx-run-cenegetfx rinfo
     #/mat command
       (unsafe:fuse-fusable-function::getfx-err-cannot-combine-results
         method a b a-result b-result)
-      (getfx-cene-err fault "Could not combine the result values")
+      (cenegetfx-cene-err fault "Could not combine the result values")
     #/dissect command
       (unsafe:fuse-fusable-function::getfx-arg-to-method arg)
     #/w- sink-getfx-method (sink-call fault arg-to-method arg)
     #/expect (sink-getfx? sink-getfx-method) #t
-      (getfx-cene-err fault "Expected the pure result of a fuse-fusable-fn body to be a getfx effectful computation")
-    #/getfx-bind-restoring (getfx-run-sink-getfx sink-getfx-method)
+      (cenegetfx-cene-err fault "Expected the pure result of a fuse-fusable-fn body to be a getfx effectful computation")
+    #/cenegetfx-bind (cenegetfx-run-sink-getfx sink-getfx-method)
     #/fn method
     #/expect method (sink-fuse method)
-      (getfx-cene-err fault "Expected the result of a fuse-fusable-fn body to be a fuse")
-    #/getfx-done method)))
+      (cenegetfx-cene-err fault "Expected the result of a fuse-fusable-fn body to be a fuse")
+    #/cenegetfx-done method)))
 
 
 (define str-prim-pat
@@ -1877,7 +1882,7 @@
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func! "getfx-err" clamor
-    (sink-getfx #/fn #/getfx-err-from-clamor clamor))
+    (sink-getfx #/cenegetfx-err-from-clamor clamor))
   
   ; TODO: Test this.
   ;
@@ -1887,7 +1892,8 @@
   ; operations.
   ;
   (def-func! "follow-heart" clamor
-    (cene-run-getfx #/getfx-err-from-clamor clamor))
+    (cene-run-getfx #/getfx-ambient-run-cenegetfx
+      (cenegetfx-err-from-clamor clamor)))
   
   (def-data-struct! "clamor-err" #/list "blame" "message")
   
@@ -1911,8 +1917,9 @@
   (def-func-fault! "getfx-is-in-dex" fault dex v
     (expect dex (sink-dex dex)
       (cene-err fault "Expected dex to be a dex")
-    #/sink-getfx #/fn
-      (getfx-map-restoring (getfx-is-in-dex dex v) #/fn result
+    #/sink-getfx
+      (cenegetfx-run-getfx-with-gets #/fn
+      #/getfx-map-restoring (getfx-is-in-dex dex v) #/fn result
         (racket-boolean->sink result))))
   
   ; NOTE: In the JavaScript version of Cene, this was called
@@ -1920,8 +1927,9 @@
   (def-func-fault! "getfx-name-of" fault dex v
     (expect dex (sink-dex dex)
       (cene-err fault "Expected dex to be a dex")
-    #/sink-getfx #/fn
-      (getfx-map-restoring (getfx-name-of dex v) #/fn maybe-result
+    #/sink-getfx
+      (cenegetfx-run-getfx-with-gets #/fn
+      #/getfx-map-restoring (getfx-name-of dex v) #/fn maybe-result
         (racket-maybe->sink #/maybe-map maybe-result #/fn result
           (sink-name result)))))
   
@@ -1929,8 +1937,9 @@
   (def-func-fault! "getfx-dexed-of" fault dex v
     (expect dex (sink-dex dex)
       (cene-err fault "Expected dex to be a dex")
-    #/sink-getfx #/fn
-      (getfx-map-restoring (getfx-dexed-of dex v) #/fn maybe-result
+    #/sink-getfx
+      (cenegetfx-run-getfx-with-gets #/fn
+      #/getfx-map-restoring (getfx-dexed-of dex v) #/fn maybe-result
         (racket-maybe->sink #/maybe-map maybe-result #/fn result
           (sink-dexed result)))))
   
@@ -1939,8 +1948,9 @@
   (def-func-fault! "getfx-compare-by-dex" fault dex a b
     (expect dex (sink-dex dex)
       (cene-err fault "Expected dex to be a dex")
-    #/sink-getfx #/fn
-      (getfx-map-restoring (getfx-compare-by-dex dex a b)
+    #/sink-getfx
+      (cenegetfx-run-getfx-with-gets #/fn
+      #/getfx-map-restoring (getfx-compare-by-dex dex a b)
       #/fn maybe-result
         (racket-maybe->sink #/maybe-map maybe-result #/fn result
           (mat result (ordering-private)
@@ -2031,8 +2041,9 @@
   (def-func-fault! "getfx-is-in-cline" fault cline v
     (expect cline (sink-cline cline)
       (cene-err fault "Expected cline to be a cline")
-    #/sink-getfx #/fn
-      (getfx-map-restoring (getfx-is-in-cline cline v) #/fn result
+    #/sink-getfx
+      (cenegetfx-run-getfx-with-gets #/fn
+      #/getfx-map-restoring (getfx-is-in-cline cline v) #/fn result
         (racket-boolean->sink result))))
   
   ; NOTE: In the JavaScript version of Cene, this was called
@@ -2040,8 +2051,9 @@
   (def-func-fault! "getfx-compare-by-cline" fault cline a b
     (expect cline (sink-cline cline)
       (cene-err fault "Expected cline to be a cline")
-    #/sink-getfx #/fn
-      (getfx-map-restoring (getfx-compare-by-cline cline a b)
+    #/sink-getfx
+      (cenegetfx-run-getfx-with-gets #/fn
+      #/getfx-map-restoring (getfx-compare-by-cline cline a b)
       #/fn maybe-result
         (racket-maybe->sink #/maybe-map maybe-result #/fn result
           (mat result (ordering-private)
@@ -2109,15 +2121,17 @@
   (def-func-fault! "getfx-call-merge" fault merge a b
     (expect merge (sink-merge merge)
       (cene-err fault "Expected merge to be a merge")
-    #/sink-getfx #/fn
-      (getfx-map-restoring (getfx-call-merge merge a b) #/fn result
+    #/sink-getfx
+      (cenegetfx-run-getfx-with-gets #/fn
+      #/getfx-map-restoring (getfx-call-merge merge a b) #/fn result
         (racket-maybe->sink result))))
   
   (def-func-fault! "getfx-call-fuse" fault fuse a b
     (expect fuse (sink-fuse fuse)
       (cene-err fault "Expected fuse to be a fuse")
-    #/sink-getfx #/fn
-      (getfx-map-restoring (getfx-call-fuse fuse a b) #/fn result
+    #/sink-getfx
+      (cenegetfx-run-getfx-with-gets #/fn
+      #/getfx-map-restoring (getfx-call-fuse fuse a b) #/fn result
         (racket-maybe->sink result))))
   
   (def-nullary-func! "dex-merge"
@@ -2215,12 +2229,14 @@
   (def-func-fault! "make-fusable-fn" caller-fault func
     (sink-opaque-fn-fault
       (make-fusable-function #/dissectfn (list explicit-fault arg)
-        (getfx-bind-restoring
-          (getfx-sink-call-fault caller-fault explicit-fault func arg)
+        (getfx-ambient-run-cenegetfx
+        #/cenegetfx-bind
+          (cenegetfx-run-getfx-with-gets #/fn
+          #/getfx-sink-call-fault caller-fault explicit-fault func arg)
         #/fn sink-getfx-result
         #/expect (sink-getfx? sink-getfx-result) #t
-          (getfx-cene-err caller-fault "Expected the pure result of a fusable-fn body to be a getfx effectful computation")
-        #/getfx-run-sink-getfx sink-getfx-result))))
+          (cenegetfx-cene-err caller-fault "Expected the pure result of a fusable-fn body to be a getfx effectful computation")
+        #/cenegetfx-run-sink-getfx sink-getfx-result))))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "fuse-fusable-fn-fault"
@@ -2656,12 +2672,13 @@
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "mobile-call-binary" fault mobile-func mobile-arg
-    (cene-run-getfx
+    (cene-run-getfx #/getfx-ambient-run-cenegetfx
     #/expect (sink-mobile? mobile-func) #t
-      (getfx-cene-err fault "Expected mobile-func to be a mobile value")
+      (cenegetfx-cene-err fault "Expected mobile-func to be a mobile value")
     #/expect (sink-mobile? mobile-arg) #t
-      (getfx-cene-err fault "Expected mobile-arg to be a mobile value")
-    #/getfx-sink-mobile-call-binary fault mobile-func mobile-arg))
+      (cenegetfx-cene-err fault "Expected mobile-arg to be a mobile value")
+    #/cenegetfx-run-getfx-with-gets #/fn
+      (getfx-sink-mobile-call-binary fault mobile-func mobile-arg)))
   
   (def-macro! "c" #/fn
     fault unique-name qualify text-input-stream then
@@ -2821,20 +2838,26 @@
       (cene-err fault "Expected table to be a table")
     #/expect fuse (sink-fuse fuse)
       (cene-err fault "Expected fuse to be a fuse")
-    #/sink-getfx #/fn #/getfx-table-map-fuse table fuse #/fn k
-      (w- sink-getfx-result
-        (sink-call fault getfx-key-to-operand #/sink-name k)
-      #/expect (sink-getfx? sink-getfx-result) #t
-        (getfx-cene-err fault "Expected the pure result of a getfx-table-map-fuse body to be a getfx effectful computation")
-      #/getfx-run-sink-getfx sink-getfx-result)))
+    #/sink-getfx
+      (cenegetfx-bind (cenegetfx-read-root-info) #/fn rinfo
+      #/cenegetfx-run-getfx
+      #/getfx-table-map-fuse table fuse #/fn k
+        (with-gets-from rinfo #/fn
+        #/w- sink-getfx-result
+          (sink-call fault getfx-key-to-operand #/sink-name k)
+        #/getfx-run-cenegetfx rinfo
+        #/expect (sink-getfx? sink-getfx-result) #t
+          (cenegetfx-cene-err fault "Expected the pure result of a getfx-table-map-fuse body to be a getfx effectful computation")
+        #/cenegetfx-run-sink-getfx sink-getfx-result))))
   
   (def-func-fault! "getfx-table-sort" fault cline table
     (expect cline (sink-cline cline)
       (cene-err fault "Expected cline to be a cline")
     #/expect table (sink-table table)
       (cene-err fault "Expected table to be a table")
-    #/sink-getfx #/fn
-      (getfx-map-restoring (getfx-table-sort cline table)
+    #/sink-getfx
+      (cenegetfx-run-getfx-with-gets #/fn
+      #/getfx-map-restoring (getfx-table-sort cline table)
       #/fn maybe-ranks
         (racket-maybe->sink #/maybe-map maybe-ranks #/fn ranks
           (racket-list->sink #/list-map ranks #/fn rank
@@ -3285,7 +3308,7 @@
       (cene-err fault "Expected a to be a string")
     #/expect b (sink-string b)
       (cene-err fault "Expected b to be a string")
-    #/sink-perffx #/sink-getfx #/fn #/getfx-done
+    #/sink-perffx #/sink-getfx #/cenegetfx-later #/fn
       (sink-string #/string->immutable-string #/string-append a b)))
   
   ; This is an extremely basic string syntax. It doesn't have any
@@ -3428,7 +3451,7 @@
   (def-func-fault! "perffx-optimize-textpat" fault t
     (expect t (sink-textpat t)
       (cene-err fault "Expected t to be a text pattern")
-    #/sink-perffx #/sink-getfx #/fn #/getfx-done
+    #/sink-perffx #/sink-getfx #/cenegetfx-later #/fn
       (sink-optimized-textpat #/optimize-textpat t)))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
@@ -3455,7 +3478,7 @@
       (cene-err fault "Expected stop to be less than or equal to the length of the string")
     #/expect (<= start stop) #t
       (cene-err fault "Expected start to be less than or equal to stop")
-    #/sink-perffx #/sink-getfx #/fn #/getfx-done
+    #/sink-perffx #/sink-getfx #/cenegetfx-later #/fn
       (w- result (optimized-textpat-match ot str start stop)
       #/mat result (textpat-result-matched stop)
         (make-sink-struct (s-textpat-result-matched) #/list
@@ -3655,7 +3678,7 @@
     
     (expect (sink-located-string? located-string) #t
       (cene-err fault "Expected located-string to be a located string")
-    #/sink-perffx #/sink-getfx #/fn #/getfx-done
+    #/sink-perffx #/sink-getfx #/cenegetfx-later #/fn
       (sink-string-from-located-string located-string)))
   
   ; TODO BUILTINS: Make sure we have a sufficient set of operations

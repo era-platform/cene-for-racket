@@ -23,9 +23,16 @@
 (require #/for-syntax racket/base)
 (require #/for-syntax #/only-in syntax/parse expr)
 
+; NOTE: The Racket documentation says `get/build-late-neg-projection`
+; is in `racket/contract/combinator`, but it isn't. It's in
+; `racket/contract/base`. Since it's also in `racket/contract` and the
+; documentation correctly says it is, we require it from there.
+(require #/only-in racket/contract get/build-late-neg-projection)
 (require #/only-in racket/contract/base
-  -> ->* and/c any any/c contract? list/c listof none/c or/c
-  parameter/c struct/c)
+  -> ->* and/c any any/c contract? contract-name list/c listof none/c
+  or/c parameter/c struct/c)
+(require #/only-in racket/contract/combinator
+  blame-add-context coerce-contract make-contract raise-blame-error)
 (require #/only-in racket/contract/region define/contract)
 (require #/only-in racket/control reset-at shift-at)
 (require #/only-in racket/generic define/generic define-generics)
@@ -187,7 +194,7 @@
   #:other #:methods gen:sink [])
 (struct-easy (sink-authorized-name authorized-name)
   #:other #:methods gen:sink [])
-(struct-easy (sink-getfx go)
+(struct-easy (sink-getfx cenegetfx-go)
   #:other #:methods gen:sink [])
 (struct-easy (sink-extfx go!)
   #:other #:methods gen:sink [])
@@ -282,7 +289,77 @@
   #/dissect name (sink-name name)
   #/sink-table #/table-shadow name maybe-value table))
 
+
 (struct-easy #/cene-root-info dspace lang-impl-qualify-root)
+
+(struct-easy (cenegetfx getfx-run))
+
+(define/contract (cenegetfx-run-getfx getfx)
+  (-> getfx? cenegetfx?)
+  (cenegetfx #/fn rinfo getfx))
+
+(define/contract (getfx-run-cenegetfx rinfo effects)
+  (->
+    (struct/c cene-root-info dspace? sink-authorized-name?)
+    cenegetfx?
+    getfx?)
+  (dissect effects (cenegetfx effects)
+  #/effects rinfo))
+
+(define/contract (cenegetfx-done result)
+  (-> any/c cenegetfx?)
+  (cenegetfx-run-getfx #/getfx-done result))
+
+(define/contract (cenegetfx-bind effects then)
+  (-> cenegetfx? (-> any/c cenegetfx?) cenegetfx?)
+  (cenegetfx #/fn rinfo
+    (getfx-bind (getfx-run-cenegetfx rinfo effects) #/fn intermediate
+    #/getfx-run-cenegetfx rinfo #/then intermediate)))
+
+(define/contract (cenegetfx-map effects func)
+  (-> cenegetfx? (-> any/c any/c) cenegetfx?)
+  (cenegetfx-bind effects #/fn intermediate
+  #/cenegetfx-done #/func intermediate))
+
+(define (cenegetfx/c result/c)
+  (w- result/c (coerce-contract 'cenegetfx/c result/c)
+  #/make-contract
+    
+    #:name `(cenegetfx/c ,(contract-name result/c))
+    
+    #:first-order (fn v #/cenegetfx? v)
+    
+    #:late-neg-projection
+    (fn blame
+      (w- result/c-late-neg-projection
+        ( (get/build-late-neg-projection result/c)
+          (blame-add-context blame #:swap? #t
+            "the anticipated value of"))
+      #/fn v missing-party
+        (expect (cenegetfx? v) #t
+          (raise-blame-error blame #:missing-party missing-party v
+            '(expected: "a cenegetfx effectful computation" given: "~e")
+            v)
+        #/cenegetfx-map v #/fn result
+          (result/c-late-neg-projection result missing-party))))))
+
+(define/contract (cenegetfx-later compute-result)
+  (-> (-> any/c) cenegetfx?)
+  (cenegetfx-map (cenegetfx-done #/trivial) #/dissectfn (trivial)
+    (compute-result)))
+
+(define/contract (cenegetfx-read-root-info)
+  (->
+    (cenegetfx/c
+      (struct/c cene-root-info dspace? sink-authorized-name?)))
+  (cenegetfx #/fn rinfo #/getfx-done rinfo))
+
+(define/contract (cenegetfx-read-definition-space)
+  (-> #/cenegetfx/c dspace?)
+  (cenegetfx-bind (cenegetfx-read-root-info)
+  #/dissectfn (cene-root-info ds lang-impl-qualify-root)
+  #/cenegetfx-done ds))
+
 
 (define/contract cene-definition-get-param
   (parameter/c
@@ -323,6 +400,13 @@
     (error "Expected no implementation of `cene-definition-get` to be available in the dynamic scope")
   #/void))
 
+(define/contract (cene-definition-root-info)
+  (-> (struct/c cene-root-info dspace? sink-authorized-name?))
+  (expect (cene-definition-get-param)
+    (just #/list rinfo maybe-run-getfx)
+    (error "Expected every call to `cene-definition-oot-info` to occur with an implementation in the dynamic scope")
+    rinfo))
+
 (define/contract (cene-definition-dexed-root-info)
   (->
     (dexed-first-order/c
@@ -354,24 +438,12 @@
     (error "Expected every call to `cene-definition-lang-impl-qualify-root` to occur with an implementation in the dynamic scope")
     lang-impl-qualify-root))
 
-(define/contract (getfx-err-from-clamor clamor)
-  (-> sink? getfx?)
-  (dissect
-    (expect (unmake-sink-struct-maybe (s-clamor-err) clamor)
-      (just #/list (sink-fault maybe-marks) (sink-string message))
-      (list (nothing) (format "~s" clamor))
-      (list maybe-marks message))
-    (list maybe-marks message)
-  #/w- marks
-    (mat maybe-marks (just marks) marks
-    #/current-continuation-marks)
-  #/getfx-err #/error-definer-from-exn #/exn:fail message marks))
-
 (define/contract (sink-getfx-get name)
   (-> sink-name? sink-getfx?)
   (dissect name (sink-name name)
-  #/sink-getfx #/fn
-    (getfx-get (cene-definition-dspace) name
+  #/sink-getfx
+    (cenegetfx-bind (cenegetfx-read-definition-space) #/fn dspace
+    #/cenegetfx-run-getfx #/getfx-get dspace name
       #;on-stall (error-definer-uninformative)
       )))
 
@@ -479,12 +551,28 @@
     ([cene-definition-get-param (just #/list rinfo #/nothing)])
     (body)))
 
+(define/contract (cenegetfx-with-gets body)
+  (-> (-> cenegetfx?) cenegetfx?)
+  (cenegetfx-bind (cenegetfx-read-root-info) #/fn rinfo
+  #/with-gets-from rinfo body))
+
+(define/contract (cenegetfx-run-getfx-with-gets body)
+  (-> (-> getfx?) cenegetfx?)
+  (cenegetfx-with-gets #/fn
+  #/cenegetfx-run-getfx
+    (with-getfx-run-getfx #/fn
+    #/body)))
+
+(define/contract (getfx-ambient-run-cenegetfx effects)
+  (-> cenegetfx? getfx?)
+  (begin (assert-can-get-cene-definition-globals!)
+  #/getfx-run-cenegetfx (cene-definition-root-info) effects))
+
 (define/contract (getfx-run-sink-getfx effects)
   (-> sink-getfx? getfx?)
   (begin (assert-can-get-cene-definition-globals!)
-  #/dissect effects (sink-getfx go)
-  #/with-getfx-run-getfx #/fn
-  #/go))
+  #/dissect effects (sink-getfx cenegetfx-go)
+  #/getfx-ambient-run-cenegetfx cenegetfx-go))
 
 (define/contract (extfx-run-sink-extfx effects)
   (-> sink-extfx? extfx?)
@@ -497,6 +585,7 @@
   (-> sink-getfx? sink?)
   (begin (assert-can-get-cene-definitions!)
   #/cene-run-getfx #/getfx-run-sink-getfx effects))
+
 
 (define-generics cexpr
   (cexpr-has-free-vars? cexpr env)
@@ -752,10 +841,12 @@
 
 (define/contract (sink-extfx-run-getfx effects then)
   (-> sink-getfx? (-> any/c sink-extfx?) sink-extfx?)
-  (dissect effects (sink-getfx go)
+  (dissect effects (sink-getfx cenegetfx-go)
   #/sink-extfx #/fn
     (extfx-with-cene-definition-restorer #/fn restore
-    #/extfx-run-getfx (go) #/fn intermediate
+    #/extfx-run-getfx
+      (getfx-run-cenegetfx (cene-definition-root-info) cenegetfx-go)
+    #/fn intermediate
     #/restore #/fn
     #/extfx-run-sink-extfx #/then intermediate)))
 
@@ -1035,19 +1126,35 @@
   (-> sink-fault?)
   (sink-fault #/just #/current-continuation-marks))
 
-(define/contract (getfx-cene-err fault message)
-  (-> sink-fault? immutable-string? getfx?)
+(define/contract (cenegetfx-err-from-clamor clamor)
+  (-> sink? cenegetfx?)
+  (cenegetfx-with-gets #/fn
+  #/dissect
+    (expect (unmake-sink-struct-maybe (s-clamor-err) clamor)
+      (just #/list (sink-fault maybe-marks) (sink-string message))
+      (list (nothing) (format "~s" clamor))
+      (list maybe-marks message))
+    (list maybe-marks message)
+  #/w- marks
+    (mat maybe-marks (just marks) marks
+    #/current-continuation-marks)
+  #/cenegetfx-run-getfx #/getfx-err #/error-definer-from-exn
+    (exn:fail message marks)))
+
+(define/contract (cenegetfx-cene-err fault message)
+  (-> sink-fault? immutable-string? cenegetfx?)
   ; TODO: See if there's a way we can either stop depending on
   ; `s-clamor-err` here or move this code after the place where
   ; `s-clamor-err` is defined.
-  (begin (assert-can-get-cene-definition-globals!)
-  #/getfx-err-from-clamor #/make-sink-struct (s-clamor-err) #/list
+  (cenegetfx-with-gets #/fn
+  #/cenegetfx-err-from-clamor #/make-sink-struct (s-clamor-err) #/list
     fault
     (sink-string message)))
 
 (define-simple-macro (cene-err fault:expr message:string)
   (begin (assert-can-get-cene-definitions!)
-  #/cene-run-getfx #/getfx-cene-err fault message))
+  #/cene-run-getfx #/getfx-ambient-run-cenegetfx
+    (cenegetfx-cene-err fault message)))
 
 (define/contract
   (getfx-sink-call-fault-binary caller-fault explicit-fault func arg)
