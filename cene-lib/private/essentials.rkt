@@ -1563,11 +1563,7 @@
         (sink-table #/table-empty)
         (sink-opaque-fn #/fn struct-value
           (cenegetfx-done
-            ; TODO: Avoid this `apply` wrapper by having every call
-            ; site pass in a `racket-func` that returns a cenegetfx
-            ; value.
-            (sink-fn-curried-fault n-args #/lambda args
-              (cenegetfx-done #/apply racket-func args)))))
+            (sink-fn-curried-fault n-args racket-func))))
       
       ))
   
@@ -1592,7 +1588,9 @@
           main-tag-string
           '#,(length (syntax->list #'(param ...)))
           (fn fault param ...
-            body))))
+            ; TODO: Remove this `cenegetfx-done` call, and have each
+            ; call site compute a cenegetfx value.
+            (cenegetfx-done body)))))
   
   (define-syntax (def-func! stx)
     (syntax-parse stx #/
@@ -3851,17 +3849,18 @@
     1
     (fn fault name
       (expect (sink-name? name) #t
-        (cene-err fault "Expected name to be a name")
-      #/sink-name-qualify-for-lang-impl name)))
+        (cenegetfx-cene-err fault "Expected name to be a name")
+      #/cenegetfx-done #/sink-name-qualify-for-lang-impl name)))
   
   (def-func-verbose! sink-extfx-def-value-for-prelude
     "extfx-add-init-package-step"
     2
     (fn fault unique-name step
       (expect (sink-authorized-name? unique-name) #t
-        (cene-err fault "Expected unique-name to be an authorized name")
-      #/sink-extfx-add-init-package-step fault unique-name
-        (fn unique-name qualify
+        (cenegetfx-cene-err fault "Expected unique-name to be an authorized name")
+      #/cenegetfx-done
+        (sink-extfx-add-init-package-step fault unique-name
+        #/fn unique-name qualify
           (verify-callback-extfx! fault
             (sink-call fault step unique-name
               (sink-fn-curried-fault 1 #/fn fault name
