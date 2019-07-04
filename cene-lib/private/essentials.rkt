@@ -921,10 +921,10 @@
     (define (getfx-furge-internals-call this a b)
       (dissect this
         (furge-internals-sink-struct _ _ getfx-call-furge tags fields)
-      #/expect (unmake-sink-struct-maybe tags a) (just as)
-        (getfx-done #/nothing)
-      #/expect (unmake-sink-struct-maybe tags b) (just bs)
-        (getfx-done #/nothing)
+      #/getmaybefx-bind (getfx-done #/unmake-sink-struct-maybe tags a)
+      #/fn as
+      #/getmaybefx-bind (getfx-done #/unmake-sink-struct-maybe tags b)
+      #/fn bs
       #/w- n (length fields)
       #/w-loop next as as bs bs fields fields rev-furged (list)
         (expect fields (cons furge-field fields)
