@@ -30,7 +30,7 @@
 (require #/only-in racket/contract get/build-late-neg-projection)
 (require #/only-in racket/contract/base
   -> ->* and/c any any/c contract? contract-name list/c listof none/c
-  or/c parameter/c struct/c)
+  or/c parameter/c rename-contract struct/c)
 (require #/only-in racket/contract/combinator
   blame-add-context coerce-contract make-contract raise-blame-error)
 (require #/only-in racket/contract/region define/contract)
@@ -44,7 +44,8 @@
 (require #/only-in lathe-comforts/list
   list-any list-foldl list-foldr list-map list-zip-map nat->maybe)
 (require #/only-in lathe-comforts/maybe
-  just just-value maybe-bind maybe/c maybe-map nothing nothing?)
+  just just-value maybe? maybe-bind maybe/c maybe-map nothing
+  nothing?)
 (require #/only-in lathe-comforts/string immutable-string?)
 (require #/only-in lathe-comforts/struct struct-easy)
 (require #/only-in lathe-comforts/trivial trivial)
@@ -61,13 +62,14 @@
   success-or-error-definer)
 (require #/only-in effection/order
   assocs->table-if-mutually-unique dex-immutable-string dex-trivial
-  getfx-is-eq-by-dex)
+  getfx-is-eq-by-dex ordering-eq)
 (require #/only-in effection/order/base
   dex? dexed-first-order/c dex-give-up dex-dex dex-name dex-struct
   dex-table fuse-by-merge getfx-call-fuse getfx-dexed-of getfx-name-of
   getfx-table-map-fuse merge-by-dex merge-table name? ordering-eq?
   table? table-empty? table-empty table-get table-shadow)
-(require #/prefix-in unsafe: #/only-in effection/order/unsafe name)
+(require #/prefix-in unsafe: #/only-in effection/order/unsafe
+  dex dexed gen:dex-internals name)
 
 (require #/only-in cene/private/textpat
   textpat? textpat-from-string textpat-lookahead
@@ -80,6 +82,22 @@
 (provide #/all-defined-out)
 
 
+
+; TODO: We used this in `effection/order/base`, and we're using it
+; again here. See if it should be an export of Effection.
+(define/contract (getmaybefx-bind effects then)
+  (-> (getfx/c maybe?) (-> any/c #/getfx/c maybe?) #/getfx/c maybe?)
+  (getfx-bind effects #/fn maybe-intermediate
+  #/expect maybe-intermediate (just intermediate)
+    (getfx-done #/nothing)
+  #/then intermediate))
+
+; TODO: We used this in `effection/order/base`, and we're using it
+; again here. See if it should be an export of Effection.
+(define/contract (getmaybefx-map effects func)
+  (-> (getfx/c maybe?) (-> any/c any/c) #/getfx/c maybe?)
+  (getmaybefx-bind effects #/fn intermediate
+  #/getfx-done #/just #/func intermediate))
 
 ; TODO: Put this into the `effection/order` module or something (maybe
 ; even `effection/order/base`).
@@ -298,7 +316,63 @@
   #/sink-table #/table-shadow name maybe-value table))
 
 
-(struct-easy #/cene-root-info dspace lang-impl-qualify-root)
+; NOTE: We treat every two tag caches as `ordering-eq`. Cene
+; programmers don't directly manipulate these values, and they're
+; derived from the other fields of the `cene-root-info` that carries
+; them, so we simply treat them as `ordering-eq` withouot bothering to
+; compare them. We do this by defining a `dex-non-cene-value` dex to
+; use for the appropriate field of `(dex-struct cene-root-info ...)`.
+
+(struct-easy (dex-internals-non-cene-value)
+  
+  #:other
+  
+  #:methods unsafe:gen:dex-internals
+  [
+    
+    (define (dex-internals-tag this)
+      'tag:dex-non-cene-value)
+    
+    (define (dex-internals-autoname this)
+      'tag:dex-non-cene-value)
+    
+    (define (dex-internals-autodex this other)
+      (just #/ordering-eq))
+    
+    (define (getfx-dex-internals-is-in this x)
+      (getfx-done #t))
+    
+    (define (getfx-dex-internals-name-of this x)
+      (getfx-done #/just #/unsafe:name #/list 'name:non-cene-value))
+    
+    (define (getfx-dex-internals-dexed-of this x)
+      (w- this (unsafe:dex this)
+      #/getmaybefx-map (getfx-name-of this x) #/fn name
+        (unsafe:dexed this name x)))
+    
+    (define (getfx-dex-internals-compare this a b)
+      (getfx-done #/just #/ordering-eq))
+  ])
+
+(define/contract (dex-non-cene-value)
+  (-> dex?)
+  (unsafe:dex #/dex-internals-non-cene-value))
+
+
+(struct-easy (cene-root-info dspace lang-impl-qualify-root tag-cache))
+
+(define/contract (cene-root-info/c)
+  (-> contract?)
+  (rename-contract
+    (struct/c cene-root-info dspace? sink-authorized-name? any/c)
+    '(cene-root-info/c)))
+
+(define/contract (dex-cene-root-info)
+  (-> dex?)
+  (dex-struct cene-root-info
+    (dex-dspace)
+    (dex-struct sink-authorized-name #/dex-authorized-name)
+    (dex-non-cene-value)))
 
 (struct-easy (cenegetfx getfx-run))
 
@@ -307,10 +381,7 @@
   (cenegetfx #/fn rinfo getfx))
 
 (define/contract (getfx-run-cenegetfx rinfo effects)
-  (->
-    (struct/c cene-root-info dspace? sink-authorized-name?)
-    cenegetfx?
-    getfx?)
+  (-> (cene-root-info/c) cenegetfx? getfx?)
   (dissect effects (cenegetfx effects)
   #/effects rinfo))
 
@@ -367,24 +438,19 @@
     list-of-cenegetfx))
 
 (define/contract (cenegetfx-read-root-info)
-  (->
-    (cenegetfx/c
-      (struct/c cene-root-info dspace? sink-authorized-name?)))
+  (-> #/cenegetfx/c #/cene-root-info/c)
   (cenegetfx #/fn rinfo #/getfx-done rinfo))
 
 (define/contract (cenegetfx-read-definition-space)
   (-> #/cenegetfx/c dspace?)
   (cenegetfx-bind (cenegetfx-read-root-info)
-  #/dissectfn (cene-root-info ds lang-impl-qualify-root)
+  #/dissectfn (cene-root-info ds lang-impl-qualify-root tag-cache)
   #/cenegetfx-done ds))
 
 
 (define/contract cene-definition-get-param
   (parameter/c
-    (maybe/c
-      (list/c
-        (struct/c cene-root-info dspace? sink-authorized-name?)
-        (maybe/c #/-> getfx? any/c))))
+    (maybe/c #/list/c (cene-root-info/c) (maybe/c #/-> getfx? any/c)))
   (make-parameter #/nothing))
 
 (define/contract (assert-can-get-cene-definition-globals!)
@@ -431,30 +497,25 @@
   (void))
 
 (define/contract (cene-definition-root-info)
-  (-> (struct/c cene-root-info dspace? sink-authorized-name?))
+  (-> #/cene-root-info/c)
   (expect (cene-definition-get-param)
     (just #/list rinfo maybe-run-getfx)
     (error "Expected every call to `cene-definition-oot-info` to occur with an implementation in the dynamic scope")
     rinfo))
 
 (define/contract (cene-definition-dexed-root-info)
-  (->
-    (dexed-first-order/c
-      (struct/c cene-root-info dspace? sink-authorized-name?)))
+  (-> #/dexed-first-order/c #/cene-root-info/c)
   (expect (cene-definition-get-param)
     (just #/list rinfo maybe-run-getfx)
     (error "Expected every call to `cene-definition-dexed-root-info` to occur with an implementation in the dynamic scope")
-  #/just-value #/pure-run-getfx #/getfx-dexed-of
-    (dex-struct cene-root-info
-      (dex-dspace)
-      (dex-struct sink-authorized-name #/dex-authorized-name))
+  #/just-value #/pure-run-getfx #/getfx-dexed-of (dex-cene-root-info)
     rinfo))
 
 (define/contract (cene-definition-dspace)
   (-> dspace?)
   (expect (cene-definition-get-param)
     (just #/list
-      (cene-root-info ds lang-impl-qualify-root)
+      (cene-root-info ds lang-impl-qualify-root tag-cache)
       maybe-run-getfx)
     (error "Expected every call to `cene-definition-dspace` to occur with an implementation in the dynamic scope")
     ds))
@@ -463,7 +524,7 @@
   (-> sink-authorized-name?)
   (expect (cene-definition-get-param)
     (just #/list
-      (cene-root-info ds lang-impl-qualify-root)
+      (cene-root-info ds lang-impl-qualify-root tag-cache)
       maybe-run-getfx)
     (error "Expected every call to `cene-definition-lang-impl-qualify-root` to occur with an implementation in the dynamic scope")
     lang-impl-qualify-root))
@@ -506,8 +567,7 @@
   (make-continuation-prompt-tag 'cene-definition-get-prompt-tag))
 
 (define/contract (with-gets-from rinfo body)
-  (-> (struct/c cene-root-info dspace? sink-authorized-name?) (-> any)
-    any)
+  (-> (cene-root-info/c) (-> any) any)
   (begin (assert-cannot-get-cene-definition-globals!)
   #/parameterize
     ([cene-definition-get-param (just #/list rinfo #/nothing)])
@@ -1949,32 +2009,27 @@
   ; TODO FAULT: Make this `fault` more specific.
   #/sink-extfx-cene-err fault "Encountered an unrecognized case of the expression syntax"))
 
+(struct-easy
+  (core-sink-struct-metadata
+    tag-cache-key main-tag-string proj-strings)
+  
+  #:other
+  
+  ; TODO: Remove this property, and change all the call sites to use
+  ; `cene-definition-tag` instead. (Actually, we'll probably want to
+  ; abstract over it, maybe putting the `cene-definition-tag` calls
+  ; inside `make-sink-struct`, `unmake-sink-struct-maybe`, and similar
+  ; places things this procedure behavior is currently being used.
+  #:property prop:procedure
+  (fn this
+    (expect (core-sink-struct-metadata? this) #t
+      (error "Expected this to be a core-sink-struct-metadata")
+    #/cene-definition-tag this)))
+
 (define/contract (core-sink-struct main-tag-string proj-strings)
   (-> immutable-string? (listof immutable-string?)
-    (-> #/and/c pair? #/listof name?))
-  
-  ; TODO: Currently, we return a function that computes the tags each
-  ; and every time. Memoize this. The computation can be perfrmed in
-  ; `with-gets-from` once, and then the function returned here can
-  ; look it up from the dynamically scoped binding that
-  ; `with-gets-from` sets up.
-  ;
-  (fn
-    (begin (assert-can-get-cene-definition-globals!)
-    #/w- main-tag-authorized-name
-      (sink-name-qualify-for-lang-impl #/sink-name-for-struct-main-tag
-      #/sink-name-for-string #/sink-string main-tag-string)
-    #/w- main-tag-name
-      (sink-authorized-name-get-name main-tag-authorized-name)
-    #/list-map
-      (cons main-tag-name
-      #/list-map proj-strings #/fn proj-string
-        (sink-authorized-name-get-name
-        #/sink-name-qualify-for-lang-impl
-        #/sink-name-for-struct-proj main-tag-name
-        #/sink-name-for-string #/sink-string proj-string))
-    #/dissectfn (sink-name name)
-      name)))
+    core-sink-struct-metadata?)
+  (core-sink-struct-metadata (gensym) main-tag-string proj-strings))
 
 (define s-trivial (core-sink-struct "trivial" #/list))
 
@@ -1983,6 +2038,56 @@
 
 (define s-clamor-err
   (core-sink-struct "clamor-err" #/list "blame" "message"))
+
+(define minimal-tags
+  (list
+    s-trivial
+    
+    s-nil
+    s-cons
+    
+    s-clamor-err))
+
+(define (cene-definition-tag metadata)
+  (-> core-sink-struct-metadata? #/and/c pair? #/listof name?)
+  (expect (cene-definition-get-param)
+    (just #/list
+      (cene-root-info ds lang-impl-qualify-root tag-cache)
+      maybe-run-getfx)
+    (error "Expected every call to `cene-definition-tag` to occur with an implementation in the dynamic scope")
+  #/dissect metadata
+    (core-sink-struct-metadata
+      tag-cache-key main-tag-string proj-strings)
+  #/hash-ref tag-cache tag-cache-key))
+
+(define (make-cene-root-info ds lang-impl-qualify-root tags)
+  (-> dspace? authorized-name? (listof core-sink-struct-metadata?)
+    (cene-root-info/c))
+  (with-gets-from (cene-root-info ds lang-impl-qualify-root (hash))
+  #/fn
+  #/cene-root-info
+    ds
+    lang-impl-qualify-root
+    (list-foldl (hasheq) tags #/fn tag-cache metadata
+      (dissect metadata
+        (core-sink-struct-metadata
+          tag-cache-key main-tag-string proj-strings)
+      #/hash-set tag-cache tag-cache-key
+        (w- main-tag-authorized-name
+          (sink-name-qualify-for-lang-impl
+          #/sink-name-for-struct-main-tag
+          #/sink-name-for-string #/sink-string main-tag-string)
+        #/w- main-tag-name
+          (sink-authorized-name-get-name main-tag-authorized-name)
+        #/list-map
+          (cons main-tag-name
+          #/list-map proj-strings #/fn proj-string
+            (sink-authorized-name-get-name
+            #/sink-name-qualify-for-lang-impl
+            #/sink-name-for-struct-proj main-tag-name
+            #/sink-name-for-string #/sink-string proj-string))
+        #/dissectfn (sink-name name)
+          name)))))
 
 (define/contract (sink-list->maybe-racket sink-list)
   (-> sink? #/maybe/c #/listof sink?)

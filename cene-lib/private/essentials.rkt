@@ -40,7 +40,7 @@
   list-all list-any list-foldl list-foldr list-kv-map list-map
   list-zip-map)
 (require #/only-in lathe-comforts/maybe
-  just just-value maybe? maybe-bind maybe/c maybe-map nothing)
+  just just-value maybe-bind maybe/c maybe-map nothing)
 (require #/only-in lathe-comforts/string immutable-string?)
 (require #/only-in lathe-comforts/struct struct-easy)
 (require #/only-in lathe-comforts/trivial trivial)
@@ -110,7 +110,10 @@
 
 (define-runtime-path prelude-path "prelude.cene")
 
-(provide sink-extfx-init-essentials sink-extfx-init-package)
+(provide
+  minimal-and-essential-tags
+  sink-extfx-init-essentials
+  sink-extfx-init-package)
 
 
 
@@ -148,6 +151,34 @@
 (define s-textpat-result-passed-end
   (core-sink-struct "textpat-result-passed-end" #/list))
 
+(define essential-tags
+  (list
+    s-yep
+    s-nope
+    
+    s-nothing
+    s-just
+    
+    s-assoc
+    
+    s-command-init-package
+    
+    s-ordering-lt
+    s-ordering-eq
+    s-ordering-private
+    s-ordering-gt
+    
+    s-struct-metadata
+    
+    s-carried
+    
+    s-textpat-result-matched
+    s-textpat-result-failed
+    s-textpat-result-passed-end))
+
+(define minimal-and-essential-tags
+  (append minimal-tags essential-tags))
+
 
 ; TODO: We used this in `effection/order/base`, and we're using it
 ; again here. See if it should be an export of Effection.
@@ -163,22 +194,6 @@
     (just #/ordering-eq)
   #/maybe-ordering-or (maybe-compare-elems a b)
   #/maybe-compare-aligned-lists as bs maybe-compare-elems))
-
-; TODO: We used this in `effection/order/base`, and we're using it
-; again here. See if it should be an export of Effection.
-(define/contract (getmaybefx-bind effects then)
-  (-> (getfx/c maybe?) (-> any/c #/getfx/c maybe?) #/getfx/c maybe?)
-  (getfx-bind effects #/fn maybe-intermediate
-  #/expect maybe-intermediate (just intermediate)
-    (getfx-done #/nothing)
-  #/then intermediate))
-
-; TODO: We used this in `effection/order/base`, and we're using it
-; again here. See if it should be an export of Effection.
-(define/contract (getmaybefx-map effects func)
-  (-> (getfx/c maybe?) (-> any/c any/c) #/getfx/c maybe?)
-  (getmaybefx-bind effects #/fn intermediate
-  #/getfx-done #/just #/func intermediate))
 
 ; TODO: See if we should put something like this in Effection.
 (define-syntax (dexed-struct stx)
