@@ -269,9 +269,10 @@
   (sink-perffx-bind (sink-perffx-done #/trivial) #/dissectfn (trivial)
   #/then))
 
-(define/contract (sink-perffx-later-done then)
+(define/contract (sink-perffx-done-later compute-result)
   (-> (-> sink?) sink-perffx?)
-  (sink-perffx-later #/fn #/sink-perffx-done then))
+  (sink-perffx-later #/fn
+  #/sink-perffx-done #/compute-result))
 
 
 ; In Cene, "mobile values" are values that are bundled with
@@ -366,7 +367,7 @@
     (sink-name qualified-main-tag-name)
   #/make-sink-mobile fault
     (make-sink-struct (list qualified-main-tag-name) (list))
-    (sink-perffx-later-done #/fn
+    (sink-perffx-done-later #/fn
       (sink-mobile-built-in-call fault "perffx-done"
         (sink-mobile-built-in-call fault "expr-construct"
           mobile-qualified-main-tag-sink-authorized-name
@@ -394,7 +395,7 @@
   (-> sink-fault? sink? sink-mobile?)
   (let next ()
     (make-sink-mobile fault value
-      (sink-perffx-later-done #/fn
+      (sink-perffx-done-later #/fn
         (sink-mobile-built-in-call fault "perffx-done"
           (sink-mobile-built-in-call fault "expr-reified" (next))))
       (fn
@@ -3334,7 +3335,7 @@
       (cenegetfx-cene-err fault "Expected a to be a string")
     #/expect b (sink-string b)
       (cenegetfx-cene-err fault "Expected b to be a string")
-    #/cenegetfx-done #/sink-perffx #/sink-getfx #/cenegetfx-later #/fn
+    #/cenegetfx-done #/sink-perffx-done-later #/fn
       (sink-string #/string->immutable-string #/string-append a b)))
   
   ; This is an extremely basic string syntax. It doesn't have any
@@ -3376,7 +3377,10 @@
     #/cenegetfx-done
       (sink-int #/char->integer #/string-ref string start)))
   
-  (def-func-fault! "string-cut-later" fault string start stop then
+  ; NOTE: In the JavaScript version of Cene, this was known as
+  ; `string-cut-later`, it took a callback, and it returned an extfx
+  ; value.
+  (def-func-fault! "perffx-string-cut" fault string start stop
     (expect string (sink-string string)
       (cenegetfx-cene-err fault "Expected string to be a string")
     #/expect start (sink-int start)
@@ -3389,10 +3393,9 @@
       (cenegetfx-cene-err fault "Expected start to be an int no greater than stop")
     #/expect (<= stop #/string-length string) #t
       (cenegetfx-cene-err fault "Expected stop to be an int no greater than the length of string")
-    #/cenegetfx-done #/sink-extfx-later #/fn
-      (sink-call fault then
-        (sink-string #/string->immutable-string
-          (substring string start stop)))))
+    #/cenegetfx-done #/sink-perffx-done-later #/fn
+      (sink-string #/string->immutable-string
+        (substring string start stop))))
   
   
   ; Text patterns
@@ -3480,7 +3483,7 @@
   (def-func-fault! "perffx-optimize-textpat" fault t
     (expect t (sink-textpat t)
       (cenegetfx-cene-err fault "Expected t to be a text pattern")
-    #/cenegetfx-done #/sink-perffx #/sink-getfx #/cenegetfx-later #/fn
+    #/cenegetfx-done #/sink-perffx-done-later #/fn
       (sink-optimized-textpat #/optimize-textpat t)))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
@@ -3507,7 +3510,7 @@
       (cenegetfx-cene-err fault "Expected stop to be less than or equal to the length of the string")
     #/expect (<= start stop) #t
       (cenegetfx-cene-err fault "Expected start to be less than or equal to stop")
-    #/cenegetfx-done #/sink-perffx #/sink-getfx #/cenegetfx-later #/fn
+    #/cenegetfx-done #/sink-perffx-done-later #/fn
       (w- result (optimized-textpat-match ot str start stop)
       #/mat result (textpat-result-matched stop)
         (make-sink-struct (s-textpat-result-matched) #/list
@@ -3712,7 +3715,7 @@
     
     (expect (sink-located-string? located-string) #t
       (cenegetfx-cene-err fault "Expected located-string to be a located string")
-    #/cenegetfx-done #/sink-perffx #/sink-getfx #/cenegetfx-later #/fn
+    #/cenegetfx-done #/sink-perffx-done-later #/fn
       (sink-string-from-located-string located-string)))
   
   ; TODO BUILTINS: Make sure we have a sufficient set of operations
