@@ -127,6 +127,13 @@
     (error "Internal error: Did not expect `getfx-err` to complete with a result value")))
 
 ; TODO: See if we should export this from somewhere.
+(define/contract (monad-maybe-map fx-done fx-bind maybe-of-fx)
+  (-> (-> any/c any/c) (-> any/c (-> any/c any/c) any/c) maybe? any/c)
+  (expect maybe-of-fx (just fx-val) (fx-done #/nothing)
+  #/fx-bind fx-val #/fn val
+  #/fx-done #/just val))
+
+; TODO: See if we should export this from somewhere.
 (define/contract (monad-list-map fx-done fx-bind list-of-fx)
   (-> (-> any/c any/c) (-> any/c (-> any/c any/c) any/c) list? any/c)
   (w-loop next rest list-of-fx rev-result (list)
@@ -429,6 +436,13 @@
 (define/contract (cenegetfx-join cenegetfx-cenegetfx)
   (-> (cenegetfx/c cenegetfx?) cenegetfx?)
   (cenegetfx-bind cenegetfx-cenegetfx #/fn effects effects))
+
+(define/contract (cenegetfx-maybe-map maybe-of-cenegetfx)
+  (-> (maybe/c cenegetfx?) #/cenegetfx/c maybe?)
+  (monad-maybe-map
+    (fn result #/cenegetfx-done result)
+    (fn effects then #/cenegetfx-bind effects then)
+    maybe-of-cenegetfx))
 
 (define/contract (cenegetfx-list-map list-of-cenegetfx)
   (-> (listof cenegetfx?) #/cenegetfx/c list?)
@@ -2137,12 +2151,13 @@
     (next sink-list #/cons elem rev-racket-list)
   #/nothing))
 
-(define/contract (racket-list->sink racket-list)
-  (-> (listof sink?) sink?)
-  (begin (assert-can-get-cene-definition-globals!)
-  #/list-foldr racket-list (make-sink-struct (s-nil) #/list)
-  #/fn elem rest
-    (make-sink-struct (s-cons) #/list elem rest)))
+(define/contract (racket-list->cenegetfx-sink racket-list)
+  (-> (listof sink?) #/cenegetfx/c sink?)
+  (cenegetfx-with-run-getfx #/fn
+  #/cenegetfx-done
+    (list-foldr racket-list (make-sink-struct (s-nil) #/list)
+    #/fn elem rest
+      (make-sink-struct (s-cons) #/list elem rest))))
 
 (define/contract (extfx-claim name on-success)
   (-> authorized-name? (-> extfx?) extfx?)

@@ -1824,6 +1824,15 @@
             (sink-dex-name)))
       #/fn dex-projs
       #/sink-extfx-with-run-getfx #/fn
+      #/sink-extfx-run-cenegetfx
+        (racket-list->cenegetfx-sink
+          (list-map qualified-proj-name-entries
+          #/dissectfn (list proj-string qualified-proj-name)
+            (make-sink-struct (s-assoc) #/list
+              (sink-string proj-string)
+              (sink-authorized-name-get-name qualified-proj-name))))
+      #/fn qualified-proj-names
+      #/sink-extfx-with-run-getfx #/fn
       #/sink-extfx-def-fallibly-dexed-value-for-package
         unique-name-for-metadata
         (sink-name-for-struct-metadata main-tag-name)
@@ -1832,11 +1841,7 @@
           dex-projs)
         (make-sink-struct (s-struct-metadata) #/list
           qualified-main-tag-name
-          (racket-list->sink #/list-map qualified-proj-name-entries
-          #/dissectfn (list proj-string qualified-proj-name)
-            (make-sink-struct (s-assoc) #/list
-              (sink-string proj-string)
-              (sink-authorized-name-get-name qualified-proj-name)))))
+          qualified-proj-names))
       
       ))
   
@@ -2987,10 +2992,12 @@
       #/cenegetfx-bind
         (cenegetfx-run-getfx #/getfx-table-sort cline table)
       #/fn maybe-ranks
-      #/racket-maybe->cenegetfx-sink
-        (maybe-map maybe-ranks #/fn ranks
-          (racket-list->sink #/list-map ranks #/fn rank
-            (sink-table rank))))))
+      #/cenegetfx-bind
+        (cenegetfx-maybe-map #/maybe-map maybe-ranks #/fn ranks
+          (racket-list->cenegetfx-sink #/list-map ranks #/fn rank
+            (sink-table rank)))
+      #/fn maybe-ranks
+      #/racket-maybe->cenegetfx-sink maybe-ranks)))
   
   
   ; Effects
