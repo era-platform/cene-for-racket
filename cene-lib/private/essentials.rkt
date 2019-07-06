@@ -334,7 +334,7 @@
 ; `expr-case`, and `expr-{dex,...}-struct` so that they take mobile
 ; authorized names rather than unadorned authorized names. We'll also
 ; need to take care of the TODO MOBILE described in
-; `sink-mobile-built-in-construct-nullary`.)
+; `cenegetfx-sink-mobile-built-in-construct-nullary`.)
 ;
 ; We're using the terminology "mobile" as seen in sources like
 ; Tom Murphy VII's "Modal Types for Mobile Code," where
@@ -393,9 +393,12 @@
     (sink-perffx-done-later #/fn
       (sink-perffx-bind
         (sink-perffx-run-cenegetfx
-          (cenegetfx-sink-mobile-built-in-call fault "expr-construct"
-            mobile-qualified-main-tag-sink-authorized-name
-            (sink-mobile-built-in-construct-nullary fault "nil")))
+          (cenegetfx-bind
+            (cenegetfx-sink-mobile-built-in-construct-nullary fault
+              "nil")
+          #/fn nil
+          #/cenegetfx-sink-mobile-built-in-call fault "expr-construct"
+            mobile-qualified-main-tag-sink-authorized-name nil))
       #/fn expr
       #/sink-perffx-run-cenegetfx
         (cenegetfx-sink-mobile-built-in-call fault "perffx-done"
@@ -405,19 +408,23 @@
       mobile-qualified-main-tag-sink-authorized-name)))
 
 (define/contract
-  (sink-mobile-built-in-construct-nullary fault main-tag-string)
-  (-> sink-fault? immutable-string? sink-mobile?)
+  (cenegetfx-sink-mobile-built-in-construct-nullary
+    fault main-tag-string)
+  (-> sink-fault? immutable-string? #/cenegetfx/c sink-mobile?)
   (w- main-tag-name
     (sink-name-for-string #/sink-string main-tag-string)
-  #/w- qualified-main-tag-sink-authorized-name
-    (sink-name-qualify-for-lang-impl
-    #/sink-name-for-struct-main-tag main-tag-name)
-  #/sink-mobile-construct-nullary fault
-    ; TODO MOBILE: Stop using `sink-mobile-reified` here, and instead
-    ; express the name using a module import so that compilers can
-    ; anticipate having to serialize this kind of value.
-    (sink-mobile-reified
-      fault qualified-main-tag-sink-authorized-name)))
+  #/cenegetfx-bind
+    (cenegetfx-sink-name-qualify-for-lang-impl
+      (sink-name-for-struct-main-tag main-tag-name))
+  #/fn qualified-main-tag-sink-authorized-name
+  #/cenegetfx-done
+    (sink-mobile-construct-nullary fault
+      ; TODO MOBILE: Stop using `sink-mobile-reified` here, and
+      ; instead express the name using a module import so that
+      ; compilers can anticipate having to serialize this kind of
+      ; value.
+      (sink-mobile-reified
+        fault qualified-main-tag-sink-authorized-name))))
 
 (define/contract (sink-mobile-reified fault value)
   (-> sink-fault? sink? sink-mobile?)
@@ -470,18 +477,23 @@
     fault built-in-name-string . mobile-args)
   (->* (sink-fault? immutable-string?) #:rest (listof sink-mobile?)
     (cenegetfx/c sink-mobile?))
-  (w- mobile-args
-    (expect mobile-args (list) mobile-args
+  (cenegetfx-bind
+    (cenegetfx-sink-mobile-built-in-construct-nullary
+      fault built-in-name-string)
+  #/fn func
+  #/cenegetfx-bind
+    (expect mobile-args (list) (cenegetfx-done mobile-args)
     ; NOTE: Nullary built-in functions work differently. We have to
     ; pass them `(nil)`. Yes, this means
     ; `cenegetfx-sink-mobile-built-in-call` can be used to call a
     ; built-in unary function as though it were nullary, but we just
     ; don't do that.
-    #/list #/sink-mobile-built-in-construct-nullary fault "nil")
-  #/cenegetfx-sink-mobile-call-list fault
-    (sink-mobile-built-in-construct-nullary
-      fault built-in-name-string)
-    mobile-args))
+    #/cenegetfx-bind
+      (cenegetfx-sink-mobile-built-in-construct-nullary fault "nil")
+    #/fn nil
+    #/cenegetfx-done #/list nil)
+  #/fn mobile-args
+  #/cenegetfx-sink-mobile-call-list fault func mobile-args))
 
 
 (struct-easy
@@ -1420,8 +1432,12 @@
     sink-extfx?)
   (sink-extfx-claim-and-split unique-name 2
   #/dissectfn (list unique-name-for-sub-write unique-name-for-step)
-  #/w- s
-    (make-sink-sub #/sink-authorized-name-for-init-package-pubsub)
+  #/sink-extfx-run-cenegetfx
+    (cenegetfx-bind
+      (cenegetfx-sink-authorized-name-for-init-package-pubsub)
+    #/fn pubsub-name
+    #/cenegetfx-make-sink-sub pubsub-name)
+  #/fn s
   #/sink-extfx-sub-write s unique-name-for-sub-write #/fn entry
     (expect (unmake-sink-struct-maybe (s-command-init-package) entry)
       (just #/list key qualify)
@@ -1444,8 +1460,13 @@
     sink-extfx?)
   (sink-extfx-claim-and-split unique-name 2
   #/dissectfn (list unique-name-for-pub-write unique-name-for-step)
-  #/w- p
-    (make-sink-pub #/sink-authorized-name-for-init-package-pubsub)
+  #/sink-extfx-run-cenegetfx
+    (cenegetfx-bind
+      (cenegetfx-sink-authorized-name-for-init-package-pubsub)
+    #/fn pubsub-name
+    #/cenegetfx-make-sink-pub pubsub-name)
+  #/fn p
+  #/sink-extfx-with-run-getfx #/fn
   #/sink-extfx-pub-write p unique-name-for-pub-write
     (make-sink-struct (s-command-init-package) #/list
       (sink-authorized-name-get-name unique-name-for-step)
@@ -1600,9 +1621,10 @@
     #/dissectfn (list unique-name-for-macro unique-name-for-impl)
     #/w- main-tag-name
       (sink-name-for-string #/sink-string main-tag-string)
-    #/w- qualified-main-tag-authorized-name
-      (sink-name-qualify-for-lang-impl
-      #/sink-name-for-struct-main-tag main-tag-name)
+    #/sink-extfx-run-cenegetfx
+      (cenegetfx-sink-name-qualify-for-lang-impl
+        (sink-name-for-struct-main-tag main-tag-name))
+    #/fn qualified-main-tag-authorized-name
     #/w- qualified-main-tag-name
       (sink-authorized-name-get-name
         qualified-main-tag-authorized-name)
@@ -1679,9 +1701,10 @@
     #/dissectfn (list unique-name-for-macro unique-name-for-impl)
     #/w- main-tag-name
       (sink-name-for-string #/sink-string main-tag-string)
-    #/w- qualified-main-tag-authorized-name
-      (sink-name-qualify-for-lang-impl
-      #/sink-name-for-struct-main-tag main-tag-name)
+    #/sink-extfx-run-cenegetfx
+      (cenegetfx-sink-name-qualify-for-lang-impl
+        (sink-name-for-struct-main-tag main-tag-name))
+    #/fn qualified-main-tag-authorized-name
     #/w- qualified-main-tag-name
       (sink-authorized-name-get-name
         qualified-main-tag-authorized-name)
@@ -1742,18 +1765,22 @@
         unique-name-for-metadata)
     #/w- main-tag-name
       (sink-name-for-string #/sink-string main-tag-string)
-    #/w- qualified-main-tag-authorized-name
-      (sink-name-qualify-for-lang-impl
-      #/sink-name-for-struct-main-tag main-tag-name)
+    #/sink-extfx-run-cenegetfx
+      (cenegetfx-sink-name-qualify-for-lang-impl
+        (sink-name-for-struct-main-tag main-tag-name))
+    #/fn qualified-main-tag-authorized-name
     #/w- qualified-main-tag-name
       (sink-authorized-name-get-name
         qualified-main-tag-authorized-name)
-    #/w- qualified-proj-name-entries
-      (list-map proj-strings #/fn proj-string
-        (list proj-string
-        #/sink-name-qualify-for-lang-impl
-        #/sink-name-for-struct-proj qualified-main-tag-name
-        #/sink-name-for-string #/sink-string proj-string))
+    #/sink-extfx-run-cenegetfx
+      (cenegetfx-list-map #/list-map proj-strings #/fn proj-string
+        (cenegetfx-bind
+          (cenegetfx-sink-name-qualify-for-lang-impl
+            (sink-name-for-struct-proj qualified-main-tag-name
+            #/sink-name-for-string #/sink-string proj-string))
+        #/fn qualified-proj-name
+        #/cenegetfx-done #/list proj-string qualified-proj-name))
+    #/fn qualified-proj-name-entries
     #/w- qualified-proj-authorized-names
       (list-map qualified-proj-name-entries
       #/dissectfn (list proj-string qualified-proj-name)
@@ -1818,7 +1845,8 @@
       ; TODO: We haven't even tried to store this in the same format
       ; as the JavaScript version of Cene does. See if we should.
       ;
-      (sink-extfx-run-cenegetfx
+      (sink-extfx-with-run-getfx #/fn
+      #/sink-extfx-run-cenegetfx
         (cenegetfx-sink-dex-list root-fault
           (sink-dex-struct (s-assoc) #/list
             (sink-dex-string)
@@ -3122,13 +3150,13 @@
   (def-func-fault! "make-pub" fault name
     (expect (sink-authorized-name? name) #t
       (cenegetfx-cene-err fault "Expected name to be an authorized name")
-    #/cenegetfx-done #/make-sink-pub name))
+    #/cenegetfx-make-sink-pub name))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "make-sub" fault name
     (expect (sink-authorized-name? name) #t
       (cenegetfx-cene-err fault "Expected name to be an authorized name")
-    #/cenegetfx-done #/make-sink-sub name))
+    #/cenegetfx-make-sink-sub name))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "extfx-pub-write" fault p unique-name arg
@@ -4015,7 +4043,7 @@
     (fn fault name
       (expect (sink-name? name) #t
         (cenegetfx-cene-err fault "Expected name to be a name")
-      #/cenegetfx-done #/sink-name-qualify-for-lang-impl name)))
+      #/cenegetfx-sink-name-qualify-for-lang-impl name)))
   
   (def-func-verbose! sink-extfx-def-value-for-prelude
     "extfx-add-init-package-step"

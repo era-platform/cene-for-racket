@@ -296,20 +296,6 @@
     (dex-immutable-string)
     string))
 
-; TODO: Once we have the ability to import names, we should make sure
-; this produces an authorized name whose name is importable from a
-; UUID-identified import. Modules identified by UUID can only be
-; implemented by the language implementation. And since that's the
-; case, there should be no way for Cene code to obtain these
-; authorized names; just the unauthorized equivalents.
-;
-(define/contract (sink-name-qualify-for-lang-impl unqualified-name)
-  (-> sink-name? sink-authorized-name?)
-  (sink-authorized-name-subname unqualified-name
-  #/sink-authorized-name-subname
-    (sink-name-of-racket-string "qualify")
-    (cene-definition-lang-impl-qualify-root)))
-
 (define/contract (sink-table-get-maybe table name)
   (-> sink-table? sink-name? #/maybe/c sink?)
   (dissect table (sink-table table)
@@ -476,6 +462,12 @@
   #/dissectfn (cene-root-info ds lang-impl-qualify-root tag-cache)
   #/cenegetfx-done ds))
 
+(define/contract (cenegetfx-read-lang-impl-qualify-root)
+  (-> #/cenegetfx/c sink-authorized-name?)
+  (cenegetfx-bind (cenegetfx-read-root-info)
+  #/dissectfn (cene-root-info ds lang-impl-qualify-root tag-cache)
+  #/cenegetfx-done lang-impl-qualify-root))
+
 
 (define/contract cene-definition-get-param
   (parameter/c
@@ -566,23 +558,45 @@
     (error "Expected every call to `cene-run-getfx` to occur with an implementation in the dynamic scope")
   #/run-getfx effects))
 
-(define/contract (make-sink-pub pubsub-name)
-  (-> sink-authorized-name? sink-pub?)
-  (begin (assert-can-get-cene-definition-globals!)
-  #/dissect pubsub-name (sink-authorized-name pubsub-name)
-  #/sink-pub #/make-pub (cene-definition-dspace) pubsub-name))
+(define/contract (cenegetfx-make-sink-pub pubsub-name)
+  (-> sink-authorized-name? #/cenegetfx/c sink-pub?)
+  (dissect pubsub-name (sink-authorized-name pubsub-name)
+  #/cenegetfx-bind (cenegetfx-read-definition-space) #/fn ds
+  #/cenegetfx-done #/sink-pub #/make-pub ds pubsub-name))
 
-(define/contract (make-sink-sub pubsub-name)
-  (-> sink-authorized-name? sink-sub?)
-  (begin (assert-can-get-cene-definition-globals!)
-  #/dissect pubsub-name (sink-authorized-name pubsub-name)
-  #/sink-sub #/make-sub (cene-definition-dspace) pubsub-name))
+(define/contract (cenegetfx-make-sink-sub pubsub-name)
+  (-> sink-authorized-name? #/cenegetfx/c sink-sub?)
+  (dissect pubsub-name (sink-authorized-name pubsub-name)
+  #/cenegetfx-bind (cenegetfx-read-definition-space) #/fn ds
+  #/cenegetfx-done #/sink-sub #/make-sub ds pubsub-name))
 
-(define/contract (sink-authorized-name-for-init-package-pubsub)
-  (-> sink-authorized-name?)
-  (sink-authorized-name-subname
-    (sink-name-of-racket-string "init-package-pubsub")
-    (cene-definition-lang-impl-qualify-root)))
+(define/contract
+  (cenegetfx-sink-authorized-name-for-init-package-pubsub)
+  (-> #/cenegetfx/c sink-authorized-name?)
+  (cenegetfx-bind (cenegetfx-read-lang-impl-qualify-root)
+  #/fn lang-impl-qualify-root
+  #/cenegetfx-done
+    (sink-authorized-name-subname
+      (sink-name-of-racket-string "init-package-pubsub")
+      lang-impl-qualify-root)))
+
+; TODO: Once we have the ability to import names, we should make sure
+; this produces an authorized name whose name is importable from a
+; UUID-identified import. Modules identified by UUID can only be
+; implemented by the language implementation. And since that's the
+; case, there should be no way for Cene code to obtain these
+; authorized names; just the unauthorized equivalents.
+;
+(define/contract
+  (cenegetfx-sink-name-qualify-for-lang-impl unqualified-name)
+  (-> sink-name? #/cenegetfx/c sink-authorized-name?)
+  (cenegetfx-bind (cenegetfx-read-lang-impl-qualify-root)
+  #/fn lang-impl-qualify-root
+  #/cenegetfx-done
+    (sink-authorized-name-subname unqualified-name
+    #/sink-authorized-name-subname
+      (sink-name-of-racket-string "qualify")
+      lang-impl-qualify-root)))
 
 (define cene-definition-get-prompt-tag
   (make-continuation-prompt-tag 'cene-definition-get-prompt-tag))
@@ -2109,8 +2123,8 @@
 (define (make-cene-root-info ds lang-impl-qualify-root tags)
   (-> dspace? authorized-name? (listof core-sink-struct-metadata?)
     (cene-root-info/c))
-  (with-gets-from (cene-root-info ds lang-impl-qualify-root (hash))
-  #/fn
+  (w- temp-rinfo (cene-root-info ds lang-impl-qualify-root (hash))
+  #/with-gets-from temp-rinfo #/fn
   #/cene-root-info
     ds
     lang-impl-qualify-root
@@ -2120,18 +2134,20 @@
           tag-cache-key main-tag-string proj-strings)
       #/hash-set tag-cache tag-cache-key
         (w- main-tag-authorized-name
-          (sink-name-qualify-for-lang-impl
-          #/sink-name-for-struct-main-tag
-          #/sink-name-for-string #/sink-string main-tag-string)
+          (pure-run-getfx #/getfx-run-cenegetfx temp-rinfo
+            (cenegetfx-sink-name-qualify-for-lang-impl
+            #/sink-name-for-struct-main-tag
+            #/sink-name-for-string #/sink-string main-tag-string))
         #/w- main-tag-name
           (sink-authorized-name-get-name main-tag-authorized-name)
         #/list-map
           (cons main-tag-name
           #/list-map proj-strings #/fn proj-string
             (sink-authorized-name-get-name
-            #/sink-name-qualify-for-lang-impl
-            #/sink-name-for-struct-proj main-tag-name
-            #/sink-name-for-string #/sink-string proj-string))
+            #/pure-run-getfx #/getfx-run-cenegetfx temp-rinfo
+              (cenegetfx-sink-name-qualify-for-lang-impl
+              #/sink-name-for-struct-proj main-tag-name
+              #/sink-name-for-string #/sink-string proj-string)))
         #/dissectfn (sink-name name)
           name)))))
 
