@@ -1313,11 +1313,6 @@
   #/fn result
     (error "Internal error: Expected no return value from cenegetfx-cene-err")))
 
-(define-simple-macro (cene-err fault:expr message:string)
-  (begin (assert-can-get-cene-definitions!)
-  #/cene-run-getfx #/getfx-ambient-run-cenegetfx
-    (cenegetfx-cene-err fault message)))
-
 (define/contract
   (cenegetfx-sink-call-fault-binary
     caller-fault explicit-fault func arg)
@@ -1462,19 +1457,23 @@
     (list 'name:struct-proj qualified-main-tag-name n)))
 
 (define/contract
-  (sink-cexpr-sequence-output-stream-spend! fault stream)
+  (sink-extfx-sink-cexpr-sequence-output-stream-spend
+    fault stream then)
   (-> sink-fault? sink-cexpr-sequence-output-stream?
-    (list/c
-      any/c
-      (-> any/c sink-cexpr? (-> any/c sink-extfx?) sink-extfx?)))
-  (begin (assert-can-mutate!)
-  #/dissect stream (sink-cexpr-sequence-output-stream id b)
+    (->
+      (list/c
+        any/c
+        (-> any/c sink-cexpr? (-> any/c sink-extfx?) sink-extfx?))
+      sink-extfx?)
+    sink-extfx?)
+  (dissect stream (sink-cexpr-sequence-output-stream id b)
+  #/sink-extfx-later #/fn
+  #/begin (assert-can-mutate!)
   ; TODO: See if this should be more thread-safe in some way.
   #/expect (unbox b) (just state-and-handler)
-    (cene-err fault "Tried to spend an expression output stream that was already spent")
-  #/begin
-    (set-box! b (nothing))
-    state-and-handler))
+    (sink-extfx-cene-err fault "Tried to spend an expression output stream that was already spent")
+  #/begin (set-box! b (nothing))
+  #/then state-and-handler))
 
 (define/contract
   (sink-extfx-make-cexpr-sequence-output-stream
@@ -1505,10 +1504,10 @@
         ; that, we're reporting this error message in such a way that
         ; it makes sense for Cene's
         ; `extfx-make-expr-sequence-output-stream` built-in.
-        (cene-err fault "Expected the expression sequence output stream given to an extfx-make-expr-sequence-output-stream unwrapper to be a descendant of the same one created by that call")
-      #/dissect
-        (sink-cexpr-sequence-output-stream-spend! fault output-stream)
-        (list state on-cexpr)
+        (sink-extfx-cene-err fault "Expected the expression sequence output stream given to an extfx-make-expr-sequence-output-stream unwrapper to be a descendant of the same one created by that call")
+      #/sink-extfx-sink-cexpr-sequence-output-stream-spend
+        fault output-stream
+      #/dissectfn (list state on-cexpr)
       #/then state))))
 
 (define/contract
@@ -1517,26 +1516,27 @@
     sink-fault? sink-cexpr-sequence-output-stream? sink-cexpr?
     (-> sink-cexpr-sequence-output-stream? sink-extfx?)
     sink-extfx?)
-  (sink-extfx-later #/fn
-  #/dissect output-stream (sink-cexpr-sequence-output-stream id _)
-  #/dissect
-    (sink-cexpr-sequence-output-stream-spend! fault output-stream)
-    (list state on-cexpr)
+  (dissect output-stream (sink-cexpr-sequence-output-stream id _)
+  #/sink-extfx-sink-cexpr-sequence-output-stream-spend
+    fault output-stream
+  #/dissectfn (list state on-cexpr)
   #/on-cexpr state cexpr #/fn state
   #/then #/sink-cexpr-sequence-output-stream id #/box #/just #/list
     state on-cexpr))
 
 (define/contract
-  (sink-text-input-stream-spend! fault text-input-stream)
-  (-> sink-fault? sink-text-input-stream? input-port?)
-  (begin (assert-can-mutate!)
-  #/dissect text-input-stream (sink-text-input-stream b)
+  (sink-extfx-sink-text-input-stream-spend
+    fault text-input-stream then)
+  (-> sink-fault? sink-text-input-stream? (-> input-port? sink-extfx?)
+    sink-extfx?)
+  (dissect text-input-stream (sink-text-input-stream b)
+  #/sink-extfx-later #/fn
+  #/begin (assert-can-mutate!)
   ; TODO: See if this should be more thread-safe in some way.
   #/expect (unbox b) (just input-port)
-    (cene-err fault "Tried to spend a text input stream that was already spent")
-  #/begin
-    (set-box! b (nothing))
-    input-port))
+    (sink-extfx-cene-err fault "Tried to spend a text input stream that was already spent")
+  #/begin (set-box! b (nothing))
+  #/then input-port))
 
 (define/contract
   (sink-extfx-read-eof fault text-input-stream on-eof else)
@@ -1546,8 +1546,8 @@
     sink-extfx?
     (-> sink-text-input-stream? sink-extfx?)
     sink-extfx?)
-  (sink-extfx-later #/fn
-  #/w- in (sink-text-input-stream-spend! fault text-input-stream)
+  (sink-extfx-sink-text-input-stream-spend fault text-input-stream
+  #/fn in
   #/if (eof-object? #/peek-byte in)
     (begin (close-input-port in)
       on-eof)
@@ -1563,8 +1563,8 @@
     (-> sink-text-input-stream? (maybe/c sink-located-string?)
       sink-extfx?)
     sink-extfx?)
-  (sink-extfx-later #/fn
-  #/w- in (sink-text-input-stream-spend! fault text-input-stream)
+  (sink-extfx-sink-text-input-stream-spend fault text-input-stream
+  #/fn in
   #/let-values
     (
       [
@@ -1784,13 +1784,13 @@
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     ; TODO FAULT: Make this `fault` more specific.
-    (cene-err fault "The use of ( to delimit a macro name is not yet supported")
+    (sink-extfx-cene-err fault "The use of ( to delimit a macro name is not yet supported")
   #/sink-extfx-optimized-textpat-read-located
     fault |pat "["| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     ; TODO FAULT: Make this `fault` more specific.
-    (cene-err fault "The use of [ to delimit a macro name is not yet supported")
+    (sink-extfx-cene-err fault "The use of [ to delimit a macro name is not yet supported")
   
   #/sink-extfx-read-maybe-identifier
     fault qualify text-input-stream pre-qualify
@@ -1799,7 +1799,7 @@
     (then text-input-stream name)
   
   ; TODO FAULT: Make this `fault` more specific.
-  #/cene-err fault "Encountered an unrecognized case of the expression operator syntax"))
+  #/sink-extfx-cene-err fault "Encountered an unrecognized case of the expression operator syntax"))
 
 (define/contract
   (sink-extfx-run-op
@@ -1830,7 +1830,7 @@
     #/then unique-name qualify text-input-stream output-stream)
   #/fn result
   #/expect (sink-extfx? result) #t
-    (cene-err fault "Expected the return value of a macro to be an effectful computation")
+    (sink-extfx-cene-err fault "Expected the return value of a macro to be an effectful computation")
     result))
 
 (define/contract

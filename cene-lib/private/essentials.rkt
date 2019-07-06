@@ -51,7 +51,8 @@
 (require #/only-in effection/order
   assocs->table-if-mutually-unique cline-exact-rational
   dex-exact-rational dex-immutable-string fuse-exact-rational-by-plus
-  fuse-exact-rational-by-times getfx-is-eq-by-dex)
+  fuse-exact-rational-by-times getfx-is-eq-by-dex table-kv-all?
+  table-v-all?)
 (require #/only-in effection/order/base
   cline-by-dex cline-default cline-fix cline-give-up cline-opaque
   cline-result? cline-struct dex? dex-cline dex-default dex-dex dexed?
@@ -383,7 +384,7 @@
   #/expect
     (sink-authorized-name? qualified-main-tag-sink-authorized-name)
     #t
-    (cene-err fault "Expected mobile-qualified-main-tag-authorized-name to be a mobile authorized name")
+    (error fault "Expected mobile-qualified-main-tag-authorized-name to be a mobile authorized name")
   #/dissect
     (sink-authorized-name-get-name
       qualified-main-tag-sink-authorized-name)
@@ -1441,9 +1442,9 @@
   #/sink-extfx-sub-write s unique-name-for-sub-write #/fn entry
     (expect (unmake-sink-struct-maybe (s-command-init-package) entry)
       (just #/list key qualify)
-      (cene-err fault "Expected each package initialization command to be a command-init-package")
+      (sink-extfx-cene-err fault "Expected each package initialization command to be a command-init-package")
     #/expect (sink-name? key) #t
-      (cene-err fault "Expected each package initialization command to have a name as its key")
+      (sink-extfx-cene-err fault "Expected each package initialization command to have a name as its key")
     #/step (sink-authorized-name-subname key unique-name-for-step)
       (fn name #/cenegetfx-sink-call-qualify fault qualify name))))
 
@@ -2615,11 +2616,13 @@
   (def-func-fault! "mobile-construct-nullary"
     fault mobile-qualified-main-tag-authorized-name
     
-    (expect
-      (sink-authorized-name?
-        mobile-qualified-main-tag-authorized-name)
+    (expect mobile-qualified-main-tag-authorized-name
+      (sink-mobile qualified-main-tag-authorized-name _ _)
+      (cenegetfx-cene-err fault "Expected mobile-qualified-main-tag-authorized-name to be a mobile value")
+    #/expect
+      (sink-authorized-name? qualified-main-tag-authorized-name)
       #t
-      (cenegetfx-cene-err fault "Expected mobile-qualified-main-tag-authorized-name to be an authorized name")
+      (cenegetfx-cene-err fault "Expected mobile-qualified-main-tag-authorized-name to be a mobile authorized name")
     #/cenegetfx-done #/sink-mobile-construct-nullary
       fault mobile-qualified-main-tag-authorized-name))
   
@@ -2714,7 +2717,7 @@
         (sink-authorized-name-get-name var))
     #/if (sink-names-have-duplicate? vars)
       ; TODO FAULT: Make this `fault` more specific.
-      (cene-err fault "Expected the variables of a case pattern to be mutually unique")
+      (sink-extfx-cene-err fault "Expected the variables of a case pattern to be mutually unique")
     
     #/then unique-name qualify text-input-stream tags vars))
   
@@ -2820,7 +2823,7 @@
     #/expect (reverse args-args)
       (cons last-arg-arg rev-past-args-args)
       ; TODO FAULT: Make this `fault` more specific.
-      (cene-err fault "Expected a c-blame form to have at least one argument aside from the blame argument and the function to call")
+      (sink-extfx-cene-err fault "Expected a c-blame form to have at least one argument aside from the blame argument and the function to call")
     
     #/then unique-name qualify text-input-stream
       (sink-cexpr #/cexpr-call-fault fault-arg-expr
@@ -2916,20 +2919,21 @@
       sink-name-for-local-variable
     #/fn unique-name qualify text-input-stream args
     #/expect args (cons fault-param args)
-      (cene-err fault "Expected a fn-blame form to have a blame parameter")
+      (sink-extfx-cene-err fault "Expected a fn-blame form to have a blame parameter")
     #/expect (parse-param fault-param) (just fault-param)
-      (cene-err fault "Expected the blame parameter of a fn-blame form to be an identifier")
+      (sink-extfx-cene-err fault "Expected the blame parameter of a fn-blame form to be an identifier")
     #/expect (reverse args) (cons body rev-params)
-      (cene-err fault "Expected a fn-blame form to have a body expression")
-    #/w- rev-params
-      (list-map rev-params #/fn param
+      (sink-extfx-cene-err fault "Expected a fn-blame form to have a body expression")
+    #/sink-extfx-run-cenegetfx
+      (cenegetfx-list-map #/list-map rev-params #/fn param
         (expect (parse-param param) (just param)
-          (cene-err fault "Expected every parameter of a fn form to be an identifier")
-          param))
+          (cenegetfx-cene-err fault "Expected every parameter of a fn form to be an identifier")
+        #/cenegetfx-done param))
+    #/fn rev-params
     #/if (sink-names-have-duplicate? #/cons fault-param rev-params)
-      (cene-err fault "Expected every parameter of a fn form to be unique, including the blame parameter")
+      (sink-extfx-cene-err fault "Expected every parameter of a fn form to be unique, including the blame parameter")
     #/expect rev-params (cons last-param rev-past-params)
-      (cene-err fault "Expected a fn-blame form to have at least one parameter aside from the blame parameter")
+      (sink-extfx-cene-err fault "Expected a fn-blame form to have at least one parameter aside from the blame parameter")
     #/then unique-name qualify text-input-stream
       (list-foldl
         (sink-cexpr-opaque-fn-fault fault-param last-param
@@ -2946,14 +2950,15 @@
       sink-name-for-local-variable
     #/fn unique-name qualify text-input-stream args
     #/expect (reverse args) (cons body rev-params)
-      (cene-err fault "Expected a fn form to have a body expression")
-    #/w- rev-params
-      (list-map rev-params #/fn param
+      (sink-extfx-cene-err fault "Expected a fn form to have a body expression")
+    #/sink-extfx-run-cenegetfx
+      (cenegetfx-list-map #/list-map rev-params #/fn param
         (expect (parse-param param) (just param)
-          (cene-err fault "Expected every parameter of a fn form to be an identifier")
-          param))
+          (cenegetfx-cene-err fault "Expected every parameter of a fn form to be an identifier")
+        #/cenegetfx-done param))
+    #/fn rev-params
     #/if (sink-names-have-duplicate? rev-params)
-      (cene-err fault "Expected every parameter of a fn form to be mutually unique")
+      (sink-extfx-cene-err fault "Expected every parameter of a fn form to be mutually unique")
     #/then unique-name qualify text-input-stream
       (list-foldl (id-or-expr->cexpr body) rev-params #/fn body param
         (sink-cexpr-opaque-fn param body))))
@@ -3372,23 +3377,27 @@
       sink-name-for-local-variable
     #/fn unique-name qualify text-input-stream args
     #/expect (reverse args) (cons body rev-bindings)
-      (cene-err fault "Expected a let form to have a body expression")
-    #/w- bindings
+      (sink-extfx-cene-err fault "Expected a let form to have a body expression")
+    #/sink-extfx-run-cenegetfx
       (w-loop next rest rev-bindings so-far (list)
-        (mat rest (list) so-far
+        (mat rest (list) (cenegetfx-done so-far)
         #/expect rest (list* val var rest)
-          (cene-err fault "Expected a let form to have an odd number of subforms")
+          (cenegetfx-cene-err fault "Expected a let form to have an odd number of subforms")
         #/next rest (cons (list var val) so-far)))
-    #/then unique-name qualify text-input-stream
-    #/sink-cexpr-let
-      (list-map bindings #/dissectfn (list var val)
+    #/fn bindings
+    #/sink-extfx-run-cenegetfx
+      (cenegetfx-list-map #/list-map bindings
+      #/dissectfn (list var val)
         (expect var
           (id-or-expr-id var-located-string var-qualified-name)
-          (cene-err fault "Expected every bound variable of a let form to be an identifier")
-        #/list
-          (sink-authorized-name-get-name var-qualified-name)
-          (id-or-expr->cexpr val)))
-      (id-or-expr->cexpr body)))
+          (cenegetfx-cene-err fault "Expected every bound variable of a let form to be an identifier")
+        #/cenegetfx-done
+          (list
+            (sink-authorized-name-get-name var-qualified-name)
+            (id-or-expr->cexpr val))))
+    #/fn bindings
+    #/then unique-name qualify text-input-stream
+      (sink-cexpr-let bindings (id-or-expr->cexpr body))))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func! "is-expr" v
@@ -3782,27 +3791,33 @@
     #/cenegetfx-sink-name-for-function-implementation-value
       main-tag-name proj-tag-names))
   
-  (define (verify-proj-tag-authorized-names! fault proj-tag-names)
+  (define
+    (cenegetfx-verify-proj-tag-authorized-names fault proj-tag-names)
     (expect proj-tag-names (sink-table proj-tag-names)
-      (cene-err fault "Expected proj-tag-names to be a table")
-    #/table-kv-map proj-tag-names #/fn k v
-      (expect v (sink-authorized-name name)
-        (cene-err fault "Expected each value of proj-tag-names to be an authorized name")
-      #/expect
-        (pure-run-getfx #/getfx-is-eq-by-dex (dex-name)
-          k
-          (authorized-name-get-name name))
-        #t
-        (cene-err fault "Expected each value of proj-tag-names to be an authorized name where the name authorized is the same as the name it's filed under")
-        name)))
+      (cenegetfx-cene-err fault "Expected proj-tag-names to be a table")
+    #/expect
+      (table-v-all? proj-tag-names #/fn v #/sink-authorized-name? v)
+      #t
+      (cenegetfx-cene-err fault "Expected each value of proj-tag-names to be an authorized name")
+    #/expect
+      (table-kv-all? proj-tag-names #/fn k v
+        (dissect v (sink-authorized-name name)
+      #/pure-run-getfx #/getfx-is-eq-by-dex (dex-name)
+        k
+        (authorized-name-get-name name)))
+      #t
+      (cenegetfx-cene-err fault "Expected each value of proj-tag-names to be an authorized name where the name authorized is the same as the name it's filed under")
+    #/cenegetfx-done #/trivial))
   
   (def-func-fault! "authorized-name-for-function-implementation-code"
     fault main-tag-name proj-tag-names
     
     (expect (sink-authorized-name? main-tag-name) #t
       (cenegetfx-cene-err fault "Expected main-tag-name to be an authorized name")
-    #/w- proj-tag-names
-      (verify-proj-tag-authorized-names! fault proj-tag-names)
+    #/cenegetfx-bind
+      (cenegetfx-verify-proj-tag-authorized-names
+        fault proj-tag-names)
+    #/dissectfn (trivial)
     #/cenegetfx-sink-authorized-name-for-function-implementation-code
       main-tag-name proj-tag-names))
   
@@ -3811,8 +3826,10 @@
     
     (expect (sink-authorized-name? main-tag-name) #t
       (cenegetfx-cene-err fault "Expected main-tag-name to be an authorized name")
-    #/w- proj-tag-names
-      (verify-proj-tag-authorized-names! fault proj-tag-names)
+    #/cenegetfx-bind
+      (cenegetfx-verify-proj-tag-authorized-names
+        fault proj-tag-names)
+    #/dissectfn (trivial)
     #/cenegetfx-sink-authorized-name-for-function-implementation-value
       main-tag-name proj-tag-names))
   
