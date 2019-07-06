@@ -1197,7 +1197,6 @@
   (fn this dex
     (dissect this (fix-for-sink-dex-list rinfo dex-elem)
     #/with-gets-from rinfo #/fn
-    #/getfx-with-run-getfx #/fn
     #/getfx-done #/dex-default
       (dex-sink-struct (s-nil) #/list)
       (dex-sink-struct (s-cons) #/list dex-elem dex))))
@@ -1440,7 +1439,8 @@
     #/cenegetfx-make-sink-sub pubsub-name)
   #/fn s
   #/sink-extfx-sub-write s unique-name-for-sub-write #/fn entry
-    (expect (unmake-sink-struct-maybe (s-command-init-package) entry)
+    (sink-extfx-with-run-getfx #/fn
+    #/expect (unmake-sink-struct-maybe (s-command-init-package) entry)
       (just #/list key qualify)
       (sink-extfx-cene-err fault "Expected each package initialization command to be a command-init-package")
     #/expect (sink-name? key) #t

@@ -470,59 +470,14 @@
 
 
 (define/contract cene-definition-get-param
-  (parameter/c
-    (maybe/c #/list/c (cene-root-info/c) (maybe/c #/-> getfx? any/c)))
+  (parameter/c #/maybe/c #/cene-root-info/c)
   (make-parameter #/nothing))
 
-(define/contract (assert-can-get-cene-definition-globals!)
-  (-> void?)
-  (expect (cene-definition-get-param)
-    (just #/list rinfo maybe-run-getfx)
-    (error "Expected an implementation of `cene-definition-root-info` to be available in the dynamic scope")
-  #/void))
-
-(define/contract (assert-cannot-get-cene-definition-globals!)
-  (-> void?)
-  ; TODO: We're currently being sloppy about this, but let's get to
-  ; the point where we're more careful again.
-  (void)
-#;
-  (mat (cene-definition-get-param) (just #/list rinfo maybe-run-getfx)
-    ; TODO: Make this error message more visually distinct from the
-    ; `assert-can-get-cene-definition-globals!` error message.
-    (error "Expected no implementation of `cene-definition-root-info` to be available in the dynamic scope")
-  #/void))
-
-(define/contract (assert-can-get-cene-definitions!)
-  (-> void?)
-  (expect (cene-definition-get-param)
-    (just #/list rinfo #/just run-getfx)
-    (error "Expected an implementation of `cene-definition-get` to be available in the dynamic scope")
-  #/void))
-
-(define/contract (assert-cannot-get-cene-definitions!)
-  (-> void?)
-  (mat (cene-definition-get-param)
-    (just #/list rinfo #/just run-getfx)
-    ; TODO: Make this error message more visually distinct from the
-    ; `assert-can-get-cene-definitions!` error message.
-    (error "Expected no implementation of `cene-definition-get` to be available in the dynamic scope")
-  #/void))
-
-; TODO: For now, this always succeeds. In the past, this has been
-; equivalent to `assert-can-get-cene-definitions!`, but this sometimes
-; needs to succeed when that doesn't. See what this should do in the
+; TODO: For now, this always succeeds. See what this should do in the
 ; long run.
 (define/contract (assert-can-mutate!)
   (-> void?)
   (void))
-
-(define/contract (cene-definition-root-info)
-  (-> #/cene-root-info/c)
-  (expect (cene-definition-get-param)
-    (just #/list rinfo maybe-run-getfx)
-    (error "Expected every call to `cene-definition-oot-info` to occur with an implementation in the dynamic scope")
-    rinfo))
 
 (define/contract (sink-getfx-get name)
   (-> sink-name? sink-getfx?)
@@ -532,13 +487,6 @@
     #/cenegetfx-run-getfx #/getfx-get ds name
       #;on-stall (error-definer-uninformative)
       )))
-
-(define/contract (cene-run-getfx effects)
-  (-> getfx? sink?)
-  (expect (cene-definition-get-param)
-    (just #/list rinfo #/just run-getfx)
-    (error "Expected every call to `cene-run-getfx` to occur with an implementation in the dynamic scope")
-  #/run-getfx effects))
 
 (define/contract (cenegetfx-make-sink-pub pubsub-name)
   (-> sink-authorized-name? #/cenegetfx/c sink-pub?)
@@ -580,77 +528,16 @@
       (sink-name-of-racket-string "qualify")
       lang-impl-qualify-root)))
 
-(define cene-definition-get-prompt-tag
-  (make-continuation-prompt-tag 'cene-definition-get-prompt-tag))
-
 (define/contract (with-gets-from rinfo body)
   (-> (cene-root-info/c) (-> any) any)
-  (begin (assert-cannot-get-cene-definition-globals!)
-  #/parameterize
-    ([cene-definition-get-param (just #/list rinfo #/nothing)])
-    (body)))
-
-(define/contract (getfx-bind-restoring effects then)
-  (-> getfx? (-> any/c getfx?) getfx?)
-  (begin (assert-can-get-cene-definitions!)
-  #/w- rinfo (cene-definition-root-info)
-  #/getfx-bind effects #/fn intermediate
-  #/with-gets-from rinfo #/fn
-  #/getfx-with-run-getfx #/fn
-  #/then intermediate))
-
-(define/contract (getfx-with-run-getfx body)
-  (-> (-> getfx?) getfx?)
-  (expect (cene-definition-get-param)
-    (just #/list rinfo maybe-run-getfx)
-    (error "Expected every call to `getfx-with-run-getfx` to occur with an implementation in the dynamic scope")
-  #/parameterize
-    (
-      [
-        cene-definition-get-param
-        (just #/list rinfo #/just #/fn effects
-          (shift-at cene-definition-get-prompt-tag k
-          #/getfx-bind-restoring effects #/fn value
-          #/k value))])
-  #/reset-at cene-definition-get-prompt-tag
-    (body)))
-
-(define/contract (getfx-map-restoring effects then)
-  (-> getfx? (-> any/c any/c) getfx?)
-  (getfx-bind-restoring effects #/fn intermediate
-  #/getfx-done #/then intermediate))
-
-(define/contract (extfx-run-getfx-restoring effects then)
-  (-> getfx? (-> any/c extfx?) extfx?)
-  (begin (assert-can-get-cene-definitions!)
-  #/w- rinfo (cene-definition-root-info)
-  #/extfx-run-getfx effects #/fn intermediate
-  #/with-gets-from rinfo #/fn
-  #/extfx-with-run-getfx #/fn
-  #/then intermediate))
-
-(define/contract (extfx-with-run-getfx body)
-  (-> (-> extfx?) extfx?)
-  (expect (cene-definition-get-param)
-    (just #/list rinfo maybe-run-getfx)
-    (error "Expected every call to `extfx-with-run-getfx` to occur with an implementation in the dynamic scope")
-  #/parameterize
-    (
-      [
-        cene-definition-get-param
-        (just #/list rinfo #/just #/fn effects
-          (shift-at cene-definition-get-prompt-tag k
-          #/extfx-run-getfx-restoring effects #/fn value
-          #/k value))])
-  #/reset-at cene-definition-get-prompt-tag
+  (parameterize ([cene-definition-get-param (just rinfo)])
     (body)))
 
 (define/contract (cenegetfx-run-getfx-with-run-getfx body)
   (-> (-> getfx?) cenegetfx?)
   (cenegetfx-bind (cenegetfx-read-root-info) #/fn rinfo
   #/cenegetfx-run-getfx
-    (with-gets-from rinfo #/fn
-    #/getfx-with-run-getfx body)))
+    (with-gets-from rinfo body)))
 
 (define/contract (cenegetfx-with-run-getfx body)
   (-> (-> cenegetfx?) cenegetfx?)
@@ -675,11 +562,6 @@
     (ceneextfx-with-run-getfx #/fn
     #/ceneextfx-run-sink-extfx #/body)))
 
-(define/contract (getfx-ambient-run-cenegetfx effects)
-  (-> cenegetfx? getfx?)
-  (begin (assert-can-get-cene-definition-globals!)
-  #/getfx-run-cenegetfx (cene-definition-root-info) effects))
-
 (define/contract (sink-getfx-run-cenegetfx effects)
   (-> cenegetfx? sink-getfx?)
   (sink-getfx effects))
@@ -700,11 +582,10 @@
     (cenegetfx-bind effects #/fn intermediate
     #/ceneextfx-run-sink-extfx #/then intermediate)))
 
-(define/contract (extfx-run-sink-extfx effects)
-  (-> sink-extfx? extfx?)
-  (begin (assert-can-get-cene-definition-globals!)
-  #/extfx-run-getfx
-    (getfx-ambient-run-cenegetfx #/ceneextfx-run-sink-extfx effects)
+(define/contract (extfx-run-sink-extfx rinfo effects)
+  (-> (cene-root-info/c) sink-extfx? extfx?)
+  (extfx-run-getfx
+    (getfx-run-cenegetfx rinfo #/ceneextfx-run-sink-extfx effects)
   #/fn extfx
     extfx))
 
@@ -1006,8 +887,8 @@
         ; store the values of `cene-definition-get-param` when they're
         ; constructed and then restore them again using their own
         ; `with-gets-from` call. Because of that, it's fine for us to
-        ; call `getfx-dexed-of` here in an
-        ; `assert-cannot-get-cene-definition-globals!` zone.
+        ; call `getfx-dexed-of` here in a section where
+        ; `cene-definition-get-param` is `(nothing)`.
         ;
         (extfx-run-getfx (getfx-dexed-of dex value) #/fn maybe-dexed
         #/extfx-ct-continue then
@@ -1078,9 +959,7 @@
           (error-definer-uninformative)
           (extfx-noop))
         (fn arg
-          (with-gets-from rinfo #/fn
-          #/extfx-with-run-getfx #/fn
-          #/extfx-run-sink-extfx #/func arg))))))
+          (extfx-run-sink-extfx rinfo #/func arg))))))
 
 (define/contract (sink-cexpr-var name)
   (-> sink-name? sink-cexpr?)
@@ -2102,9 +1981,7 @@
 (define (cene-definition-tag metadata)
   (-> core-sink-struct-metadata? #/and/c pair? #/listof name?)
   (expect (cene-definition-get-param)
-    (just #/list
-      (cene-root-info ds lang-impl-qualify-root tag-cache)
-      maybe-run-getfx)
+    (just #/cene-root-info ds lang-impl-qualify-root tag-cache)
     (error "Expected every call to `cene-definition-tag` to occur with an implementation in the dynamic scope")
   #/dissect metadata
     (core-sink-struct-metadata
@@ -2212,9 +2089,7 @@
     (cenegetfx-bind (cenegetfx-read-root-info) #/fn rinfo
     #/cenegetfx-done
       (extfx-claim name #/fn
-      #/with-gets-from rinfo #/fn
-      #/extfx-with-run-getfx #/fn
-      #/extfx-run-sink-extfx #/on-success))))
+      #/extfx-run-sink-extfx rinfo #/on-success))))
 
 (define/contract (sink-extfx-claim-and-split unique-name n then)
   (->
@@ -2226,9 +2101,7 @@
     (cenegetfx-bind (cenegetfx-read-root-info) #/fn rinfo
     #/cenegetfx-done
       (extfx-claim-and-split unique-name n #/fn names
-      #/with-gets-from rinfo #/fn
-      #/extfx-with-run-getfx #/fn
-      #/extfx-run-sink-extfx #/then #/list-map names #/fn name
+      #/extfx-run-sink-extfx rinfo #/then #/list-map names #/fn name
         (sink-authorized-name name)))))
 
 (define/contract (sink-extfx-claim-freshen unique-name then)

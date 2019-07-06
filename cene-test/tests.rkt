@@ -53,11 +53,9 @@
         (sink-authorized-name-subname
           (sink-name-of-racket-string "other-unique-name")
           unique-name)
-      #/with-gets-from
+      #/extfx-run-sink-extfx
         (make-cene-root-info
           ds lang-impl-qualify-root minimal-and-essential-tags)
-      #/fn
-      #/extfx-run-sink-extfx
       #/sink-extfx-claim-and-split unique-name 4
       #/dissectfn
         (list
