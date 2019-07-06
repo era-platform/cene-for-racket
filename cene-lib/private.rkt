@@ -40,7 +40,7 @@
 (require #/only-in syntax/parse/define define-simple-macro)
 
 (require #/only-in lathe-comforts
-  dissect dissectfn expect fn mat w- w-loop)
+  dissect dissectfn expect expectfn fn mat w- w-loop)
 (require #/only-in lathe-comforts/list
   list-any list-foldl list-foldr list-map list-zip-map nat->maybe)
 (require #/only-in lathe-comforts/maybe
@@ -713,7 +713,7 @@
 
 (define-generics cexpr
   (cexpr-has-free-vars? cexpr env)
-  (cexpr-eval-in-env fault cexpr env))
+  (cenegetfx-cexpr-eval-in-env fault cexpr env))
 
 (struct-easy (cexpr-var name)
   
@@ -728,12 +728,12 @@
         #t
         #f))
     
-    (define (cexpr-eval-in-env fault this env)
+    (define (cenegetfx-cexpr-eval-in-env fault this env)
       (expect this (cexpr-var name)
         (error "Expected this to be a cexpr-var")
       #/expect (table-get name env) (just value)
         (error "Tried to eval a cexpr that had a free variable")
-        value))
+      #/cenegetfx-done value))
   ])
 
 (struct-easy (cexpr-reified result)
@@ -747,10 +747,10 @@
         (error "Expected this to be a cexpr-reified")
         #f))
     
-    (define (cexpr-eval-in-env fault this env)
+    (define (cenegetfx-cexpr-eval-in-env fault this env)
       (expect this (cexpr-reified result)
         (error "Expected this to be a cexpr-reified")
-        result))
+      #/cenegetfx-done result))
   ])
 
 (struct-easy (cexpr-construct main-tag-name projs)
@@ -760,7 +760,7 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval-in-env cexpr-eval-in-env)
+    (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-construct main-tag-name projs)
@@ -768,15 +768,19 @@
       #/list-any projs #/dissectfn (list proj-name proj-cexpr)
         (-has-free-vars? proj-cexpr env)))
     
-    (define (cexpr-eval-in-env fault this env)
+    (define (cenegetfx-cexpr-eval-in-env fault this env)
       (expect this (cexpr-construct main-tag-name projs)
         (error "Expected this to be a cexpr-construct")
-      #/make-sink-struct
+      #/cenegetfx-bind
+        (cenegetfx-list-map #/list-map projs
+        #/dissectfn (list proj-name proj-cexpr)
+          (-eval-in-env fault proj-cexpr env))
+      #/fn vals
+      #/cenegetfx-done #/make-sink-struct
         (cons main-tag-name
         #/list-map projs #/dissectfn (list proj-name proj-cexpr)
           proj-name)
-      #/list-map projs #/dissectfn (list proj-name proj-cexpr)
-        (-eval-in-env fault proj-cexpr env)))
+        vals))
   ])
 
 (struct-easy (cexpr-call-fault fault-arg func arg)
@@ -786,7 +790,7 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval-in-env cexpr-eval-in-env)
+    (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-call-fault fault-arg func arg)
@@ -796,16 +800,16 @@
         (-has-free-vars? func env)
         (-has-free-vars? arg env)))
     
-    (define (cexpr-eval-in-env fault this env)
+    (define (cenegetfx-cexpr-eval-in-env fault this env)
       (expect this (cexpr-call-fault fault-arg func arg)
         (error "Expected this to be a cexpr-call-fault")
-      #/w- fault-arg (-eval-in-env fault fault-arg env)
-      #/w- func (-eval-in-env fault func env)
-      #/w- arg (-eval-in-env fault arg env)
+      #/cenegetfx-bind (-eval-in-env fault fault-arg env)
+      #/fn fault-arg
+      #/cenegetfx-bind (-eval-in-env fault func env) #/fn func
+      #/cenegetfx-bind (-eval-in-env fault arg env) #/fn arg
       #/expect (sink-fault? fault-arg) #t
-        (cene-err fault "Expected the blame argument to be a blame value")
-      #/cene-run-getfx #/getfx-ambient-run-cenegetfx
-        (cenegetfx-sink-call-fault fault fault-arg func arg)))
+        (cenegetfx-cene-err fault "Expected the blame argument to be a blame value")
+      #/cenegetfx-sink-call-fault fault fault-arg func arg))
   ])
 
 (struct-easy (cexpr-call func arg)
@@ -815,21 +819,19 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval-in-env cexpr-eval-in-env)
+    (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-call func arg)
         (error "Expected this to be a cexpr-call")
       #/or (-has-free-vars? func env) (-has-free-vars? arg env)))
     
-    (define (cexpr-eval-in-env fault this env)
+    (define (cenegetfx-cexpr-eval-in-env fault this env)
       (expect this (cexpr-call func arg)
         (error "Expected this to be a cexpr-call")
-      #/cene-run-getfx #/getfx-ambient-run-cenegetfx
-        (cenegetfx-with-run-getfx #/fn
-        #/cenegetfx-sink-call fault
-          (-eval-in-env fault func env)
-          (-eval-in-env fault arg env))))
+      #/cenegetfx-bind (-eval-in-env fault func env) #/fn func
+      #/cenegetfx-bind (-eval-in-env fault arg env) #/fn arg
+      #/cenegetfx-sink-call fault func arg))
   ])
 
 (struct-easy (cexpr-opaque-fn-fault fault-param param body)
@@ -842,7 +844,7 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval-in-env cexpr-eval-in-env)
+    (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-opaque-fn-fault fault-param param body)
@@ -852,14 +854,15 @@
       #/table-shadow param (just #/trivial)
         env))
     
-    (define (cexpr-eval-in-env caller-fault this env)
+    (define (cenegetfx-cexpr-eval-in-env caller-fault this env)
       (expect this (cexpr-opaque-fn-fault fault-param param body)
         (error "Expected this to be a cexpr-opaque-fn")
-      #/sink-opaque-fn-fault #/dissectfn (list explicit-fault arg)
-        (cenegetfx-done #/-eval-in-env caller-fault body
-          (table-shadow fault-param (just explicit-fault)
-          #/table-shadow param (just arg)
-            env))))
+      #/cenegetfx-done
+        (sink-opaque-fn-fault #/dissectfn (list explicit-fault arg)
+          (-eval-in-env caller-fault body
+            (table-shadow fault-param (just explicit-fault)
+            #/table-shadow param (just arg)
+              env)))))
   ])
 
 (struct-easy (cexpr-opaque-fn param body)
@@ -869,7 +872,7 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval-in-env cexpr-eval-in-env)
+    (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-opaque-fn param body)
@@ -877,12 +880,11 @@
       #/-has-free-vars? body
       #/table-shadow param (just #/trivial) env))
     
-    (define (cexpr-eval-in-env caller-fault this env)
+    (define (cenegetfx-cexpr-eval-in-env caller-fault this env)
       (expect this (cexpr-opaque-fn param body)
         (error "Expected this to be a cexpr-opaque-fn")
-      #/sink-opaque-fn #/fn arg
-        (cenegetfx-with-run-getfx #/fn
-        #/cenegetfx-done #/-eval-in-env caller-fault body
+      #/cenegetfx-done #/sink-opaque-fn #/fn arg
+        (-eval-in-env caller-fault body
           (table-shadow param (just arg) env))))
   ])
 
@@ -893,7 +895,7 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval-in-env cexpr-eval-in-env)
+    (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-let bindings body)
@@ -906,14 +908,17 @@
         (dissect binding (list var val)
         #/table-shadow var (just #/trivial) env)))
     
-    (define (cexpr-eval-in-env fault this env)
+    (define (cenegetfx-cexpr-eval-in-env fault this env)
       (expect this (cexpr-let bindings body)
         (error "Expected this to be a cexpr-let")
+      #/cenegetfx-bind
+        (cenegetfx-list-map #/list-map bindings
+        #/dissectfn (list var val)
+          (cenegetfx-bind (-eval-in-env fault val env) #/fn val
+          #/cenegetfx-done #/list var val))
+      #/fn bindings
       #/-eval-in-env fault body
-        (list-foldl env
-          (list-map bindings #/dissectfn (list var val)
-            (list var #/-eval-in-env fault val env))
-        #/fn env binding
+        (list-foldl env bindings #/fn env binding
           (dissect binding (list var val)
           #/table-shadow var (just val) env))))
   ])
@@ -925,14 +930,14 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval-in-env cexpr-eval-in-env)
+    (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-located location-definition-name body)
         (error "Expected this to be a cexpr-located")
       #/-has-free-vars? body))
     
-    (define (cexpr-eval-in-env fault this env)
+    (define (cenegetfx-cexpr-eval-in-env fault this env)
       (expect this (cexpr-located location-definition-name body)
         (error "Expected this to be a cexpr-located")
       ; TODO CEXPR-LOCATED / TODO FAULT: Replace `fault` here with
@@ -1155,7 +1160,8 @@
   (sink-name-for-function-implementation
     result-tag main-tag-name proj-tag-names)
   (-> immutable-string? sink-name? sink-table? sink-name?)
-  (dissect proj-tag-names (sink-table proj-tag-names)
+  (begin (assert-can-get-cene-definition-globals!)
+  #/dissect proj-tag-names (sink-table proj-tag-names)
   #/sink-authorized-name-get-name
   #/sink-authorized-name-subname
     (sink-name-of-racket-string result-tag)
@@ -1315,16 +1321,17 @@
     ; TODO: This lookup might be expensive. See if we should memoize
     ; it.
     #/cenegetfx-bind
-      (cenegetfx-run-sink-getfx #/sink-getfx-get
-      #/sink-name-for-function-implementation-value
-        main-tag
-        (list-foldr proj-tags (sink-table #/table-empty)
-        #/fn proj-tag rest
-          (sink-table-put-maybe rest proj-tag
-          ; TODO: See if there's a way we can either stop depending on
-          ; `s-trivial` here or move this code after the place where
-          ; `s-trivial` is defined.
-          #/just #/make-sink-struct (s-trivial) #/list)))
+      (cenegetfx-with-run-getfx #/fn
+      #/cenegetfx-run-sink-getfx
+        (sink-getfx-get #/sink-name-for-function-implementation-value
+          main-tag
+          (list-foldr proj-tags (sink-table #/table-empty)
+          #/fn proj-tag rest
+            (sink-table-put-maybe rest proj-tag
+            ; TODO: See if there's a way we can either stop depending
+            ; on `s-trivial` here or move this code after the place
+            ; where `s-trivial` is defined.
+            #/just #/make-sink-struct (s-trivial) #/list))))
     #/fn impl
     
     #/cenegetfx-bind
@@ -2229,9 +2236,9 @@
 ; written is the macrexpander's (TODO), so this particular version
 ; always succeeds.
 ;
-(define/contract (cexpr-eval fault cexpr)
-  (-> sink-fault? (and/c cexpr? cexpr-is-closed?) sink?)
-  (cexpr-eval-in-env fault cexpr (table-empty)))
+(define/contract (cenegetfx-cexpr-eval fault cexpr)
+  (-> sink-fault? (and/c cexpr? cexpr-is-closed?) #/cenegetfx/c sink?)
+  (cenegetfx-cexpr-eval-in-env fault cexpr (table-empty)))
 
 ; This returns a computation that reads all the content of the given
 ; text input stream and runs the reader macros it encounters. Unlike
@@ -2270,7 +2277,8 @@
         ; TODO FAULT: Make this `fault` more specific.
         (sink-extfx-cene-err fault "Encountered a top-level expression with at least one free variable")
       #/sink-extfx-fuse (then unique-name-rest)
-      #/expect (cexpr-eval fault cexpr) (sink-directive directive)
+      #/sink-extfx-run-cenegetfx (cenegetfx-cexpr-eval fault cexpr)
+      #/expectfn (sink-directive directive)
         ; TODO FAULT: Make this `fault` more specific.
         (sink-extfx-cene-err fault "Expected every top-level expression to evaluate to a directive")
       #/sink-extfx-run-cenegetfx

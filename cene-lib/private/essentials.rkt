@@ -837,7 +837,7 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval-in-env cexpr-eval-in-env)
+    (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-dex-struct main-tag-name projs)
@@ -845,15 +845,20 @@
       #/list-any projs #/dissectfn (list proj-name proj-cexpr)
         (-has-free-vars? proj-cexpr env)))
     
-    (define (cexpr-eval-in-env fault this env)
+    (define (cenegetfx-cexpr-eval-in-env fault this env)
       (expect this (cexpr-dex-struct main-tag-name projs)
         (error "Expected this to be a cexpr-dex-struct")
-      #/sink-dex #/unsafe:dex #/dex-internals-sink-struct
-        (cons main-tag-name
-        #/list-map projs #/dissectfn (list proj-name proj-cexpr)
-          proj-name)
-      #/list-map projs #/dissectfn (list proj-name proj-cexpr)
-        (-eval-in-env fault proj-cexpr env)))
+      #/cenegetfx-bind
+        (cenegetfx-list-map #/list-map projs
+        #/dissectfn (list proj-name proj-cexpr)
+          (-eval-in-env fault proj-cexpr env))
+      #/fn vals
+      #/cenegetfx-done
+        (sink-dex #/unsafe:dex #/dex-internals-sink-struct
+          (cons main-tag-name
+          #/list-map projs #/dissectfn (list proj-name proj-cexpr)
+            proj-name)
+          vals)))
   ])
 
 
@@ -911,7 +916,7 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval-in-env cexpr-eval-in-env)
+    (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-cline-struct main-tag-name projs)
@@ -919,15 +924,20 @@
       #/list-any projs #/dissectfn (list proj-name proj-cexpr)
         (-has-free-vars? proj-cexpr env)))
     
-    (define (cexpr-eval-in-env fault this env)
+    (define (cenegetfx-cexpr-eval-in-env fault this env)
       (expect this (cexpr-cline-struct main-tag-name projs)
         (error "Expected this to be a cexpr-cline-struct")
-      #/sink-cline #/unsafe:cline #/cline-internals-sink-struct
-        (cons main-tag-name
-        #/list-map projs #/dissectfn (list proj-name proj-cexpr)
-          proj-name)
-      #/list-map projs #/dissectfn (list proj-name proj-cexpr)
-        (-eval-in-env fault proj-cexpr env)))
+      #/cenegetfx-bind
+        (cenegetfx-list-map #/list-map projs
+        #/dissectfn (list proj-name proj-cexpr)
+          (-eval-in-env fault proj-cexpr env))
+      #/fn vals
+      #/cenegetfx-done
+        (sink-cline #/unsafe:cline #/cline-internals-sink-struct
+          (cons main-tag-name
+          #/list-map projs #/dissectfn (list proj-name proj-cexpr)
+            proj-name)
+          vals)))
   ])
 
 
@@ -982,7 +992,7 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval-in-env cexpr-eval-in-env)
+    (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-merge-struct main-tag-name projs)
@@ -990,16 +1000,21 @@
       #/list-any projs #/dissectfn (list proj-name proj-cexpr)
         (-has-free-vars? proj-cexpr env)))
     
-    (define (cexpr-eval-in-env fault this env)
+    (define (cenegetfx-cexpr-eval-in-env fault this env)
       (expect this (cexpr-merge-struct main-tag-name projs)
         (error "Expected this to be a cexpr-merge-struct")
-      #/sink-merge #/unsafe:merge #/furge-internals-sink-struct
-        unsafe:autoname-merge (dex-merge) getfx-call-merge
-        (cons main-tag-name
-        #/list-map projs #/dissectfn (list proj-name proj-cexpr)
-          proj-name)
-      #/list-map projs #/dissectfn (list proj-name proj-cexpr)
-        (-eval-in-env fault proj-cexpr env)))
+      #/cenegetfx-bind
+        (cenegetfx-list-map #/list-map projs
+        #/dissectfn (list proj-name proj-cexpr)
+          (-eval-in-env fault proj-cexpr env))
+      #/fn vals
+      #/cenegetfx-done
+        (sink-merge #/unsafe:merge #/furge-internals-sink-struct
+          unsafe:autoname-merge (dex-merge) getfx-call-merge
+          (cons main-tag-name
+          #/list-map projs #/dissectfn (list proj-name proj-cexpr)
+            proj-name)
+          vals)))
   ])
 
 (struct-easy (cexpr-fuse-struct main-tag-name projs)
@@ -1009,7 +1024,7 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval-in-env cexpr-eval-in-env)
+    (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-fuse-struct main-tag-name projs)
@@ -1017,16 +1032,21 @@
       #/list-any projs #/dissectfn (list proj-name proj-cexpr)
         (-has-free-vars? proj-cexpr env)))
     
-    (define (cexpr-eval-in-env fault this env)
+    (define (cenegetfx-cexpr-eval-in-env fault this env)
       (expect this (cexpr-fuse-struct main-tag-name projs)
         (error "Expected this to be a cexpr-fuse-struct")
-      #/sink-fuse #/unsafe:fuse #/furge-internals-sink-struct
-        unsafe:autoname-fuse (dex-fuse) getfx-call-fuse
-        (cons main-tag-name
-        #/list-map projs #/dissectfn (list proj-name proj-cexpr)
-          proj-name)
-      #/list-map projs #/dissectfn (list proj-name proj-cexpr)
-        (-eval-in-env proj-cexpr env)))
+      #/cenegetfx-bind
+        (cenegetfx-list-map #/list-map projs
+        #/dissectfn (list proj-name proj-cexpr)
+          (-eval-in-env proj-cexpr env))
+      #/fn vals
+      #/cenegetfx-map
+        (sink-fuse #/unsafe:fuse #/furge-internals-sink-struct
+          unsafe:autoname-fuse (dex-fuse) getfx-call-fuse
+          (cons main-tag-name
+          #/list-map projs #/dissectfn (list proj-name proj-cexpr)
+            proj-name)
+          vals)))
   ])
 
 
@@ -1109,7 +1129,7 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval-in-env cexpr-eval-in-env)
+    (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this
@@ -1121,16 +1141,17 @@
           (table-shadow var (just #/trivial) env))
         (-has-free-vars? else-expr env)))
     
-    (define (cexpr-eval-in-env fault this env)
+    (define (cenegetfx-cexpr-eval-in-env fault this env)
       (expect this
         (cexpr-case subject-expr tags vars then-expr else-expr)
         (error "Expected this to be a cexpr-case")
-      #/w- subject (-eval-in-env fault subject-expr env)
+      #/cenegetfx-bind (-eval-in-env fault subject-expr env)
+      #/fn subject
       #/mat (unmake-sink-struct-maybe tags subject) (just vals)
         (-eval-in-env fault then-expr
-        #/list-foldl env (map list vars vals) #/fn env entry
-          (dissect entry (list var val)
-          #/table-shadow var (just val) env))
+          (list-foldl env (map list vars vals) #/fn env entry
+            (dissect entry (list var val)
+            #/table-shadow var (just val) env)))
         (-eval-in-env fault else-expr env)))
   ])
 
@@ -3157,8 +3178,9 @@
     #/expect (cexpr-is-closed? expr) #t
       (cenegetfx-cene-err fault "Expected mobile-expr to be a mobile expression which had all the information it needed for evaluation")
     ; TODO: See if we can make a variation of this that passes an
-    ; `explicit-fault` parameter to `cexpr-eval`.
-    #/w- perffx-value (cexpr-eval fault expr)
+    ; `explicit-fault` parameter to `cenegetfx-cexpr-eval`.
+    #/cenegetfx-bind (cenegetfx-cexpr-eval fault expr)
+    #/fn perffx-value
     #/expect (sink-perffx? perffx-value) #t
       (cenegetfx-cene-err fault "Expected the evaluation result of mobile-expr to be a perffx effectful computation")
     #/cenegetfx-done
@@ -3185,8 +3207,9 @@
     #/expect (cexpr-is-closed? expr) #t
       (cenegetfx-cene-err fault "Expected mobile-expr to be a mobile expression which had all the information it needed for evaluation")
     ; TODO: See if we can make a variation of this that passes an
-    ; `explicit-fault` parameter to `cexpr-eval`.
-    #/cenegetfx-done #/make-sink-mobile fault (cexpr-eval fault expr)
+    ; `explicit-fault` parameter to `cenegetfx-cexpr-eval`.
+    #/cenegetfx-bind (cenegetfx-cexpr-eval fault expr) #/fn value
+    #/cenegetfx-done #/make-sink-mobile fault value
       (sink-perffx-run-cenegetfx
         (cenegetfx-sink-mobile-built-in-call fault "perffx-done"
           mobile-expr))
@@ -3310,7 +3333,7 @@
       (cenegetfx-cene-err caller-fault "Expected expr to be an expression")
     #/expect (cexpr-is-closed? expr) #t
       (cenegetfx-cene-err caller-fault "Expected expr to be an expression which had all the information it needed for evaluation")
-    #/cenegetfx-done #/cexpr-eval explicit-fault expr))
+    #/cenegetfx-cexpr-eval explicit-fault expr))
   
   ; TODO BUILTINS: Consider implementing something like the following
   ; built-ins from the JavaScript version of Cene. We can probably
