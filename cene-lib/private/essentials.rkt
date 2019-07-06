@@ -231,12 +231,13 @@
       (just #/just val)
     #/nothing)))
 
-(define/contract (racket-maybe->sink racket-maybe)
-  (-> (maybe/c sink?) sink?)
-  (begin (assert-can-get-cene-definition-globals!)
-  #/mat racket-maybe (just val)
-    (make-sink-struct (s-just) #/list val)
-    (make-sink-struct (s-nothing) #/list)))
+(define/contract (racket-maybe->cenegetfx-sink racket-maybe)
+  (-> (maybe/c sink?) #/cenegetfx/c sink?)
+  (cenegetfx-with-run-getfx #/fn
+  #/cenegetfx-done
+    (mat racket-maybe (just val)
+      (make-sink-struct (s-just) #/list val)
+      (make-sink-struct (s-nothing) #/list))))
 
 
 (struct-easy (sink-dexed dexed)
@@ -2013,32 +2014,36 @@
   (def-func-fault! "getfx-name-of" fault dex v
     (expect dex (sink-dex dex)
       (cenegetfx-cene-err fault "Expected dex to be a dex")
-    #/cenegetfx-done #/sink-getfx
-      (cenegetfx-run-getfx-with-run-getfx #/fn
-      #/getfx-map-restoring (getfx-name-of dex v) #/fn maybe-result
-        (racket-maybe->sink #/maybe-map maybe-result #/fn result
-          (sink-name result)))))
+    #/cenegetfx-done #/sink-getfx-run-cenegetfx
+      (cenegetfx-later #/fn
+      #/cenegetfx-bind (cenegetfx-run-getfx #/getfx-name-of dex v)
+      #/fn maybe-result
+      #/racket-maybe->cenegetfx-sink
+        (maybe-map maybe-result #/fn result #/sink-name result))))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "getfx-dexed-of" fault dex v
     (expect dex (sink-dex dex)
       (cenegetfx-cene-err fault "Expected dex to be a dex")
-    #/cenegetfx-done #/sink-getfx
-      (cenegetfx-run-getfx-with-run-getfx #/fn
-      #/getfx-map-restoring (getfx-dexed-of dex v) #/fn maybe-result
-        (racket-maybe->sink #/maybe-map maybe-result #/fn result
-          (sink-dexed result)))))
+    #/cenegetfx-done #/sink-getfx-run-cenegetfx
+      (cenegetfx-later #/fn
+      #/cenegetfx-bind (cenegetfx-run-getfx #/getfx-dexed-of dex v)
+      #/fn maybe-result
+      #/racket-maybe->cenegetfx-sink
+        (maybe-map maybe-result #/fn result #/sink-dexed result))))
   
   ; NOTE: In the JavaScript version of Cene, this was called
   ; `call-dex`.
   (def-func-fault! "getfx-compare-by-dex" fault dex a b
     (expect dex (sink-dex dex)
       (cenegetfx-cene-err fault "Expected dex to be a dex")
-    #/cenegetfx-done #/sink-getfx
-      (cenegetfx-run-getfx-with-run-getfx #/fn
-      #/getfx-map-restoring (getfx-compare-by-dex dex a b)
+    #/cenegetfx-done #/sink-getfx-run-cenegetfx
+      (cenegetfx-later #/fn
+      #/cenegetfx-bind
+        (cenegetfx-run-getfx #/getfx-compare-by-dex dex a b)
       #/fn maybe-result
-        (racket-maybe->sink #/maybe-map maybe-result #/fn result
+      #/racket-maybe->cenegetfx-sink
+        (maybe-map maybe-result #/fn result
           (mat result (ordering-private)
             (make-sink-struct (s-ordering-private) #/list)
           #/dissect result (ordering-eq)
@@ -2136,11 +2141,13 @@
   (def-func-fault! "getfx-compare-by-cline" fault cline a b
     (expect cline (sink-cline cline)
       (cenegetfx-cene-err fault "Expected cline to be a cline")
-    #/cenegetfx-done #/sink-getfx
-      (cenegetfx-run-getfx-with-run-getfx #/fn
-      #/getfx-map-restoring (getfx-compare-by-cline cline a b)
+    #/cenegetfx-done #/sink-getfx-run-cenegetfx
+      (cenegetfx-later #/fn
+      #/cenegetfx-bind
+        (cenegetfx-run-getfx #/getfx-compare-by-cline cline a b)
       #/fn maybe-result
-        (racket-maybe->sink #/maybe-map maybe-result #/fn result
+      #/racket-maybe->cenegetfx-sink
+        (maybe-map maybe-result #/fn result
           (mat result (ordering-private)
             (make-sink-struct (s-ordering-private) #/list)
           #/mat result (ordering-lt)
@@ -2207,18 +2214,22 @@
   (def-func-fault! "getfx-call-merge" fault merge a b
     (expect merge (sink-merge merge)
       (cenegetfx-cene-err fault "Expected merge to be a merge")
-    #/cenegetfx-done #/sink-getfx
-      (cenegetfx-run-getfx-with-run-getfx #/fn
-      #/getfx-map-restoring (getfx-call-merge merge a b) #/fn result
-        (racket-maybe->sink result))))
+    #/cenegetfx-done #/sink-getfx-run-cenegetfx
+      (cenegetfx-later #/fn
+      #/cenegetfx-bind
+        (cenegetfx-run-getfx #/getfx-call-merge merge a b)
+      #/fn maybe-result
+      #/racket-maybe->cenegetfx-sink maybe-result)))
   
   (def-func-fault! "getfx-call-fuse" fault fuse a b
     (expect fuse (sink-fuse fuse)
       (cenegetfx-cene-err fault "Expected fuse to be a fuse")
-    #/cenegetfx-done #/sink-getfx
-      (cenegetfx-run-getfx-with-run-getfx #/fn
-      #/getfx-map-restoring (getfx-call-fuse fuse a b) #/fn result
-        (racket-maybe->sink result))))
+    #/cenegetfx-done #/sink-getfx-run-cenegetfx
+      (cenegetfx-later #/fn
+      #/cenegetfx-bind
+        (cenegetfx-run-getfx #/getfx-call-fuse fuse a b)
+      #/fn maybe-result
+      #/racket-maybe->cenegetfx-sink maybe-result)))
   
   (def-nullary-func! "dex-merge"
     (sink-dex #/dex-struct sink-merge #/dex-merge))
@@ -2922,8 +2933,7 @@
       (cenegetfx-cene-err fault "Expected key to be a name")
     #/expect (sink-table? table) #t
       (cenegetfx-cene-err fault "Expected table to be a table")
-    #/cenegetfx-done
-      (racket-maybe->sink #/sink-table-get-maybe table key)))
+    #/racket-maybe->cenegetfx-sink #/sink-table-get-maybe table key))
   
   (def-func-fault! "getfx-table-map-fuse"
     fault table fuse getfx-key-to-operand
@@ -2932,7 +2942,7 @@
       (cenegetfx-cene-err fault "Expected table to be a table")
     #/expect fuse (sink-fuse fuse)
       (cenegetfx-cene-err fault "Expected fuse to be a fuse")
-    #/cenegetfx-done #/sink-getfx
+    #/cenegetfx-done #/sink-getfx-run-cenegetfx
       (cenegetfx-bind (cenegetfx-read-root-info) #/fn rinfo
       #/cenegetfx-run-getfx
       #/getfx-table-map-fuse table fuse #/fn k
@@ -2950,11 +2960,13 @@
       (cenegetfx-cene-err fault "Expected cline to be a cline")
     #/expect table (sink-table table)
       (cenegetfx-cene-err fault "Expected table to be a table")
-    #/cenegetfx-done #/sink-getfx
-      (cenegetfx-run-getfx-with-run-getfx #/fn
-      #/getfx-map-restoring (getfx-table-sort cline table)
+    #/cenegetfx-done #/sink-getfx-run-cenegetfx
+      (cenegetfx-later #/fn
+      #/cenegetfx-bind
+        (cenegetfx-run-getfx #/getfx-table-sort cline table)
       #/fn maybe-ranks
-        (racket-maybe->sink #/maybe-map maybe-ranks #/fn ranks
+      #/racket-maybe->cenegetfx-sink
+        (maybe-map maybe-ranks #/fn ranks
           (racket-list->sink #/list-map ranks #/fn rank
             (sink-table rank))))))
   
@@ -3614,9 +3626,12 @@
     #/cenegetfx-done
       (sink-extfx-optimized-textpat-read-located fault ot input-stream
       #/fn input-stream maybe-result
+      #/sink-extfx-run-cenegetfx
+        (racket-maybe->cenegetfx-sink maybe-result)
+      #/fn maybe-result
       #/verify-callback-extfx! fault #/cenegetfx-sink-call fault then
         input-stream
-        (racket-maybe->sink maybe-result))))
+        maybe-result)))
   
   
   ; File I/O for simple builds
