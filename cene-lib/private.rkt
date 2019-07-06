@@ -478,7 +478,7 @@
   (-> void?)
   (expect (cene-definition-get-param)
     (just #/list rinfo maybe-run-getfx)
-    (error "Expected implementations of `cene-definition-dspace` and `cene-definition-lang-impl-qualify-root` to be available in the dynamic scope")
+    (error "Expected an implementation of `cene-definition-root-info` to be available in the dynamic scope")
   #/void))
 
 (define/contract (assert-cannot-get-cene-definition-globals!)
@@ -490,7 +490,7 @@
   (mat (cene-definition-get-param) (just #/list rinfo maybe-run-getfx)
     ; TODO: Make this error message more visually distinct from the
     ; `assert-can-get-cene-definition-globals!` error message.
-    (error "Expected no implementations of `cene-definition-dspace` and `cene-definition-lang-impl-qualify-root` to be available in the dynamic scope")
+    (error "Expected no implementation of `cene-definition-root-info` to be available in the dynamic scope")
   #/void))
 
 (define/contract (assert-can-get-cene-definitions!)
@@ -523,24 +523,6 @@
     (just #/list rinfo maybe-run-getfx)
     (error "Expected every call to `cene-definition-oot-info` to occur with an implementation in the dynamic scope")
     rinfo))
-
-(define/contract (cene-definition-dspace)
-  (-> dspace?)
-  (expect (cene-definition-get-param)
-    (just #/list
-      (cene-root-info ds lang-impl-qualify-root tag-cache)
-      maybe-run-getfx)
-    (error "Expected every call to `cene-definition-dspace` to occur with an implementation in the dynamic scope")
-    ds))
-
-(define/contract (cene-definition-lang-impl-qualify-root)
-  (-> sink-authorized-name?)
-  (expect (cene-definition-get-param)
-    (just #/list
-      (cene-root-info ds lang-impl-qualify-root tag-cache)
-      maybe-run-getfx)
-    (error "Expected every call to `cene-definition-lang-impl-qualify-root` to occur with an implementation in the dynamic scope")
-    lang-impl-qualify-root))
 
 (define/contract (sink-getfx-get name)
   (-> sink-name? sink-getfx?)
@@ -1234,37 +1216,41 @@
     #/trivial)))
 
 (define/contract
-  (sink-authorized-name-for-function-implementation
+  (cenegetfx-sink-authorized-name-for-function-implementation
     result-tag main-tag-name proj-tag-names)
   (-> immutable-string? sink-authorized-name? sink-table?
-    sink-authorized-name?)
-  (dissect
-    (sink-proj-tag-authorized-names->trivial proj-tag-names)
+    (cenegetfx/c sink-authorized-name?))
+  (dissect (sink-proj-tag-authorized-names->trivial proj-tag-names)
     (sink-table proj-tag-names)
-  #/sink-authorized-name-subname
-    (sink-name-of-racket-string result-tag)
-  #/sink-authorized-name-subname
-    (sink-name #/just-value #/pure-run-getfx #/getfx-name-of
-      (dex-table #/dex-trivial)
-      proj-tag-names)
-  #/sink-authorized-name-subname
-    (sink-authorized-name-get-name main-tag-name)
-  #/sink-authorized-name-subname
-    (sink-name-of-racket-string "function-implementation")
-    (cene-definition-lang-impl-qualify-root)))
+  #/cenegetfx-bind (cenegetfx-read-lang-impl-qualify-root)
+  #/fn lang-impl-qualify-root
+  #/cenegetfx-done
+    (sink-authorized-name-subname
+      (sink-name-of-racket-string result-tag)
+    #/sink-authorized-name-subname
+      (sink-name #/just-value #/pure-run-getfx #/getfx-name-of
+        (dex-table #/dex-trivial)
+        proj-tag-names)
+    #/sink-authorized-name-subname
+      (sink-authorized-name-get-name main-tag-name)
+    #/sink-authorized-name-subname
+      (sink-name-of-racket-string "function-implementation")
+      lang-impl-qualify-root)))
 
 (define/contract
-  (sink-authorized-name-for-function-implementation-code
+  (cenegetfx-sink-authorized-name-for-function-implementation-code
     main-tag-name proj-tag-names)
-  (-> sink-authorized-name? sink-table? sink-authorized-name?)
-  (sink-authorized-name-for-function-implementation
+  (-> sink-authorized-name? sink-table?
+    (cenegetfx/c sink-authorized-name?))
+  (cenegetfx-sink-authorized-name-for-function-implementation
     "code" main-tag-name proj-tag-names))
 
 (define/contract
-  (sink-authorized-name-for-function-implementation-value
+  (cenegetfx-sink-authorized-name-for-function-implementation-value
     main-tag-name proj-tag-names)
-  (-> sink-authorized-name? sink-table? sink-authorized-name?)
-  (sink-authorized-name-for-function-implementation
+  (-> sink-authorized-name? sink-table?
+    (cenegetfx/c sink-authorized-name?))
+  (cenegetfx-sink-authorized-name-for-function-implementation
     "value" main-tag-name proj-tag-names))
 
 (define/contract (sink-fn-curried-fault n-args racket-func)

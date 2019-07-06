@@ -1595,14 +1595,22 @@
       sink-extfx?)
     (sink-extfx-claim-and-split unique-name 2
     #/dissectfn (list unique-name-for-code unique-name-for-value)
+    #/sink-extfx-run-cenegetfx
+      (cenegetfx-sink-authorized-name-for-function-implementation-code
+        qualified-main-tag-name qualified-proj-tag-names)
+    #/fn target-name-for-code
+    #/sink-extfx-run-cenegetfx
+      (cenegetfx-sink-authorized-name-for-function-implementation-value
+        qualified-main-tag-name qualified-proj-tag-names)
+    #/fn target-name-for-value
     #/sink-extfx-fuse
-      (sink-extfx-def-value-for-lang-impl unique-name-for-code
-        (sink-authorized-name-for-function-implementation-code
-          qualified-main-tag-name qualified-proj-tag-names)
+      (sink-extfx-def-value-for-lang-impl
+        unique-name-for-code
+        target-name-for-code
         (sink-cexpr-reified impl))
-      (sink-extfx-def-value-for-lang-impl unique-name-for-value
-        (sink-authorized-name-for-function-implementation-value
-          qualified-main-tag-name qualified-proj-tag-names)
+      (sink-extfx-def-value-for-lang-impl
+        unique-name-for-value
+        target-name-for-value
         impl)))
   
   
@@ -3795,9 +3803,8 @@
       (cenegetfx-cene-err fault "Expected main-tag-name to be an authorized name")
     #/w- proj-tag-names
       (verify-proj-tag-authorized-names! fault proj-tag-names)
-    #/cenegetfx-done
-      (sink-authorized-name-for-function-implementation-code
-        main-tag-name proj-tag-names)))
+    #/cenegetfx-sink-authorized-name-for-function-implementation-code
+      main-tag-name proj-tag-names))
   
   (def-func-fault! "authorized-name-for-function-implementation-value"
     fault main-tag-name proj-tag-names
@@ -3806,9 +3813,8 @@
       (cenegetfx-cene-err fault "Expected main-tag-name to be an authorized name")
     #/w- proj-tag-names
       (verify-proj-tag-authorized-names! fault proj-tag-names)
-    #/cenegetfx-done
-      (sink-authorized-name-for-function-implementation-value
-        main-tag-name proj-tag-names)))
+    #/cenegetfx-sink-authorized-name-for-function-implementation-value
+      main-tag-name proj-tag-names))
   
   (def-func-fault! "name-for-freestanding-expr-op" fault name
     (expect (sink-name? name) #t
@@ -4013,17 +4019,15 @@
   
   
   
-  (define prelude-unique-name
-    (sink-authorized-name-subname
-      (sink-name-of-racket-string "prelude-unique-name")
-      (cene-definition-lang-impl-qualify-root)))
   (define/contract (cenegetfx-qualify-for-prelude name)
     (-> sink-name? #/cenegetfx/c sink-authorized-name?)
-    (cenegetfx-done
+    (cenegetfx-bind (cenegetfx-read-lang-impl-qualify-root)
+    #/fn lang-impl-qualify-root
+    #/cenegetfx-done
       (sink-authorized-name-subname name
       #/sink-authorized-name-subname
         (sink-name-of-racket-string "prelude-qualify-root")
-        (cene-definition-lang-impl-qualify-root))))
+        lang-impl-qualify-root)))
   
   (define/contract
     (sink-extfx-def-value-for-prelude unique-name target-name value)
