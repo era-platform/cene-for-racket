@@ -209,14 +209,15 @@
           (dex-struct tag (dexed-get-dex dexed-field-result) ...)
           (tag (dexed-get-value dexed-field-result) ...)))))
 
-(define/contract (racket-boolean->sink racket-boolean)
-  (-> boolean? sink?)
-  (begin (assert-can-get-cene-definition-globals!)
-  #/if racket-boolean
-    (make-sink-struct (s-yep) #/list
-      (make-sink-struct (s-nil) #/list))
-    (make-sink-struct (s-nope) #/list
-      (make-sink-struct (s-nil) #/list))))
+(define/contract (racket-boolean->cenegetfx-sink racket-boolean)
+  (-> boolean? #/cenegetfx/c sink?)
+  (cenegetfx-with-run-getfx #/fn
+  #/cenegetfx-done
+    (if racket-boolean
+      (make-sink-struct (s-yep) #/list
+        (make-sink-struct (s-nil) #/list))
+      (make-sink-struct (s-nope) #/list
+        (make-sink-struct (s-nil) #/list)))))
 
 (define/contract (sink-maybe->maybe-racket sink-maybe)
   (-> sink? #/maybe/c #/maybe/c sink?)
@@ -1944,7 +1945,7 @@
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func! "is-getfx" v
-    (cenegetfx-done #/racket-boolean->sink #/sink-getfx? v))
+    (racket-boolean->cenegetfx-sink #/sink-getfx? v))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func! "getfx-done" result
@@ -2002,10 +2003,9 @@
   (def-func-fault! "getfx-is-in-dex" fault dex v
     (expect dex (sink-dex dex)
       (cenegetfx-cene-err fault "Expected dex to be a dex")
-    #/cenegetfx-done #/sink-getfx
-      (cenegetfx-run-getfx-with-run-getfx #/fn
-      #/getfx-map-restoring (getfx-is-in-dex dex v) #/fn result
-        (racket-boolean->sink result))))
+    #/cenegetfx-bind (cenegetfx-run-getfx #/getfx-is-in-dex dex v)
+    #/fn is-in
+    #/racket-boolean->cenegetfx-sink is-in))
   
   ; NOTE: In the JavaScript version of Cene, this was called
   ; `name-of`.
@@ -2045,7 +2045,7 @@
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func! "is-dexed" v
-    (cenegetfx-done #/racket-boolean->sink #/sink-dexed? v))
+    (racket-boolean->cenegetfx-sink #/sink-dexed? v))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "dexed-get-dex" fault d
@@ -2126,10 +2126,9 @@
   (def-func-fault! "getfx-is-in-cline" fault cline v
     (expect cline (sink-cline cline)
       (cenegetfx-cene-err fault "Expected cline to be a cline")
-    #/cenegetfx-done #/sink-getfx
-      (cenegetfx-run-getfx-with-run-getfx #/fn
-      #/getfx-map-restoring (getfx-is-in-cline cline v) #/fn result
-        (racket-boolean->sink result))))
+    #/cenegetfx-bind (cenegetfx-run-getfx #/getfx-is-in-cline cline v)
+    #/fn is-in
+    #/racket-boolean->cenegetfx-sink is-in))
   
   ; NOTE: In the JavaScript version of Cene, this was called
   ; `call-cline`.
@@ -2307,8 +2306,7 @@
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func! "is-fusable-fn" v
-    (cenegetfx-done
-      (racket-boolean->sink #/sink-opaque-fn-fusable? v)))
+    (racket-boolean->cenegetfx-sink #/sink-opaque-fn-fusable? v))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "make-fusable-fn" caller-fault func
@@ -2346,7 +2344,7 @@
   ; TODO: See if we need to expose a `dex-authorized-name` to Cene
   ; instead of this.
   (def-func! "is-authorized-name" v
-    (cenegetfx-done #/racket-boolean->sink #/sink-authorized-name? v))
+    (racket-boolean->cenegetfx-sink #/sink-authorized-name? v))
   
   (def-func-fault! "authorized-name-get-name" fault name
     (expect (sink-authorized-name? name) #t
@@ -2887,7 +2885,7 @@
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func! "is-table" v
-    (cenegetfx-done #/racket-boolean->sink #/sink-table? v))
+    (racket-boolean->cenegetfx-sink #/sink-table? v))
   
   (def-func-fault! "dex-table" fault dex-val
     (expect dex-val (sink-dex dex-val)
@@ -3311,13 +3309,13 @@
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func! "is-expr" v
-    (cenegetfx-done #/racket-boolean->sink #/sink-cexpr? v))
+    (racket-boolean->cenegetfx-sink #/sink-cexpr? v))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "expr-is-closed" fault expr
     (expect expr (sink-cexpr expr)
       (cenegetfx-cene-err fault "Expected expr to be an expression")
-    #/cenegetfx-done #/racket-boolean->sink #/cexpr-is-closed? expr))
+    #/racket-boolean->cenegetfx-sink #/cexpr-is-closed? expr))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `eval-cexpr`, and it took a mode parameter.
@@ -3489,12 +3487,11 @@
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func! "is-textpat" v
-    (cenegetfx-done #/racket-boolean->sink #/sink-textpat? v))
+    (racket-boolean->cenegetfx-sink #/sink-textpat? v))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func! "is-optimized-textpat" v
-    (cenegetfx-done
-      (racket-boolean->sink #/sink-optimized-textpat? v)))
+    (racket-boolean->cenegetfx-sink #/sink-optimized-textpat? v))
   
   (def-nullary-func! "textpat-give-up"
     (sink-textpat #/textpat-give-up))
@@ -3555,7 +3552,7 @@
   (def-func-fault! "textpat-has-empty" fault t
     (expect t (sink-textpat t)
       (cenegetfx-cene-err fault "Expected t to be a text pattern")
-    #/cenegetfx-done #/racket-boolean->sink #/textpat-has-empty? t))
+    #/racket-boolean->cenegetfx-sink #/textpat-has-empty? t))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `optimize-regex-later`, it took a callback, and it returned an
@@ -3788,7 +3785,7 @@
   ; one for each cline constructor, etc.
   
   (def-func! "is-located-string" v
-    (cenegetfx-done #/racket-boolean->sink #/sink-located-string? v))
+    (racket-boolean->cenegetfx-sink #/sink-located-string? v))
   
   (def-func-fault! "perffx-string-from-located-string"
     fault located-string
@@ -3802,8 +3799,8 @@
   ; for manipulating `sink-located-string` values.
   
   (def-func! "is-expr-sequence-output-stream" v
-    (cenegetfx-done
-      (racket-boolean->sink #/sink-cexpr-sequence-output-stream? v)))
+    (racket-boolean->cenegetfx-sink
+      (sink-cexpr-sequence-output-stream? v)))
   
   (def-func-fault! "extfx-make-expr-sequence-output-stream"
     fault unique-name state on-expr then
@@ -3847,8 +3844,7 @@
         output-stream)))
   
   (def-func! "is-text-input-stream" v
-    (cenegetfx-done
-      (racket-boolean->sink #/sink-text-input-stream? v)))
+    (racket-boolean->cenegetfx-sink #/sink-text-input-stream? v))
   
   (def-func-fault! "extfx-read-eof" fault input-stream on-eof then
     (expect (sink-text-input-stream? input-stream) #t
