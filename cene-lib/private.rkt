@@ -1162,7 +1162,7 @@
   (-> sink? cenegetfx?)
   (cenegetfx-run-getfx-with-run-getfx #/fn
   #/dissect
-    (expect (unmake-sink-struct-maybe (s-clamor-err) clamor)
+    (expect (unmake-sink-struct-maybe (cssm-clamor-err) clamor)
       (just #/list (sink-fault maybe-marks) (sink-string message))
       (list (nothing) (format "~s" clamor))
       (list maybe-marks message))
@@ -1175,12 +1175,13 @@
 (define/contract (cenegetfx-cene-err fault message)
   (-> sink-fault? immutable-string? #/cenegetfx/c none/c)
   ; TODO: See if there's a way we can either stop depending on
-  ; `s-clamor-err` here or move this code after the place where
-  ; `s-clamor-err` is defined.
+  ; `cssm-clamor-err` here or move this code after the place where
+  ; `cssm-clamor-err` is defined.
   (cenegetfx-with-run-getfx #/fn
-  #/cenegetfx-err-from-clamor #/make-sink-struct (s-clamor-err) #/list
-    fault
-    (sink-string message)))
+  #/cenegetfx-err-from-clamor
+    (make-sink-struct (cssm-clamor-err) #/list
+      fault
+      (sink-string message))))
 
 (define/contract (sink-getfx-cene-err fault message)
   (-> sink-fault? immutable-string? sink-getfx?)
@@ -1219,9 +1220,9 @@
           #/fn proj-tag rest
             (sink-table-put-maybe rest proj-tag
             ; TODO: See if there's a way we can either stop depending
-            ; on `s-trivial` here or move this code after the place
-            ; where `s-trivial` is defined.
-            #/just #/make-sink-struct (s-trivial) #/list)))
+            ; on `cssm-trivial` here or move this code after the place
+            ; where `cssm-trivial` is defined.
+            #/just #/make-sink-struct (cssm-trivial) #/list)))
       #/fn name-for-impl
       #/cenegetfx-run-sink-getfx #/sink-getfx-get name-for-impl)
     #/fn impl
@@ -1961,22 +1962,24 @@
     core-sink-struct-metadata?)
   (core-sink-struct-metadata (gensym) main-tag-string proj-strings))
 
-(define s-trivial (core-sink-struct "trivial" #/list))
+; NOTE: The prefix `cssm-...` stands for "core sink struct metadata."
 
-(define s-nil (core-sink-struct "nil" #/list))
-(define s-cons (core-sink-struct "cons" #/list "first" "rest"))
+(define cssm-trivial (core-sink-struct "trivial" #/list))
 
-(define s-clamor-err
+(define cssm-nil (core-sink-struct "nil" #/list))
+(define cssm-cons (core-sink-struct "cons" #/list "first" "rest"))
+
+(define cssm-clamor-err
   (core-sink-struct "clamor-err" #/list "blame" "message"))
 
 (define minimal-tags
   (list
-    s-trivial
+    cssm-trivial
     
-    s-nil
-    s-cons
+    cssm-nil
+    cssm-cons
     
-    s-clamor-err))
+    cssm-clamor-err))
 
 (define (cene-definition-tag metadata)
   (-> core-sink-struct-metadata? #/and/c pair? #/listof name?)
@@ -2029,9 +2032,10 @@
   (cenegetfx-with-run-getfx #/fn
   #/cenegetfx-done
     (w-loop next sink-list sink-list rev-racket-list (list)
-      (mat (unmake-sink-struct-maybe (s-nil) sink-list) (just #/list)
+      (mat (unmake-sink-struct-maybe (cssm-nil) sink-list)
+        (just #/list)
         (just #/reverse rev-racket-list)
-      #/mat (unmake-sink-struct-maybe (s-cons) sink-list)
+      #/mat (unmake-sink-struct-maybe (cssm-cons) sink-list)
         (just #/list elem sink-list)
         (next sink-list #/cons elem rev-racket-list)
       #/nothing))))
@@ -2040,9 +2044,9 @@
   (-> (listof sink?) #/cenegetfx/c sink?)
   (cenegetfx-with-run-getfx #/fn
   #/cenegetfx-done
-    (list-foldr racket-list (make-sink-struct (s-nil) #/list)
+    (list-foldr racket-list (make-sink-struct (cssm-nil) #/list)
     #/fn elem rest
-      (make-sink-struct (s-cons) #/list elem rest))))
+      (make-sink-struct (cssm-cons) #/list elem rest))))
 
 (define/contract (extfx-claim name on-success)
   (-> authorized-name? (-> extfx?) extfx?)
