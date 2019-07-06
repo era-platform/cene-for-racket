@@ -497,7 +497,8 @@
     (cenegetfx-cene-err fault "Expected a defined struct metadata entry to be a struct-metadata")
   #/expect main-tag-name (sink-name main-tag-name)
     (cenegetfx-cene-err fault "Expected a defined struct metadata entry to have a main tag name that was a name")
-  #/expect (sink-list->maybe-racket projs) (just projs)
+  #/cenegetfx-bind (sink-list->cenegetfx-maybe-racket projs)
+  #/expectfn (just projs)
     (cenegetfx-cene-err fault "Expected a defined struct metadata entry to have a cons list of projections")
   #/cenegetfx-bind
     (cenegetfx-list-map #/list-map projs #/fn entry
@@ -2419,7 +2420,8 @@
     
     (expect main-tag-name (sink-authorized-name main-tag-name)
       (cenegetfx-cene-err fault "Expected main-tag-name to be an authorized name")
-    #/expect (sink-list->maybe-racket projections) (just projections)
+    #/cenegetfx-bind (sink-list->cenegetfx-maybe-racket projections)
+    #/expectfn (just projections)
       (cenegetfx-cene-err fault "Expected projections to be a list made up of cons and nil values")
     #/cenegetfx-bind
       (cenegetfx-list-map #/list-map projections #/fn projection
@@ -2605,7 +2607,8 @@
       (cenegetfx-cene-err fault "Expected subject-expr to be an expression")
     #/expect main-tag-name (sink-authorized-name main-tag-name)
       (cenegetfx-cene-err fault "Expected main-tag-name to be an authorized name")
-    #/expect (sink-list->maybe-racket projections) (just projections)
+    #/cenegetfx-bind (sink-list->cenegetfx-maybe-racket projections)
+    #/expectfn (just projections)
       (cenegetfx-cene-err fault "Expected projections to be a list made up of cons and nil values")
     #/cenegetfx-bind
       (cenegetfx-list-map #/list-map projections #/fn projection
@@ -3307,7 +3310,8 @@
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-let`.
   (def-func-fault! "expr-let" fault bindings body
-    (expect (sink-list->maybe-racket bindings) (just bindings)
+    (cenegetfx-bind (sink-list->cenegetfx-maybe-racket bindings)
+    #/expectfn (just bindings)
       (cenegetfx-cene-err fault "Expected bindings to be a list")
     #/cenegetfx-bind
       (cenegetfx-list-map #/list-map bindings #/fn binding

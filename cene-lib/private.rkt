@@ -2135,21 +2135,22 @@
         #/dissectfn (sink-name name)
           name)))))
 
-(define/contract (sink-list->maybe-racket sink-list)
-  (-> sink? #/maybe/c #/listof sink?)
-  ; NOTE: We could call `sink-list->maybe-racket` itself recursively,
-  ; but we explicitly accumulate elements using a parameter
-  ; (`rev-racket-list`) of a recursive helper function (`next`) so
-  ; that we keep the call stack at a constant size throughout the list
-  ; traversal.
-  (begin (assert-can-get-cene-definition-globals!)
-  #/w-loop next sink-list sink-list rev-racket-list (list)
-  #/mat (unmake-sink-struct-maybe (s-nil) sink-list) (just #/list)
-    (just #/reverse rev-racket-list)
-  #/mat (unmake-sink-struct-maybe (s-cons) sink-list)
-    (just #/list elem sink-list)
-    (next sink-list #/cons elem rev-racket-list)
-  #/nothing))
+(define/contract (sink-list->cenegetfx-maybe-racket sink-list)
+  (-> sink? #/cenegetfx/c #/maybe/c #/listof sink?)
+  ; NOTE: We could call `sink-list->cenegetfx-maybe-racket` itself
+  ; recursively, but we explicitly accumulate elements using a
+  ; parameter (`rev-racket-list`) of a recursive helper function
+  ; (`next`) so that we keep the call stack at a constant size
+  ; throughout the list traversal.
+  (cenegetfx-with-run-getfx #/fn
+  #/cenegetfx-done
+    (w-loop next sink-list sink-list rev-racket-list (list)
+      (mat (unmake-sink-struct-maybe (s-nil) sink-list) (just #/list)
+        (just #/reverse rev-racket-list)
+      #/mat (unmake-sink-struct-maybe (s-cons) sink-list)
+        (just #/list elem sink-list)
+        (next sink-list #/cons elem rev-racket-list)
+      #/nothing))))
 
 (define/contract (racket-list->cenegetfx-sink racket-list)
   (-> (listof sink?) #/cenegetfx/c sink?)
