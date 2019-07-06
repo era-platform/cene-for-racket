@@ -213,33 +213,37 @@
 
 (define/contract (racket-boolean->cenegetfx-sink racket-boolean)
   (-> boolean? #/cenegetfx/c sink?)
-  (cenegetfx-with-run-getfx #/fn
+  (cenegetfx-tag cssm-nil #/fn csst-nil
+  #/cenegetfx-tag cssm-yep #/fn csst-yep
+  #/cenegetfx-tag cssm-nope #/fn csst-nope
   #/cenegetfx-done
     (if racket-boolean
-      (make-sink-struct (cssm-yep) #/list
-        (make-sink-struct (cssm-nil) #/list))
-      (make-sink-struct (cssm-nope) #/list
-        (make-sink-struct (cssm-nil) #/list)))))
+      (make-sink-struct csst-yep #/list
+        (make-sink-struct csst-nil #/list))
+      (make-sink-struct csst-nope #/list
+        (make-sink-struct csst-nil #/list)))))
 
 (define/contract (sink-maybe->cenegetfx-maybe-racket sink-maybe)
   (-> sink? #/cenegetfx/c #/maybe/c #/maybe/c sink?)
-  (cenegetfx-with-run-getfx #/fn
+  (cenegetfx-tag cssm-nothing #/fn csst-nothing
+  #/cenegetfx-tag cssm-just #/fn csst-just
   #/cenegetfx-done
-    (mat (unmake-sink-struct-maybe (cssm-nothing) sink-maybe)
+    (mat (unmake-sink-struct-maybe csst-nothing sink-maybe)
       (just #/list)
       (just #/nothing)
-    #/mat (unmake-sink-struct-maybe (cssm-just) sink-maybe)
+    #/mat (unmake-sink-struct-maybe csst-just sink-maybe)
       (just #/list val)
       (just #/just val)
     #/nothing)))
 
 (define/contract (racket-maybe->cenegetfx-sink racket-maybe)
   (-> (maybe/c sink?) #/cenegetfx/c sink?)
-  (cenegetfx-with-run-getfx #/fn
+  (cenegetfx-tag cssm-nothing #/fn csst-nothing
+  #/cenegetfx-tag cssm-just #/fn csst-just
   #/cenegetfx-done
     (mat racket-maybe (just val)
-      (make-sink-struct (cssm-just) #/list val)
-      (make-sink-struct (cssm-nothing) #/list))))
+      (make-sink-struct csst-just #/list val)
+      (make-sink-struct csst-nothing #/list))))
 
 
 (struct-easy (sink-dexed dexed)
@@ -504,9 +508,9 @@
 (define/contract
   (cenegetfx-verify-sink-struct-metadata fault sink-metadata)
   (-> sink-fault? sink? #/cenegetfx/c cene-struct-metadata?)
-  (cenegetfx-with-run-getfx #/fn
+  (cenegetfx-tag cssm-struct-metadata #/fn csst-struct-metadata
   #/expect
-    (unmake-sink-struct-maybe (cssm-struct-metadata) sink-metadata)
+    (unmake-sink-struct-maybe csst-struct-metadata sink-metadata)
     (just #/list main-tag-name projs)
     (cenegetfx-cene-err fault "Expected a defined struct metadata entry to be a struct-metadata")
   #/expect main-tag-name (sink-name main-tag-name)
@@ -514,10 +518,10 @@
   #/cenegetfx-bind (sink-list->cenegetfx-maybe-racket projs)
   #/expectfn (just projs)
     (cenegetfx-cene-err fault "Expected a defined struct metadata entry to have a cons list of projections")
+  #/cenegetfx-tag cssm-assoc #/fn csst-assoc
   #/cenegetfx-bind
     (cenegetfx-list-map #/list-map projs #/fn entry
-      (cenegetfx-with-run-getfx #/fn
-      #/expect (unmake-sink-struct-maybe (cssm-assoc) entry)
+      (expect (unmake-sink-struct-maybe csst-assoc entry)
         (just #/list proj-string proj-name)
         (cenegetfx-cene-err fault "Expected a defined struct metadata entry to have a projection list where each entry was an assoc")
       #/expect proj-string (sink-string proj-string)
@@ -528,7 +532,6 @@
         (name-for-sink-string #/sink-string proj-string)
       #/cenegetfx-done #/list proj-string proj-string-name proj-name))
   #/fn projs
-  #/cenegetfx-with-run-getfx #/fn
   #/expect
     (assocs->table-if-mutually-unique
     #/list-map projs #/dissectfn (list string string-name name)
@@ -1197,10 +1200,12 @@
   #:property prop:procedure
   (fn this dex
     (dissect this (fix-for-sink-dex-list rinfo dex-elem)
-    #/with-gets-from rinfo #/fn
-    #/getfx-done #/dex-default
-      (dex-sink-struct (cssm-nil) #/list)
-      (dex-sink-struct (cssm-cons) #/list dex-elem dex))))
+    #/getfx-run-cenegetfx rinfo
+      (cenegetfx-tag cssm-nil #/fn csst-nil
+      #/cenegetfx-tag cssm-cons #/fn csst-cons
+      #/cenegetfx-done #/dex-default
+        (dex-sink-struct csst-nil #/list)
+        (dex-sink-struct csst-cons #/list dex-elem dex)))))
 
 (define/contract (cenegetfx-sink-dex-list fault dex-elem)
   (-> sink-fault? sink-dex? #/cenegetfx/c sink-dex?)
@@ -1440,9 +1445,10 @@
     #/cenegetfx-make-sink-sub pubsub-name)
   #/fn s
   #/sink-extfx-sub-write s unique-name-for-sub-write #/fn entry
-    (sink-extfx-with-run-getfx #/fn
+    (sink-extfx-tag cssm-command-init-package
+    #/fn csst-command-init-package
     #/expect
-      (unmake-sink-struct-maybe (cssm-command-init-package) entry)
+      (unmake-sink-struct-maybe csst-command-init-package entry)
       (just #/list key qualify)
       (sink-extfx-cene-err fault "Expected each package initialization command to be a command-init-package")
     #/expect (sink-name? key) #t
@@ -1469,9 +1475,10 @@
     #/fn pubsub-name
     #/cenegetfx-make-sink-pub pubsub-name)
   #/fn p
-  #/sink-extfx-with-run-getfx #/fn
+  #/sink-extfx-tag cssm-command-init-package
+  #/fn csst-command-init-package
   #/sink-extfx-pub-write p unique-name-for-pub-write
-    (make-sink-struct (cssm-command-init-package) #/list
+    (make-sink-struct csst-command-init-package #/list
       (sink-authorized-name-get-name unique-name-for-step)
       (sink-fn-curried-fault 1 #/fn fault name
         (expect (sink-name? name) #t
@@ -1563,7 +1570,6 @@
         (body
           fault unique-name qualify text-input-stream output-stream
         #/fn unique-name qualify text-input-stream output-stream
-        #/sink-extfx-with-run-getfx #/fn
         #/sink-extfx-run-cenegetfx
           (cenegetfx-sink-call fault then
             unique-name qualify text-input-stream output-stream)
@@ -1584,7 +1590,6 @@
       (sink-extfx-read-bounded-specific-number-of-cexprs
         fault unique-name qualify text-input-stream n-args
       #/fn unique-name qualify text-input-stream args
-      #/sink-extfx-with-run-getfx #/fn
       #/sink-extfx-run-cenegetfx (body args) #/fn expr
       #/sink-extfx-cexpr-write fault output-stream expr
       #/fn output-stream
@@ -1719,6 +1724,7 @@
     #/w- qualified-main-tag-name
       (sink-authorized-name-get-name
         qualified-main-tag-authorized-name)
+    #/sink-extfx-tag cssm-trivial #/fn csst-trivial
     #/sink-extfx-fuse
       
       ; We define a reader macro so that the user can write code that
@@ -1738,7 +1744,7 @@
           (cenegetfx-done
             (sink-cexpr-call
               (sink-cexpr-construct qualified-main-tag-name #/list)
-              (make-sink-cexpr-construct (cssm-trivial) #/list)))))
+              (make-sink-cexpr-construct csst-trivial #/list)))))
       
       ; We define a Cene struct function implementation containing
       ; the function's run time behavior.
@@ -1746,8 +1752,7 @@
         qualified-main-tag-authorized-name
         (sink-table #/table-empty)
         (sink-fn-curried-fault 2 #/fn fault struct-value arg
-          (cenegetfx-with-run-getfx #/fn
-          #/expect (unmake-sink-struct-maybe (cssm-trivial) arg)
+          (expect (unmake-sink-struct-maybe csst-trivial arg)
             (just #/list)
             (cenegetfx-cene-err fault "Expected the argument to a nullary function to be a trivial")
           #/cenegetfx-done result)))
@@ -1856,30 +1861,29 @@
       ; TODO: We haven't even tried to store this in the same format
       ; as the JavaScript version of Cene does. See if we should.
       ;
-      (sink-extfx-with-run-getfx #/fn
+      (sink-extfx-tag cssm-assoc #/fn csst-assoc
       #/sink-extfx-run-cenegetfx
         (cenegetfx-sink-dex-list root-fault
-          (sink-dex-struct (cssm-assoc) #/list
+          (sink-dex-struct csst-assoc #/list
             (sink-dex-string)
             (sink-dex-name)))
       #/fn dex-projs
-      #/sink-extfx-with-run-getfx #/fn
       #/sink-extfx-run-cenegetfx
         (racket-list->cenegetfx-sink
           (list-map qualified-proj-name-entries
           #/dissectfn (list proj-string qualified-proj-name)
-            (make-sink-struct (cssm-assoc) #/list
+            (make-sink-struct csst-assoc #/list
               (sink-string proj-string)
               (sink-authorized-name-get-name qualified-proj-name))))
       #/fn qualified-proj-names
-      #/sink-extfx-with-run-getfx #/fn
+      #/sink-extfx-tag cssm-struct-metadata #/fn csst-struct-metadata
       #/sink-extfx-def-fallibly-dexed-value-for-package
         unique-name-for-metadata
         (sink-name-for-struct-metadata main-tag-name)
-        (sink-dex-struct (cssm-struct-metadata) #/list
+        (sink-dex-struct csst-struct-metadata #/list
           (sink-dex-name)
           dex-projs)
-        (make-sink-struct (cssm-struct-metadata) #/list
+        (make-sink-struct csst-struct-metadata #/list
           qualified-main-tag-name
           qualified-proj-names))
       
@@ -2093,12 +2097,14 @@
       #/cenegetfx-bind
         (cenegetfx-run-getfx #/getfx-compare-by-dex dex a b)
       #/fn maybe-result
+      #/cenegetfx-tag cssm-ordering-private #/fn csst-ordering-private
+      #/cenegetfx-tag cssm-ordering-eq #/fn csst-ordering-eq
       #/racket-maybe->cenegetfx-sink
         (maybe-map maybe-result #/fn result
           (mat result (ordering-private)
-            (make-sink-struct (cssm-ordering-private) #/list)
+            (make-sink-struct csst-ordering-private #/list)
           #/dissect result (ordering-eq)
-            (make-sink-struct (cssm-ordering-eq) #/list))))))
+            (make-sink-struct csst-ordering-eq #/list))))))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func! "is-dexed" v
@@ -2199,16 +2205,20 @@
       #/cenegetfx-bind
         (cenegetfx-run-getfx #/getfx-compare-by-cline cline a b)
       #/fn maybe-result
+      #/cenegetfx-tag cssm-ordering-private #/fn csst-ordering-private
+      #/cenegetfx-tag cssm-ordering-lt #/fn csst-ordering-lt
+      #/cenegetfx-tag cssm-ordering-gt #/fn csst-ordering-gt
+      #/cenegetfx-tag cssm-ordering-eq #/fn csst-ordering-eq
       #/racket-maybe->cenegetfx-sink
         (maybe-map maybe-result #/fn result
           (mat result (ordering-private)
-            (make-sink-struct (cssm-ordering-private) #/list)
+            (make-sink-struct csst-ordering-private #/list)
           #/mat result (ordering-lt)
-            (make-sink-struct (cssm-ordering-lt) #/list)
+            (make-sink-struct csst-ordering-lt #/list)
           #/mat result (ordering-gt)
-            (make-sink-struct (cssm-ordering-gt) #/list)
+            (make-sink-struct csst-ordering-gt #/list)
           #/dissect result (ordering-eq)
-            (make-sink-struct (cssm-ordering-eq) #/list))))))
+            (make-sink-struct csst-ordering-eq #/list))))))
   
   (def-nullary-func! "dex-cline"
     (sink-dex #/dex-struct sink-cline #/dex-cline))
@@ -2462,9 +2472,10 @@
     #/cenegetfx-bind (sink-list->cenegetfx-maybe-racket projections)
     #/expectfn (just projections)
       (cenegetfx-cene-err fault "Expected projections to be a list made up of cons and nil values")
+    #/cenegetfx-tag cssm-assoc #/fn csst-assoc
     #/cenegetfx-bind
       (cenegetfx-list-map #/list-map projections #/fn projection
-        (expect (unmake-sink-struct-maybe (cssm-assoc) projection)
+        (expect (unmake-sink-struct-maybe csst-assoc projection)
           (just #/list k v)
           (cenegetfx-cene-err fault "Expected projections to be a list of assoc values")
         #/expect k (sink-authorized-name k)
@@ -2651,9 +2662,10 @@
     #/cenegetfx-bind (sink-list->cenegetfx-maybe-racket projections)
     #/expectfn (just projections)
       (cenegetfx-cene-err fault "Expected projections to be a list made up of cons and nil values")
+    #/cenegetfx-tag cssm-assoc #/fn csst-assoc
     #/cenegetfx-bind
       (cenegetfx-list-map #/list-map projections #/fn projection
-        (expect (unmake-sink-struct-maybe (cssm-assoc) projection)
+        (expect (unmake-sink-struct-maybe csst-assoc projection)
           (just #/list k v)
           (cenegetfx-cene-err fault "Expected projections to be a list of assoc values")
         #/expect k (sink-authorized-name k)
@@ -3134,11 +3146,12 @@
   ; `extfx-run-perffx`.
   ;
   (def-func-fault! "extfx-later" fault get-effects
-    (cenegetfx-done
+    (cenegetfx-tag cssm-trivial #/fn csst-trivial
+    #/cenegetfx-done
       (sink-extfx-later #/fn
       #/verify-callback-extfx! fault
       #/cenegetfx-sink-call fault get-effects
-        (make-sink-struct (cssm-trivial) #/list))))
+        (make-sink-struct csst-trivial #/list))))
   
   ; TODO BUILTINS: Consider implementing the following.
   ;
@@ -3356,9 +3369,10 @@
     (cenegetfx-bind (sink-list->cenegetfx-maybe-racket bindings)
     #/expectfn (just bindings)
       (cenegetfx-cene-err fault "Expected bindings to be a list")
+    #/cenegetfx-tag cssm-assoc #/fn csst-assoc
     #/cenegetfx-bind
       (cenegetfx-list-map #/list-map bindings #/fn binding
-        (expect (unmake-sink-struct-maybe (cssm-assoc) binding)
+        (expect (unmake-sink-struct-maybe csst-assoc binding)
           (just #/list var val)
           (cenegetfx-cene-err fault "Expected bindings to be an assoc list")
         #/expect (sink-name? var) #t
@@ -3466,18 +3480,19 @@
       (cenegetfx-cene-err fault "Expected dividend to be an int")
     #/expect divisor (sink-int divisor)
       (cenegetfx-cene-err fault "Expected divisor to be an int")
-    #/cenegetfx-done
-      (mat divisor 0 (make-sink-struct (cssm-nothing) #/list)
-      #/make-sink-struct (cssm-just) #/list
-      #/let-values ([(q r) (quotient/remainder dividend divisor)])
-      #/if (<= 0 r)
-        (make-sink-struct (cssm-carried)
-          (list (sink-int q) (sink-int r)))
-      #/if (<= 0 divisor)
-        (make-sink-struct (cssm-carried)
-          (list (sink-int #/- q 1) (sink-int #/+ r divisor)))
-        (make-sink-struct (cssm-carried)
-          (list (sink-int #/+ q 1) (sink-int #/- r divisor))))))
+    #/cenegetfx-tag cssm-carried #/fn csst-carried
+    #/racket-maybe->cenegetfx-sink
+      (mat divisor 0 (nothing)
+      #/just
+        (let-values ([(q r) (quotient/remainder dividend divisor)])
+        #/if (<= 0 r)
+          (make-sink-struct csst-carried
+            (list (sink-int q) (sink-int r)))
+        #/if (<= 0 divisor)
+          (make-sink-struct csst-carried
+            (list (sink-int #/- q 1) (sink-int #/+ r divisor)))
+          (make-sink-struct csst-carried
+            (list (sink-int #/+ q 1) (sink-int #/- r divisor)))))))
   
   (def-data-struct! "carried" #/list "main" "carry")
   
@@ -3682,15 +3697,21 @@
       (cenegetfx-cene-err fault "Expected stop to be less than or equal to the length of the string")
     #/expect (<= start stop) #t
       (cenegetfx-cene-err fault "Expected start to be less than or equal to stop")
+    #/cenegetfx-tag cssm-textpat-result-matched
+    #/fn csst-textpat-result-matched
+    #/cenegetfx-tag cssm-textpat-result-failed
+    #/fn csst-textpat-result-failed
+    #/cenegetfx-tag cssm-textpat-result-passed-end
+    #/fn csst-textpat-result-passed-end
     #/cenegetfx-done #/sink-perffx-done-later #/fn
       (w- result (optimized-textpat-match ot str start stop)
       #/mat result (textpat-result-matched stop)
-        (make-sink-struct (cssm-textpat-result-matched) #/list
+        (make-sink-struct csst-textpat-result-matched #/list
         #/sink-int stop)
       #/mat result (textpat-result-failed)
-        (make-sink-struct (cssm-textpat-result-failed) #/list)
+        (make-sink-struct csst-textpat-result-failed #/list)
       #/dissect result (textpat-result-passed-end)
-        (make-sink-struct (cssm-textpat-result-passed-end) #/list))))
+        (make-sink-struct csst-textpat-result-passed-end #/list))))
   
   (def-data-struct! "textpat-result-matched" #/list "stop")
   (def-data-struct! "textpat-result-failed" #/list)
@@ -3756,20 +3777,22 @@
   (def-func-fault! "extfx-claim" fault name on-success
     (expect (sink-authorized-name? name) #t
       (cenegetfx-cene-err fault "Expected name to be an authorized name")
+    #/cenegetfx-tag cssm-trivial #/fn csst-trivial
     #/cenegetfx-done
       (sink-extfx-claim name #/fn
       #/verify-callback-extfx! fault
         (cenegetfx-sink-call fault on-success
-          (make-sink-struct (cssm-trivial) #/list)))))
+          (make-sink-struct csst-trivial #/list)))))
   
   (def-func-fault! "name-for-function-implementation-code"
     fault main-tag-name proj-tag-names
     
     (expect (sink-name? main-tag-name) #t
       (cenegetfx-cene-err fault "Expected main-tag-name to be a name")
+    #/cenegetfx-tag cssm-trivial #/fn csst-trivial
     #/expect
       (pure-run-getfx #/getfx-is-in-dex
-        (sink-dex-table #/sink-dex-struct (cssm-trivial) #/list)
+        (sink-dex-table #/sink-dex-struct csst-trivial #/list)
         proj-tag-names)
       #t
       (cenegetfx-cene-err fault "Expected proj-tag-names to be a table of trivial values")
@@ -3783,9 +3806,10 @@
     
     (expect (sink-name? main-tag-name) #t
       (cenegetfx-cene-err fault "Expected main-tag-name to be a name")
+    #/cenegetfx-tag cssm-trivial #/fn csst-trivial
     #/expect
       (pure-run-getfx #/getfx-is-in-dex
-        (sink-dex-table #/sink-dex-struct (cssm-trivial) #/list)
+        (sink-dex-table #/sink-dex-struct csst-trivial #/list)
         proj-tag-names)
       #t
       (cenegetfx-cene-err fault "Expected proj-tag-names to be a table of trivial values")

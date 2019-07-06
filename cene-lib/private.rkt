@@ -30,7 +30,7 @@
 (require #/only-in racket/contract get/build-late-neg-projection)
 (require #/only-in racket/contract/base
   -> ->* and/c any any/c contract? contract-name list/c listof none/c
-  or/c parameter/c rename-contract struct/c)
+  or/c rename-contract struct/c)
 (require #/only-in racket/contract/combinator
   blame-add-context coerce-contract make-contract raise-blame-error)
 (require #/only-in racket/contract/region define/contract)
@@ -469,10 +469,6 @@
   #/cenegetfx-done lang-impl-qualify-root))
 
 
-(define/contract cene-definition-get-param
-  (parameter/c #/maybe/c #/cene-root-info/c)
-  (make-parameter #/nothing))
-
 ; TODO: For now, this always succeeds. See what this should do in the
 ; long run.
 (define/contract (assert-can-mutate!)
@@ -527,40 +523,6 @@
     #/sink-authorized-name-subname
       (sink-name-of-racket-string "qualify")
       lang-impl-qualify-root)))
-
-(define/contract (with-gets-from rinfo body)
-  (-> (cene-root-info/c) (-> any) any)
-  (parameterize ([cene-definition-get-param (just rinfo)])
-    (body)))
-
-(define/contract (cenegetfx-run-getfx-with-run-getfx body)
-  (-> (-> getfx?) cenegetfx?)
-  (cenegetfx-bind (cenegetfx-read-root-info) #/fn rinfo
-  #/cenegetfx-run-getfx
-    (with-gets-from rinfo body)))
-
-(define/contract (cenegetfx-with-run-getfx body)
-  (-> (-> cenegetfx?) cenegetfx?)
-  (cenegetfx-join
-    (cenegetfx-run-getfx-with-run-getfx #/fn
-      (getfx-done #/body))))
-
-(define/contract (ceneextfx-with-run-getfx body)
-  (-> (-> #/cenegetfx/c extfx?) #/cenegetfx/c extfx?)
-  (cenegetfx-with-run-getfx #/fn
-  #/body))
-
-(define/contract (sink-getfx-with-run-getfx body)
-  (-> (-> sink-getfx?) sink-getfx?)
-  (sink-getfx
-    (cenegetfx-with-run-getfx #/fn
-    #/cenegetfx-run-sink-getfx #/body)))
-
-(define/contract (sink-extfx-with-run-getfx body)
-  (-> (-> sink-extfx?) sink-extfx?)
-  (make-sink-extfx
-    (ceneextfx-with-run-getfx #/fn
-    #/ceneextfx-run-sink-extfx #/body)))
 
 (define/contract (sink-getfx-run-cenegetfx effects)
   (-> cenegetfx? sink-getfx?)
@@ -878,18 +840,6 @@
       (error-definer-from-message
         "Internal error: Expected the sink-extfx-put continuation ticket to be written to")
       (fn then
-        
-        ; NOTE: There is no dex that should rely on
-        ; `cene-definition-get-param`, since even the dex combinators
-        ; in Effection do nothing to help us restore that parameter as
-        ; they go along. Instead of relying on
-        ; `cene-definition-get-param`, dexes like `sink-dex-list`
-        ; store the values of `cene-definition-get-param` when they're
-        ; constructed and then restore them again using their own
-        ; `with-gets-from` call. Because of that, it's fine for us to
-        ; call `getfx-dexed-of` here in a section where
-        ; `cene-definition-get-param` is `(nothing)`.
-        ;
         (extfx-run-getfx (getfx-dexed-of dex value) #/fn maybe-dexed
         #/extfx-ct-continue then
           (error-definer-from-message
@@ -1160,9 +1110,9 @@
 
 (define/contract (cenegetfx-err-from-clamor clamor)
   (-> sink? cenegetfx?)
-  (cenegetfx-run-getfx-with-run-getfx #/fn
+  (cenegetfx-tag cssm-clamor-err #/fn csst-clamor-err
   #/dissect
-    (expect (unmake-sink-struct-maybe (cssm-clamor-err) clamor)
+    (expect (unmake-sink-struct-maybe csst-clamor-err clamor)
       (just #/list (sink-fault maybe-marks) (sink-string message))
       (list (nothing) (format "~s" clamor))
       (list maybe-marks message))
@@ -1170,16 +1120,17 @@
   #/w- marks
     (mat maybe-marks (just marks) marks
     #/current-continuation-marks)
-  #/getfx-err #/error-definer-from-exn #/exn:fail message marks))
+  #/cenegetfx-run-getfx
+    (getfx-err #/error-definer-from-exn #/exn:fail message marks)))
 
 (define/contract (cenegetfx-cene-err fault message)
   (-> sink-fault? immutable-string? #/cenegetfx/c none/c)
   ; TODO: See if there's a way we can either stop depending on
   ; `cssm-clamor-err` here or move this code after the place where
   ; `cssm-clamor-err` is defined.
-  (cenegetfx-with-run-getfx #/fn
+  (cenegetfx-tag cssm-clamor-err #/fn csst-clamor-err
   #/cenegetfx-err-from-clamor
-    (make-sink-struct (cssm-clamor-err) #/list
+    (make-sink-struct csst-clamor-err #/list
       fault
       (sink-string message))))
 
@@ -1212,17 +1163,17 @@
     ; TODO: This lookup might be expensive. See if we should memoize
     ; it.
     #/cenegetfx-bind
-      (cenegetfx-with-run-getfx #/fn
-      #/cenegetfx-bind
-        (cenegetfx-sink-name-for-function-implementation-value
+      (cenegetfx-bind
+        ; TODO: See if there's a way we can either stop depending on
+        ; `cssm-trivial` here or move this code after the place where
+        ; `cssm-trivial` is defined.
+        (cenegetfx-tag cssm-trivial #/fn csst-trivial
+        #/cenegetfx-sink-name-for-function-implementation-value
           main-tag
           (list-foldr proj-tags (sink-table #/table-empty)
           #/fn proj-tag rest
             (sink-table-put-maybe rest proj-tag
-            ; TODO: See if there's a way we can either stop depending
-            ; on `cssm-trivial` here or move this code after the place
-            ; where `cssm-trivial` is defined.
-            #/just #/make-sink-struct (cssm-trivial) #/list)))
+            #/just #/make-sink-struct csst-trivial #/list)))
       #/fn name-for-impl
       #/cenegetfx-run-sink-getfx #/sink-getfx-get name-for-impl)
     #/fn impl
@@ -1562,7 +1513,6 @@
   #/fn text-input-stream maybe-located-string
   #/expect maybe-located-string (just located-string)
     (then text-input-stream #/nothing)
-  #/sink-extfx-with-run-getfx #/fn
   #/sink-extfx-run-cenegetfx
     (cenegetfx-sink-call-qualify fault qualify
       (pre-qualify #/sink-name-for-string
@@ -1641,7 +1591,6 @@
   
   (sink-extfx-read-maybe-op-character fault text-input-stream
   #/fn text-input-stream maybe-identifier
-  #/sink-extfx-with-run-getfx #/fn
   #/mat maybe-identifier (just identifier)
     (sink-extfx-run-cenegetfx
       (cenegetfx-sink-call-qualify fault qualify
@@ -1942,20 +1891,7 @@
 
 (struct-easy
   (core-sink-struct-metadata
-    tag-cache-key main-tag-string proj-strings)
-  
-  #:other
-  
-  ; TODO: Remove this property, and change all the call sites to use
-  ; `cene-definition-tag` instead. (Actually, we'll probably want to
-  ; abstract over it, maybe putting the `cene-definition-tag` calls
-  ; inside `make-sink-struct`, `unmake-sink-struct-maybe`, and similar
-  ; places things this procedure behavior is currently being used.
-  #:property prop:procedure
-  (fn this
-    (expect (core-sink-struct-metadata? this) #t
-      (error "Expected this to be a core-sink-struct-metadata")
-    #/cene-definition-tag this)))
+    tag-cache-key main-tag-string proj-strings))
 
 (define/contract (core-sink-struct main-tag-string proj-strings)
   (-> immutable-string? (listof immutable-string?)
@@ -1963,6 +1899,7 @@
   (core-sink-struct-metadata (gensym) main-tag-string proj-strings))
 
 ; NOTE: The prefix `cssm-...` stands for "core sink struct metadata."
+; The prefix `csst-...` stands for "core sink struct tag."
 
 (define cssm-trivial (core-sink-struct "trivial" #/list))
 
@@ -1981,21 +1918,35 @@
     
     cssm-clamor-err))
 
-(define (cene-definition-tag metadata)
+(define (cenegetfx-tag-direct metadata)
   (-> core-sink-struct-metadata? #/and/c pair? #/listof name?)
-  (expect (cene-definition-get-param)
-    (just #/cene-root-info ds lang-impl-qualify-root tag-cache)
-    (error "Expected every call to `cene-definition-tag` to occur with an implementation in the dynamic scope")
-  #/dissect metadata
+  (dissect metadata
     (core-sink-struct-metadata
       tag-cache-key main-tag-string proj-strings)
-  #/hash-ref tag-cache tag-cache-key))
+  #/cenegetfx-bind (cenegetfx-read-root-info)
+  #/dissectfn (cene-root-info ds lang-impl-qualify-root tag-cache)
+  #/cenegetfx-done #/hash-ref tag-cache tag-cache-key))
+
+(define (cenegetfx-tag metadata then)
+  (->
+    core-sink-struct-metadata?
+    (-> (and/c pair? #/listof name?) cenegetfx?)
+    cenegetfx?)
+  (cenegetfx-bind (cenegetfx-tag-direct metadata) #/fn tag
+  #/then tag))
+
+(define (sink-extfx-tag metadata then)
+  (->
+    core-sink-struct-metadata?
+    (-> (and/c pair? #/listof name?) sink-extfx?)
+    sink-extfx?)
+  (sink-extfx-run-cenegetfx (cenegetfx-tag-direct metadata) #/fn tag
+  #/then tag))
 
 (define (make-cene-root-info ds lang-impl-qualify-root tags)
   (-> dspace? authorized-name? (listof core-sink-struct-metadata?)
     (cene-root-info/c))
   (w- temp-rinfo (cene-root-info ds lang-impl-qualify-root (hash))
-  #/with-gets-from temp-rinfo #/fn
   #/cene-root-info
     ds
     lang-impl-qualify-root
@@ -2029,24 +1980,26 @@
   ; parameter (`rev-racket-list`) of a recursive helper function
   ; (`next`) so that we keep the call stack at a constant size
   ; throughout the list traversal.
-  (cenegetfx-with-run-getfx #/fn
+  (cenegetfx-tag cssm-nil #/fn csst-nil
+  #/cenegetfx-tag cssm-cons #/fn csst-cons
   #/cenegetfx-done
     (w-loop next sink-list sink-list rev-racket-list (list)
-      (mat (unmake-sink-struct-maybe (cssm-nil) sink-list)
+      (mat (unmake-sink-struct-maybe csst-nil sink-list)
         (just #/list)
         (just #/reverse rev-racket-list)
-      #/mat (unmake-sink-struct-maybe (cssm-cons) sink-list)
+      #/mat (unmake-sink-struct-maybe csst-cons sink-list)
         (just #/list elem sink-list)
         (next sink-list #/cons elem rev-racket-list)
       #/nothing))))
 
 (define/contract (racket-list->cenegetfx-sink racket-list)
   (-> (listof sink?) #/cenegetfx/c sink?)
-  (cenegetfx-with-run-getfx #/fn
+  (cenegetfx-tag cssm-nil #/fn csst-nil
+  #/cenegetfx-tag cssm-cons #/fn csst-cons
   #/cenegetfx-done
-    (list-foldr racket-list (make-sink-struct (cssm-nil) #/list)
+    (list-foldr racket-list (make-sink-struct csst-nil #/list)
     #/fn elem rest
-      (make-sink-struct (cssm-cons) #/list elem rest))))
+      (make-sink-struct csst-cons #/list elem rest))))
 
 (define/contract (extfx-claim name on-success)
   (-> authorized-name? (-> extfx?) extfx?)
