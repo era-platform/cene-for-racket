@@ -437,6 +437,14 @@
     (fn effects then #/cenegetfx-bind effects then)
     list-of-cenegetfx))
 
+(define/contract (cenegetfx-list-foldl state elems on-elem)
+  (-> any/c list? (-> any/c any/c cenegetfx?) cenegetfx?)
+  (w-loop next state state elems elems
+    (expect elems (cons elem elems)
+      (cenegetfx-done state)
+    #/cenegetfx-bind (on-elem state elem) #/fn state
+    #/next state elems)))
+
 (define/contract (cenegetfx-read-root-info)
   (-> #/cenegetfx/c #/cene-root-info/c)
   (cenegetfx #/fn rinfo #/getfx-done rinfo))
@@ -663,15 +671,14 @@
   (begin (assert-can-get-cene-definition-globals!)
   #/getfx-run-cenegetfx (cene-definition-root-info) effects))
 
+(define/contract (sink-getfx-run-cenegetfx effects)
+  (-> cenegetfx? sink-getfx?)
+  (sink-getfx effects))
+
 (define/contract (cenegetfx-run-sink-getfx effects)
   (-> sink-getfx? cenegetfx?)
   (dissect effects (sink-getfx cenegetfx-go)
     cenegetfx-go))
-
-(define/contract (getfx-run-sink-getfx effects)
-  (-> sink-getfx? getfx?)
-  (begin (assert-can-get-cene-definition-globals!)
-  #/getfx-ambient-run-cenegetfx #/cenegetfx-run-sink-getfx effects))
 
 (define/contract (ceneextfx-run-sink-extfx effects)
   (-> sink-extfx? #/cenegetfx/c extfx?)
@@ -692,10 +699,16 @@
   #/fn extfx
     extfx))
 
-(define/contract (cene-run-sink-getfx effects)
-  (-> sink-getfx? sink?)
-  (begin (assert-can-get-cene-definitions!)
-  #/cene-run-getfx #/getfx-run-sink-getfx effects))
+(define/contract (sink-getfx-done result)
+  (-> sink? sink-getfx?)
+  (sink-getfx-run-cenegetfx #/cenegetfx-done result))
+
+(define/contract (sink-getfx-bind effects then)
+  (-> sink-getfx? (-> any/c sink-getfx?) sink-getfx?)
+  (sink-getfx-run-cenegetfx
+    (cenegetfx-bind (cenegetfx-run-sink-getfx effects)
+    #/fn intermediate
+    #/cenegetfx-run-sink-getfx #/then intermediate)))
 
 
 (define-generics cexpr
@@ -791,8 +804,8 @@
       #/w- arg (-eval-in-env fault arg env)
       #/expect (sink-fault? fault-arg) #t
         (cene-err fault "Expected the blame argument to be a blame value")
-      #/cene-run-getfx
-        (getfx-sink-call-fault fault fault-arg func arg)))
+      #/cene-run-getfx #/getfx-ambient-run-cenegetfx
+        (cenegetfx-sink-call-fault fault fault-arg func arg)))
   ])
 
 (struct-easy (cexpr-call func arg)
@@ -812,9 +825,11 @@
     (define (cexpr-eval-in-env fault this env)
       (expect this (cexpr-call func arg)
         (error "Expected this to be a cexpr-call")
-      #/sink-call fault
-        (-eval-in-env fault func env)
-        (-eval-in-env fault arg env)))
+      #/cene-run-getfx #/getfx-ambient-run-cenegetfx
+        (cenegetfx-with-run-getfx #/fn
+        #/cenegetfx-sink-call fault
+          (-eval-in-env fault func env)
+          (-eval-in-env fault arg env))))
   ])
 
 (struct-easy (cexpr-opaque-fn-fault fault-param param body)
@@ -866,7 +881,8 @@
       (expect this (cexpr-opaque-fn param body)
         (error "Expected this to be a cexpr-opaque-fn")
       #/sink-opaque-fn #/fn arg
-        (cenegetfx-done #/-eval-in-env caller-fault body
+        (cenegetfx-with-run-getfx #/fn
+        #/cenegetfx-done #/-eval-in-env caller-fault body
           (table-shadow param (just arg) env))))
   ])
 
@@ -894,12 +910,12 @@
       (expect this (cexpr-let bindings body)
         (error "Expected this to be a cexpr-let")
       #/-eval-in-env fault body
-      #/list-foldl env
-        (list-map bindings #/dissectfn (list var val)
-          (list var #/-eval-in-env fault val env))
-      #/fn env binding
-        (dissect binding (list var val)
-        #/table-shadow var (just val) env)))
+        (list-foldl env
+          (list-map bindings #/dissectfn (list var val)
+            (list var #/-eval-in-env fault val env))
+        #/fn env binding
+          (dissect binding (list var val)
+          #/table-shadow var (just val) env))))
   ])
 
 (struct-easy (cexpr-located location-definition-name body)
@@ -950,7 +966,7 @@
   (-> (cenegetfx/c extfx?) sink-extfx?)
   (sink-extfx cenegetfx-go))
 
-(define/contract (sink-extfx-run-getfx effects then)
+(define/contract (sink-extfx-run-sink-getfx effects then)
   (-> sink-getfx? (-> any/c sink-extfx?) sink-extfx?)
   (sink-extfx
     (cenegetfx-bind (cenegetfx-run-sink-getfx effects)
@@ -1265,6 +1281,10 @@
     fault
     (sink-string message)))
 
+(define/contract (sink-getfx-cene-err fault message)
+  (-> sink-fault? immutable-string? sink-getfx?)
+  (sink-getfx-run-cenegetfx #/cenegetfx-cene-err fault message))
+
 (define/contract (sink-extfx-cene-err fault message)
   (-> sink-fault? immutable-string? sink-extfx?)
   (sink-extfx-run-cenegetfx (cenegetfx-cene-err fault message)
@@ -1277,17 +1297,15 @@
     (cenegetfx-cene-err fault message)))
 
 (define/contract
-  (getfx-sink-call-fault-binary caller-fault explicit-fault func arg)
-  (-> sink-fault? sink-fault? sink? sink? #/getfx/c sink?)
-  (begin (assert-can-get-cene-definitions!)
-  #/mat func (sink-opaque-fn racket-func)
-    (getfx-ambient-run-cenegetfx #/racket-func arg)
+  (cenegetfx-sink-call-fault-binary
+    caller-fault explicit-fault func arg)
+  (-> sink-fault? sink-fault? sink? sink? #/cenegetfx/c sink?)
+  (mat func (sink-opaque-fn racket-func)
+    (racket-func arg)
   #/mat func (sink-opaque-fn-fault racket-func)
-    (getfx-ambient-run-cenegetfx
-      (racket-func #/list explicit-fault arg))
+    (racket-func #/list explicit-fault arg)
   #/mat func (sink-opaque-fn-fusable racket-func)
-    (getfx-ambient-run-cenegetfx
-    #/cenegetfx-bind (cenegetfx-read-root-info) #/fn rinfo
+    (cenegetfx-bind (cenegetfx-read-root-info) #/fn rinfo
     #/cenegetfx-run-getfx
       (racket-func #/list explicit-fault rinfo arg))
   #/mat func (sink-struct tags projs)
@@ -1296,8 +1314,8 @@
     
     ; TODO: This lookup might be expensive. See if we should memoize
     ; it.
-    #/getfx-bind-restoring
-      (getfx-run-sink-getfx #/sink-getfx-get
+    #/cenegetfx-bind
+      (cenegetfx-run-sink-getfx #/sink-getfx-get
       #/sink-name-for-function-implementation-value
         main-tag
         (list-foldr proj-tags (sink-table #/table-empty)
@@ -1309,51 +1327,48 @@
           #/just #/make-sink-struct (s-trivial) #/list)))
     #/fn impl
     
-    #/getfx-bind-restoring
-      (getfx-sink-call-fault-binary
+    #/cenegetfx-bind
+      (cenegetfx-sink-call-fault-binary
         caller-fault caller-fault impl func)
     #/fn func
-    #/getfx-sink-call-fault-binary
+    #/cenegetfx-sink-call-fault-binary
       caller-fault explicit-fault func arg)
-  #/cene-err caller-fault "Tried to call a value that wasn't an opaque function or a struct"))
+  #/cenegetfx-cene-err caller-fault "Tried to call a value that wasn't an opaque function or a struct"))
 
-(define/contract (getfx-sink-call-binary caller-fault func arg)
-  (-> sink-fault? sink? sink? #/getfx/c sink?)
-  (begin (assert-can-get-cene-definitions!)
-  #/getfx-sink-call-fault-binary caller-fault caller-fault func arg))
+(define/contract (cenegetfx-sink-call-binary caller-fault func arg)
+  (-> sink-fault? sink? sink? #/cenegetfx/c sink?)
+  (cenegetfx-sink-call-fault-binary
+    caller-fault caller-fault func arg))
 
 (define/contract
-  (getfx-sink-call-fault-list
+  (cenegetfx-sink-call-fault-list
     caller-fault explicit-fault func first-arg args)
   (-> sink-fault? sink-fault? sink? sink? (listof sink?)
-    (getfx/c sink?))
-  (begin (assert-can-get-cene-definitions!)
-  #/dissect (reverse #/cons first-arg args) (cons last-arg rev-args)
-  #/w- func
-    (list-foldl func (reverse rev-args) #/fn func arg
-      (cene-run-getfx #/getfx-sink-call-binary caller-fault func arg))
-  #/getfx-sink-call-fault-binary
+    (cenegetfx/c sink?))
+  (dissect (reverse #/cons first-arg args) (cons last-arg rev-args)
+  #/cenegetfx-bind
+    (cenegetfx-list-foldl func (reverse rev-args) #/fn func arg
+      (cenegetfx-sink-call-binary caller-fault func arg))
+  #/fn func
+  #/cenegetfx-sink-call-fault-binary
     caller-fault explicit-fault func last-arg))
 
-(define/contract (sink-call-list caller-fault func args)
-  (-> sink-fault? sink? (listof sink?) sink?)
-  (begin (assert-can-get-cene-definitions!)
-  #/list-foldl func args #/fn func arg
-    (cene-run-getfx #/getfx-sink-call-binary caller-fault func arg)))
+(define/contract (cenegetfx-sink-call-list caller-fault func args)
+  (-> sink-fault? sink? (listof sink?) #/cenegetfx/c sink?)
+  (cenegetfx-list-foldl func args #/fn func arg
+    (cenegetfx-sink-call-binary caller-fault func arg)))
 
 (define/contract
-  (getfx-sink-call-fault
+  (cenegetfx-sink-call-fault
     caller-fault explicit-fault func first-arg . args)
   (->* (sink-fault? sink-fault? sink? sink?) #:rest (listof sink?)
-    (getfx/c sink?))
-  (begin (assert-can-get-cene-definitions!)
-  #/getfx-sink-call-fault-list
+    (cenegetfx/c sink?))
+  (cenegetfx-sink-call-fault-list
     caller-fault explicit-fault func first-arg args))
 
-(define/contract (sink-call caller-fault func . args)
-  (->* (sink-fault? sink?) #:rest (listof sink?) sink?)
-  (begin (assert-can-get-cene-definitions!)
-  #/sink-call-list caller-fault func args))
+(define/contract (cenegetfx-sink-call caller-fault func . args)
+  (->* (sink-fault? sink?) #:rest (listof sink?) #/cenegetfx/c sink?)
+  (cenegetfx-sink-call-list caller-fault func args))
 
 ; NOTE: We only use this from places where we're allowed to perform
 ; perffx (such as places where we're allowed to perform extfx).
@@ -1612,14 +1627,17 @@
 
 ; TODO: In each case where it's actually possible for this error to
 ; appear, use a more specific error message.
-(define/contract (sink-call-qualify fault qualify pre-qualified-name)
-  (-> sink-fault? sink? sink-name? sink-authorized-name?)
-  (begin (assert-can-get-cene-definitions!)
-  #/w- qualified-name (sink-call fault qualify pre-qualified-name)
+(define/contract
+  (cenegetfx-sink-call-qualify fault qualify pre-qualified-name)
+  (-> sink-fault? sink? sink-name?
+    (cenegetfx/c sink-authorized-name?))
+  (cenegetfx-bind
+    (cenegetfx-sink-call fault qualify pre-qualified-name)
+  #/fn qualified-name
   #/expect (sink-authorized-name? qualified-name) #t
-    (cene-err fault
+    (cenegetfx-cene-err fault
       "Expected the result of a qualify function to be an authorized name")
-    qualified-name))
+  #/cenegetfx-done qualified-name))
 
 (define/contract
   (sink-extfx-read-maybe-identifier
@@ -1640,11 +1658,13 @@
   #/expect maybe-located-string (just located-string)
     (then text-input-stream #/nothing)
   #/sink-extfx-with-run-getfx #/fn
+  #/sink-extfx-run-cenegetfx
+    (cenegetfx-sink-call-qualify fault qualify
+      (pre-qualify #/sink-name-for-string
+        (sink-string-from-located-string located-string)))
+  #/fn qualified-sink-authorized-name
   #/then text-input-stream
-    (just #/list located-string
-      (sink-call-qualify fault qualify
-        (pre-qualify #/sink-name-for-string
-          (sink-string-from-located-string located-string))))))
+    (just #/list located-string qualified-sink-authorized-name)))
 
 (define sink-extfx-read-maybe-op-character-pat
   ; TODO: Support a more Unicode-aware notion here, maybe the
@@ -1718,10 +1738,12 @@
   #/fn text-input-stream maybe-identifier
   #/sink-extfx-with-run-getfx #/fn
   #/mat maybe-identifier (just identifier)
-    (then text-input-stream
-      (sink-call-qualify fault qualify
+    (sink-extfx-run-cenegetfx
+      (cenegetfx-sink-call-qualify fault qualify
         (pre-qualify #/sink-name-for-string
-          (sink-string-from-located-string identifier))))
+          (sink-string-from-located-string identifier)))
+    #/fn qualified-sink-authorized-name
+    #/then text-input-stream qualified-sink-authorized-name)
   
   #/w- then
     (fn text-input-stream op-name
@@ -1767,8 +1789,8 @@
       sink-extfx?)
     sink-extfx?)
   (sink-extfx-claim-freshen unique-name #/fn unique-name
-  #/w- result
-    (sink-call fault op-impl
+  #/sink-extfx-run-cenegetfx
+    (cenegetfx-sink-call fault op-impl
       unique-name qualify text-input-stream output-stream
     #/sink-fn-curried-fault 4
     #/fn fault unique-name qualify text-input-stream output-stream
@@ -1781,6 +1803,7 @@
       (sink-extfx-cene-err fault "Expected the expression sequence output stream of a macro's callback results to be an expression sequence output stream")
     #/sink-extfx-claim-freshen unique-name #/fn unique-name
     #/then unique-name qualify text-input-stream output-stream)
+  #/fn result
   #/expect (sink-extfx? result) #t
     (cene-err fault "Expected the return value of a macro to be an effectful computation")
     result))
@@ -1804,7 +1827,7 @@
   (sink-extfx-claim-freshen unique-name #/fn unique-name
   #/sink-extfx-read-op fault text-input-stream qualify pre-qualify
   #/fn text-input-stream op-name
-  #/sink-extfx-run-getfx
+  #/sink-extfx-run-sink-getfx
     (sink-getfx-get #/sink-authorized-name-get-name op-name)
   #/fn op-impl
   #/sink-extfx-run-op
@@ -1855,10 +1878,13 @@
       sink-extfx?)
     sink-extfx?)
   (sink-extfx-claim-freshen unique-name #/fn unique-name
-  #/sink-extfx-run-getfx
-    (sink-getfx-get #/sink-authorized-name-get-name
-      (sink-call-qualify fault qualify
-        (sink-name-for-nameless-bounded-cexpr-op)))
+  #/sink-extfx-run-sink-getfx
+    (sink-getfx-bind
+      (sink-getfx-run-cenegetfx
+        (cenegetfx-sink-call-qualify fault qualify
+          (sink-name-for-nameless-bounded-cexpr-op)))
+    #/fn qualified
+    #/sink-getfx-get #/sink-authorized-name-get-name qualified)
   #/fn op-impl
   #/sink-extfx-run-op
     fault op-impl unique-name qualify text-input-stream output-stream
@@ -2247,8 +2273,10 @@
       #/expect (cexpr-eval fault cexpr) (sink-directive directive)
         ; TODO FAULT: Make this `fault` more specific.
         (sink-extfx-cene-err fault "Expected every top-level expression to evaluate to a directive")
-      #/w- effects
-        (sink-call fault directive unique-name-first qualify)
+      #/sink-extfx-run-cenegetfx
+        (cenegetfx-sink-call
+          fault directive unique-name-first qualify)
+      #/fn effects
       #/expect (sink-extfx? effects) #t
         ; TODO FAULT: Make this `fault` more specific.
         (sink-extfx-cene-err fault "Expected every top-level expression to evaluate to a directive made from a callable value that takes two arguments and returns extfx side effects")
