@@ -1184,35 +1184,38 @@
     body))
 
 (define/contract
-  (sink-name-for-function-implementation
+  (cenegetfx-sink-name-for-function-implementation
     result-tag main-tag-name proj-tag-names)
-  (-> immutable-string? sink-name? sink-table? sink-name?)
-  (begin (assert-can-get-cene-definition-globals!)
-  #/dissect proj-tag-names (sink-table proj-tag-names)
-  #/sink-authorized-name-get-name
-  #/sink-authorized-name-subname
-    (sink-name-of-racket-string result-tag)
-  #/sink-authorized-name-subname
-    (sink-name #/just-value #/pure-run-getfx #/getfx-name-of
-      (dex-table #/dex-trivial)
-      proj-tag-names)
-  #/sink-authorized-name-subname main-tag-name
-  #/sink-authorized-name-subname
-    (sink-name-of-racket-string "function-implementation")
-    (cene-definition-lang-impl-qualify-root)))
+  (-> immutable-string? sink-name? sink-table?
+    (cenegetfx/c sink-name?))
+  (dissect proj-tag-names (sink-table proj-tag-names)
+  #/cenegetfx-bind (cenegetfx-read-lang-impl-qualify-root)
+  #/fn lang-impl-qualify-root
+  #/cenegetfx-done
+    (sink-authorized-name-get-name
+    #/sink-authorized-name-subname
+      (sink-name-of-racket-string result-tag)
+    #/sink-authorized-name-subname
+      (sink-name #/just-value #/pure-run-getfx #/getfx-name-of
+        (dex-table #/dex-trivial)
+        proj-tag-names)
+    #/sink-authorized-name-subname main-tag-name
+    #/sink-authorized-name-subname
+      (sink-name-of-racket-string "function-implementation")
+      lang-impl-qualify-root)))
 
 (define/contract
-  (sink-name-for-function-implementation-code
+  (cenegetfx-sink-name-for-function-implementation-code
     main-tag-name proj-tag-names)
-  (-> sink-name? sink-table? sink-name?)
-  (sink-name-for-function-implementation
+  (-> sink-name? sink-table? #/cenegetfx/c sink-name?)
+  (cenegetfx-sink-name-for-function-implementation
     "code" main-tag-name proj-tag-names))
 
 (define/contract
-  (sink-name-for-function-implementation-value
+  (cenegetfx-sink-name-for-function-implementation-value
     main-tag-name proj-tag-names)
-  (-> sink-name? sink-table? sink-name?)
-  (sink-name-for-function-implementation
+  (-> sink-name? sink-table? #/cenegetfx/c sink-name?)
+  (cenegetfx-sink-name-for-function-implementation
     "value" main-tag-name proj-tag-names))
 
 (define/contract
@@ -1349,8 +1352,8 @@
     ; it.
     #/cenegetfx-bind
       (cenegetfx-with-run-getfx #/fn
-      #/cenegetfx-run-sink-getfx
-        (sink-getfx-get #/sink-name-for-function-implementation-value
+      #/cenegetfx-bind
+        (cenegetfx-sink-name-for-function-implementation-value
           main-tag
           (list-foldr proj-tags (sink-table #/table-empty)
           #/fn proj-tag rest
@@ -1358,7 +1361,9 @@
             ; TODO: See if there's a way we can either stop depending
             ; on `s-trivial` here or move this code after the place
             ; where `s-trivial` is defined.
-            #/just #/make-sink-struct (s-trivial) #/list))))
+            #/just #/make-sink-struct (s-trivial) #/list)))
+      #/fn name-for-impl
+      #/cenegetfx-run-sink-getfx #/sink-getfx-get name-for-impl)
     #/fn impl
     
     #/cenegetfx-bind

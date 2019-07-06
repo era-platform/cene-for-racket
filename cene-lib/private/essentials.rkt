@@ -3755,7 +3755,7 @@
       (cenegetfx-cene-err fault "Expected proj-tag-names to be a table of trivial values")
     #/dissect proj-tag-names (sink-table proj-tag-names)
     #/w- proj-tag-names (table-v-map proj-tag-names #/fn v #/trivial)
-    #/cenegetfx-done #/sink-name-for-function-implementation-code
+    #/cenegetfx-sink-name-for-function-implementation-code
       main-tag-name proj-tag-names))
   
   (def-func-fault! "name-for-function-implementation-value"
@@ -3771,7 +3771,7 @@
       (cenegetfx-cene-err fault "Expected proj-tag-names to be a table of trivial values")
     #/dissect proj-tag-names (sink-table proj-tag-names)
     #/w- proj-tag-names (table-v-map proj-tag-names #/fn v #/trivial)
-    #/cenegetfx-done #/sink-name-for-function-implementation-value
+    #/cenegetfx-sink-name-for-function-implementation-value
       main-tag-name proj-tag-names))
   
   (define (verify-proj-tag-authorized-names! fault proj-tag-names)
