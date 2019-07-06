@@ -21,14 +21,17 @@
 
 (require cene/private)
 (require #/only-in cene/private/essentials
-  sink-extfx-init-essentials sink-extfx-init-package)
+  minimal-and-essential-tags sink-extfx-init-essentials
+  sink-extfx-init-package)
 
 
 ; TODO: Document these exports.
-(provide cene-root-info)
+(provide cenegetfx-done)
 (provide extfx-run-sink-extfx)
+(provide make-cene-root-info)
 (provide make-fault-internal)
 (provide make-sink-extfx)
+(provide minimal-and-essential-tags)
 (provide sink-authorized-name)
 (provide sink-authorized-name-subname)
 (provide sink-extfx-claim-and-split)
@@ -37,4 +40,3 @@
 (provide sink-extfx-init-package)
 (provide sink-extfx-run-string)
 (provide sink-name-of-racket-string)
-(provide with-gets-from)

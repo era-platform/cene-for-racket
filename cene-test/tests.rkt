@@ -53,8 +53,9 @@
         (sink-authorized-name-subname
           (sink-name-of-racket-string "other-unique-name")
           unique-name)
-      #/with-gets-from (cene-root-info ds lang-impl-qualify-root) #/fn
       #/extfx-run-sink-extfx
+        (make-cene-root-info
+          ds lang-impl-qualify-root minimal-and-essential-tags)
       #/sink-extfx-claim-and-split unique-name 4
       #/dissectfn
         (list
@@ -66,10 +67,11 @@
         (fn name #/sink-authorized-name-subname name unique-name-root)
       #/sink-extfx-fuse
         (sink-extfx-init-essentials fault unique-name-essentials)
-        (sink-extfx-init-package fault unique-name-package qualify)
+        (sink-extfx-init-package fault unique-name-package #/fn name
+          (cenegetfx-done #/qualify name))
         (sink-extfx-run-string
           fault unique-name-sample qualify code-string)
-      #/make-sink-extfx #/fn
+      #/make-sink-extfx #/cenegetfx-done
         (extfx-ct-continue then
           (error-definer-from-message
             "Internal error: Expected the cene-run-string-sample continuation ticket to be written to only once")

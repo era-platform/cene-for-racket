@@ -134,7 +134,7 @@
     #/fn text-input-stream is-eof
     #/if is-eof
       ; TODO FAULT: Make this `fault` more specific.
-      (cene-err fault "Encountered end of file while expecting any number of identifiers and expressions preceding a closing bracket")
+      (sink-extfx-cene-err fault "Encountered end of file while expecting any number of identifiers and expressions preceding a closing bracket")
     #/sink-extfx-peek-whether-closing-bracket fault text-input-stream
     #/fn text-input-stream is-closing-bracket
     #/if is-closing-bracket
@@ -194,10 +194,10 @@
   #/w- actual-n (length cexprs)
   #/if (< n actual-n)
     ; TODO FAULT: Make this `fault` more specific.
-    (cene-err fault "Encountered too many expressions")
+    (sink-extfx-cene-err fault "Encountered too many expressions")
   #/if (< actual-n n)
     ; TODO FAULT: Make this `fault` more specific.
-    (cene-err fault "Expected another expression")
+    (sink-extfx-cene-err fault "Expected another expression")
   #/then unique-name qualify text-input-stream cexprs))
 
 ; This reads precisely `n` identifiers and cexprs, and it causes an
@@ -236,19 +236,19 @@
         (reverse rev-results))
     #/if (< n #/length rev-results)
       ; TODO FAULT: Make this `fault` more specific.
-      (cene-err fault "Encountered a single operation that expanded to too many expressions while expecting a specific number of identifiers and expressions")
+      (sink-extfx-cene-err fault "Encountered a single operation that expanded to too many expressions while expecting a specific number of identifiers and expressions")
     #/sink-extfx-read-whitespace fault text-input-stream
     #/fn text-input-stream whitespace
     #/sink-extfx-peek-whether-eof fault text-input-stream
     #/fn text-input-stream is-eof
     #/if is-eof
       ; TODO FAULT: Make this `fault` more specific.
-      (cene-err fault "Encountered end of file while expecting an identifier or an expression")
+      (sink-extfx-cene-err fault "Encountered end of file while expecting an identifier or an expression")
     #/sink-extfx-peek-whether-closing-bracket fault text-input-stream
     #/fn text-input-stream is-closing-bracket
     #/if is-closing-bracket
       ; TODO FAULT: Make this `fault` more specific.
-      (cene-err fault "Encountered a closing bracket while expecting an identifier or an expression")
+      (sink-extfx-cene-err fault "Encountered a closing bracket while expecting an identifier or an expression")
     #/sink-extfx-read-ids-and-exprs-onto
       fault unique-name qualify text-input-stream rev-results
       pre-qualify
@@ -334,7 +334,7 @@
       (trivial)
       (fn state cexpr then
         (dissect state (trivial)
-        #/cene-err fault "Expected an identifier but found an expression"))
+        #/sink-extfx-cene-err fault "Expected an identifier but found an expression"))
     #/fn output-stream unwrap
     #/sink-extfx-read-cexprs
       fault unique-name qualify text-input-stream output-stream

@@ -23,9 +23,16 @@
 (require #/for-syntax racket/base)
 (require #/for-syntax #/only-in syntax/parse expr)
 
+; NOTE: The Racket documentation says `get/build-late-neg-projection`
+; is in `racket/contract/combinator`, but it isn't. It's in
+; `racket/contract/base`. Since it's also in `racket/contract` and the
+; documentation correctly says it is, we require it from there.
+(require #/only-in racket/contract get/build-late-neg-projection)
 (require #/only-in racket/contract/base
-  -> ->* and/c any any/c contract? list/c listof none/c or/c
-  parameter/c struct/c)
+  -> ->* and/c any any/c contract? contract-name list/c listof none/c
+  or/c rename-contract struct/c)
+(require #/only-in racket/contract/combinator
+  blame-add-context coerce-contract make-contract raise-blame-error)
 (require #/only-in racket/contract/region define/contract)
 (require #/only-in racket/control reset-at shift-at)
 (require #/only-in racket/generic define/generic define-generics)
@@ -33,11 +40,12 @@
 (require #/only-in syntax/parse/define define-simple-macro)
 
 (require #/only-in lathe-comforts
-  dissect dissectfn expect fn mat w- w-loop)
+  dissect dissectfn expect expectfn fn mat w- w-loop)
 (require #/only-in lathe-comforts/list
   list-any list-foldl list-foldr list-map list-zip-map nat->maybe)
 (require #/only-in lathe-comforts/maybe
-  just just-value maybe-bind maybe/c maybe-map nothing nothing?)
+  just just-value maybe? maybe-bind maybe/c maybe-map nothing
+  nothing?)
 (require #/only-in lathe-comforts/string immutable-string?)
 (require #/only-in lathe-comforts/struct struct-easy)
 (require #/only-in lathe-comforts/trivial trivial)
@@ -49,18 +57,19 @@
   error-definer-uninformative extfx? extfx-claim-unique
   extfx-ct-continue extfx-noop extfx-pub-write extfx-run-getfx
   extfx-put extfx-split-list extfx-sub-write fuse-extfx getfx?
-  getfx-bind getfx-done getfx-err getfx-get make-pub make-sub
+  getfx-bind getfx/c getfx-done getfx-err getfx-get make-pub make-sub
   optionally-dexed-dexed optionally-dexed-once pure-run-getfx
   success-or-error-definer)
 (require #/only-in effection/order
   assocs->table-if-mutually-unique dex-immutable-string dex-trivial
-  getfx-is-eq-by-dex)
+  getfx-is-eq-by-dex ordering-eq)
 (require #/only-in effection/order/base
   dex? dexed-first-order/c dex-give-up dex-dex dex-name dex-struct
   dex-table fuse-by-merge getfx-call-fuse getfx-dexed-of getfx-name-of
   getfx-table-map-fuse merge-by-dex merge-table name? ordering-eq?
   table? table-empty? table-empty table-get table-shadow)
-(require #/prefix-in unsafe: #/only-in effection/order/unsafe name)
+(require #/prefix-in unsafe: #/only-in effection/order/unsafe
+  dex dexed gen:dex-internals name)
 
 (require #/only-in cene/private/textpat
   textpat? textpat-from-string textpat-lookahead
@@ -73,6 +82,22 @@
 (provide #/all-defined-out)
 
 
+
+; TODO: We used this in `effection/order/base`, and we're using it
+; again here. See if it should be an export of Effection.
+(define/contract (getmaybefx-bind effects then)
+  (-> (getfx/c maybe?) (-> any/c #/getfx/c maybe?) #/getfx/c maybe?)
+  (getfx-bind effects #/fn maybe-intermediate
+  #/expect maybe-intermediate (just intermediate)
+    (getfx-done #/nothing)
+  #/then intermediate))
+
+; TODO: We used this in `effection/order/base`, and we're using it
+; again here. See if it should be an export of Effection.
+(define/contract (getmaybefx-map effects func)
+  (-> (getfx/c maybe?) (-> any/c any/c) #/getfx/c maybe?)
+  (getmaybefx-bind effects #/fn intermediate
+  #/getfx-done #/just #/func intermediate))
 
 ; TODO: Put this into the `effection/order` module or something (maybe
 ; even `effection/order/base`).
@@ -100,6 +125,22 @@
   (-> error-definer? extfx?)
   (extfx-run-getfx (getfx-err on-execute) #/fn impossible-result
     (error "Internal error: Did not expect `getfx-err` to complete with a result value")))
+
+; TODO: See if we should export this from somewhere.
+(define/contract (monad-maybe-map fx-done fx-bind maybe-of-fx)
+  (-> (-> any/c any/c) (-> any/c (-> any/c any/c) any/c) maybe? any/c)
+  (expect maybe-of-fx (just fx-val) (fx-done #/nothing)
+  #/fx-bind fx-val #/fn val
+  #/fx-done #/just val))
+
+; TODO: See if we should export this from somewhere.
+(define/contract (monad-list-map fx-done fx-bind list-of-fx)
+  (-> (-> any/c any/c) (-> any/c (-> any/c any/c) any/c) list? any/c)
+  (w-loop next rest list-of-fx rev-result (list)
+    (expect rest (cons fx-first rest)
+      (fx-done #/reverse rev-result)
+    #/fx-bind fx-first #/fn first
+    #/next rest (cons first rev-result))))
 
 
 (define-generics sink)
@@ -187,9 +228,9 @@
   #:other #:methods gen:sink [])
 (struct-easy (sink-authorized-name authorized-name)
   #:other #:methods gen:sink [])
-(struct-easy (sink-getfx go)
+(struct-easy (sink-getfx cenegetfx-go)
   #:other #:methods gen:sink [])
-(struct-easy (sink-extfx go!)
+(struct-easy (sink-extfx cenegetfx-go)
   #:other #:methods gen:sink [])
 (struct-easy (sink-pub pub)
   #:other #:methods gen:sink [])
@@ -227,9 +268,8 @@
     (unless (immutable-string? racket-string)
       (error "Expected racket-string to be an immutable string")))
   #:other #:methods gen:sink [])
-; NOTE: Some `sink-opaque-fn-fault` and `sink-opaque-fn` satisfy
-; Cene's `is-fusable-fn` predicate, and some do not, so they're not
-; entirely opaque.
+(struct-easy (sink-opaque-fn-fusable racket-fn)
+  #:other #:methods gen:sink [])
 (struct-easy (sink-opaque-fn-fault racket-fn)
   #:other #:methods gen:sink [])
 (struct-easy (sink-opaque-fn racket-fn)
@@ -256,20 +296,6 @@
     (dex-immutable-string)
     string))
 
-; TODO: Once we have the ability to import names, we should make sure
-; this produces an authorized name whose name is importable from a
-; UUID-identified import. Modules identified by UUID can only be
-; implemented by the language implementation. And since that's the
-; case, there should be no way for Cene code to obtain these
-; authorized names; just the unauthorized equivalents.
-;
-(define/contract (sink-name-qualify-for-lang-impl unqualified-name)
-  (-> sink-name? sink-authorized-name?)
-  (sink-authorized-name-subname unqualified-name
-  #/sink-authorized-name-subname
-    (sink-name-of-racket-string "qualify")
-    (cene-definition-lang-impl-qualify-root)))
-
 (define/contract (sink-table-get-maybe table name)
   (-> sink-table? sink-name? #/maybe/c sink?)
   (dissect table (sink-table table)
@@ -282,210 +308,264 @@
   #/dissect name (sink-name name)
   #/sink-table #/table-shadow name maybe-value table))
 
-(struct-easy #/cene-root-info dspace lang-impl-qualify-root)
 
-(define/contract cene-definition-get-param
-  (parameter/c
-    (maybe/c
-      (list/c
-        (struct/c cene-root-info dspace? sink-authorized-name?)
-        (maybe/c #/-> getfx? any/c))))
-  (make-parameter #/nothing))
+; NOTE: We treat every two tag caches as `ordering-eq`. Cene
+; programmers don't directly manipulate these values, and they're
+; derived from the other fields of the `cene-root-info` that carries
+; them, so we simply treat them as `ordering-eq` withouot bothering to
+; compare them. We do this by defining a `dex-non-cene-value` dex to
+; use for the appropriate field of `(dex-struct cene-root-info ...)`.
 
-(define/contract (assert-can-get-cene-definition-globals!)
+(struct-easy (dex-internals-non-cene-value)
+  
+  #:other
+  
+  #:methods unsafe:gen:dex-internals
+  [
+    
+    (define (dex-internals-tag this)
+      'tag:dex-non-cene-value)
+    
+    (define (dex-internals-autoname this)
+      'tag:dex-non-cene-value)
+    
+    (define (dex-internals-autodex this other)
+      (just #/ordering-eq))
+    
+    (define (getfx-dex-internals-is-in this x)
+      (getfx-done #t))
+    
+    (define (getfx-dex-internals-name-of this x)
+      (getfx-done #/just #/unsafe:name #/list 'name:non-cene-value))
+    
+    (define (getfx-dex-internals-dexed-of this x)
+      (w- this (unsafe:dex this)
+      #/getmaybefx-map (getfx-name-of this x) #/fn name
+        (unsafe:dexed this name x)))
+    
+    (define (getfx-dex-internals-compare this a b)
+      (getfx-done #/just #/ordering-eq))
+  ])
+
+(define/contract (dex-non-cene-value)
+  (-> dex?)
+  (unsafe:dex #/dex-internals-non-cene-value))
+
+
+(struct-easy (cene-root-info dspace lang-impl-qualify-root tag-cache))
+
+(define/contract (cene-root-info/c)
+  (-> contract?)
+  (rename-contract
+    (struct/c cene-root-info dspace? sink-authorized-name? any/c)
+    '(cene-root-info/c)))
+
+(define/contract (dex-cene-root-info)
+  (-> dex?)
+  (dex-struct cene-root-info
+    (dex-dspace)
+    (dex-struct sink-authorized-name #/dex-authorized-name)
+    (dex-non-cene-value)))
+
+(struct-easy (cenegetfx getfx-run))
+
+(define/contract (cenegetfx-run-getfx getfx)
+  (-> getfx? cenegetfx?)
+  (cenegetfx #/fn rinfo getfx))
+
+(define/contract (getfx-run-cenegetfx rinfo effects)
+  (-> (cene-root-info/c) cenegetfx? getfx?)
+  (dissect effects (cenegetfx effects)
+  #/effects rinfo))
+
+(define/contract (cenegetfx-done result)
+  (-> any/c cenegetfx?)
+  (cenegetfx-run-getfx #/getfx-done result))
+
+(define/contract (cenegetfx-bind effects then)
+  (-> cenegetfx? (-> any/c cenegetfx?) cenegetfx?)
+  (cenegetfx #/fn rinfo
+    (getfx-bind (getfx-run-cenegetfx rinfo effects) #/fn intermediate
+    #/getfx-run-cenegetfx rinfo #/then intermediate)))
+
+(define/contract (cenegetfx-map effects func)
+  (-> cenegetfx? (-> any/c any/c) cenegetfx?)
+  (cenegetfx-bind effects #/fn intermediate
+  #/cenegetfx-done #/func intermediate))
+
+(define (cenegetfx/c result/c)
+  (w- result/c (coerce-contract 'cenegetfx/c result/c)
+  #/make-contract
+    
+    #:name `(cenegetfx/c ,(contract-name result/c))
+    
+    #:first-order (fn v #/cenegetfx? v)
+    
+    #:late-neg-projection
+    (fn blame
+      (w- result/c-late-neg-projection
+        ( (get/build-late-neg-projection result/c)
+          (blame-add-context blame "the anticipated value of"))
+      #/fn v missing-party
+        (expect (cenegetfx? v) #t
+          (raise-blame-error blame #:missing-party missing-party v
+            '(expected: "a cenegetfx effectful computation" given: "~e")
+            v)
+        #/cenegetfx-map v #/fn result
+          (result/c-late-neg-projection result missing-party))))))
+
+(define/contract (cenegetfx-later then)
+  (-> (-> cenegetfx?) cenegetfx?)
+  (cenegetfx-bind (cenegetfx-done #/trivial) #/dissectfn (trivial)
+  #/then))
+
+(define/contract (cenegetfx-join cenegetfx-cenegetfx)
+  (-> (cenegetfx/c cenegetfx?) cenegetfx?)
+  (cenegetfx-bind cenegetfx-cenegetfx #/fn effects effects))
+
+(define/contract (cenegetfx-maybe-map maybe-of-cenegetfx)
+  (-> (maybe/c cenegetfx?) #/cenegetfx/c maybe?)
+  (monad-maybe-map
+    (fn result #/cenegetfx-done result)
+    (fn effects then #/cenegetfx-bind effects then)
+    maybe-of-cenegetfx))
+
+(define/contract (cenegetfx-list-map list-of-cenegetfx)
+  (-> (listof cenegetfx?) #/cenegetfx/c list?)
+  (monad-list-map
+    (fn result #/cenegetfx-done result)
+    (fn effects then #/cenegetfx-bind effects then)
+    list-of-cenegetfx))
+
+(define/contract (cenegetfx-list-foldl state elems on-elem)
+  (-> any/c list? (-> any/c any/c cenegetfx?) cenegetfx?)
+  (w-loop next state state elems elems
+    (expect elems (cons elem elems)
+      (cenegetfx-done state)
+    #/cenegetfx-bind (on-elem state elem) #/fn state
+    #/next state elems)))
+
+(define/contract (cenegetfx-read-root-info)
+  (-> #/cenegetfx/c #/cene-root-info/c)
+  (cenegetfx #/fn rinfo #/getfx-done rinfo))
+
+(define/contract (cenegetfx-read-dexed-root-info)
+  (-> #/cenegetfx/c #/dexed-first-order/c #/cene-root-info/c)
+  (cenegetfx #/fn rinfo
+    (getfx-done #/just-value #/pure-run-getfx #/getfx-dexed-of
+      (dex-cene-root-info)
+      rinfo)))
+
+(define/contract (cenegetfx-read-definition-space)
+  (-> #/cenegetfx/c dspace?)
+  (cenegetfx-bind (cenegetfx-read-root-info)
+  #/dissectfn (cene-root-info ds lang-impl-qualify-root tag-cache)
+  #/cenegetfx-done ds))
+
+(define/contract (cenegetfx-read-lang-impl-qualify-root)
+  (-> #/cenegetfx/c sink-authorized-name?)
+  (cenegetfx-bind (cenegetfx-read-root-info)
+  #/dissectfn (cene-root-info ds lang-impl-qualify-root tag-cache)
+  #/cenegetfx-done lang-impl-qualify-root))
+
+
+; TODO: For now, this always succeeds. See what this should do in the
+; long run.
+(define/contract (assert-can-mutate!)
   (-> void?)
-  (expect (cene-definition-get-param)
-    (just #/list rinfo maybe-run-getfx)
-    (error "Expected implementations of `cene-definition-dspace` and `cene-definition-lang-impl-qualify-root` to be available in the dynamic scope")
-  #/void))
-
-(define/contract (assert-cannot-get-cene-definition-globals!)
-  (-> void?)
-  (mat (cene-definition-get-param) (just #/list rinfo maybe-run-getfx)
-    ; TODO: Make this error message more visually distinct from the
-    ; `assert-can-get-cene-definition-globals!` error message.
-    (error "Expected no implementations of `cene-definition-dspace` and `cene-definition-lang-impl-qualify-root` to be available in the dynamic scope")
-  #/void))
-
-(define/contract (assert-can-get-cene-definitions!)
-  (-> void?)
-  (expect (cene-definition-get-param)
-    (just #/list rinfo #/just run-getfx)
-    (error "Expected an implementation of `cene-definition-get` to be available in the dynamic scope")
-  #/void))
-
-(define/contract (assert-cannot-get-cene-definitions!)
-  (-> void?)
-  (mat (cene-definition-get-param)
-    (just #/list rinfo #/just run-getfx)
-    ; TODO: Make this error message more visually distinct from the
-    ; `assert-can-get-cene-definitions!` error message.
-    (error "Expected no implementation of `cene-definition-get` to be available in the dynamic scope")
-  #/void))
-
-(define/contract (cene-definition-dexed-root-info)
-  (->
-    (dexed-first-order/c
-      (struct/c cene-root-info dspace? sink-authorized-name?)))
-  (expect (cene-definition-get-param)
-    (just #/list rinfo maybe-run-getfx)
-    (error "Expected every call to `cene-definition-dexed-root-info` to occur with an implementation in the dynamic scope")
-  #/just-value #/pure-run-getfx #/getfx-dexed-of
-    (dex-struct cene-root-info
-      (dex-dspace)
-      (dex-struct sink-authorized-name #/dex-authorized-name))
-    rinfo))
-
-(define/contract (cene-definition-dspace)
-  (-> dspace?)
-  (expect (cene-definition-get-param)
-    (just #/list
-      (cene-root-info ds lang-impl-qualify-root)
-      maybe-run-getfx)
-    (error "Expected every call to `cene-definition-dspace` to occur with an implementation in the dynamic scope")
-    ds))
-
-(define/contract (cene-definition-lang-impl-qualify-root)
-  (-> sink-authorized-name?)
-  (expect (cene-definition-get-param)
-    (just #/list
-      (cene-root-info ds lang-impl-qualify-root)
-      maybe-run-getfx)
-    (error "Expected every call to `cene-definition-lang-impl-qualify-root` to occur with an implementation in the dynamic scope")
-    lang-impl-qualify-root))
-
-(define/contract (getfx-err-from-clamor clamor)
-  (-> sink? getfx?)
-  (dissect
-    (expect (unmake-sink-struct-maybe (s-clamor-err) clamor)
-      (just #/list (sink-fault maybe-marks) (sink-string message))
-      (list (nothing) (format "~s" clamor))
-      (list maybe-marks message))
-    (list maybe-marks message)
-  #/w- marks
-    (mat maybe-marks (just marks) marks
-    #/current-continuation-marks)
-  #/getfx-err #/error-definer-from-exn #/exn:fail message marks))
+  (void))
 
 (define/contract (sink-getfx-get name)
   (-> sink-name? sink-getfx?)
   (dissect name (sink-name name)
-  #/sink-getfx #/fn
-    (getfx-get (cene-definition-dspace) name
+  #/sink-getfx
+    (cenegetfx-bind (cenegetfx-read-definition-space) #/fn ds
+    #/cenegetfx-run-getfx #/getfx-get ds name
       #;on-stall (error-definer-uninformative)
       )))
 
-(define/contract (cene-run-getfx effects)
-  (-> getfx? sink?)
-  (expect (cene-definition-get-param)
-    (just #/list rinfo #/just run-getfx)
-    (error "Expected every call to `cene-run-getfx` to occur with an implementation in the dynamic scope")
-  #/run-getfx effects))
+(define/contract (cenegetfx-make-sink-pub pubsub-name)
+  (-> sink-authorized-name? #/cenegetfx/c sink-pub?)
+  (dissect pubsub-name (sink-authorized-name pubsub-name)
+  #/cenegetfx-bind (cenegetfx-read-definition-space) #/fn ds
+  #/cenegetfx-done #/sink-pub #/make-pub ds pubsub-name))
 
-(define/contract (make-sink-pub pubsub-name)
-  (-> sink-authorized-name? sink-pub?)
-  (begin (assert-can-get-cene-definition-globals!)
-  #/dissect pubsub-name (sink-authorized-name pubsub-name)
-  #/sink-pub #/make-pub (cene-definition-dspace) pubsub-name))
+(define/contract (cenegetfx-make-sink-sub pubsub-name)
+  (-> sink-authorized-name? #/cenegetfx/c sink-sub?)
+  (dissect pubsub-name (sink-authorized-name pubsub-name)
+  #/cenegetfx-bind (cenegetfx-read-definition-space) #/fn ds
+  #/cenegetfx-done #/sink-sub #/make-sub ds pubsub-name))
 
-(define/contract (make-sink-sub pubsub-name)
-  (-> sink-authorized-name? sink-sub?)
-  (begin (assert-can-get-cene-definition-globals!)
-  #/dissect pubsub-name (sink-authorized-name pubsub-name)
-  #/sink-sub #/make-sub (cene-definition-dspace) pubsub-name))
+(define/contract
+  (cenegetfx-sink-authorized-name-for-init-package-pubsub)
+  (-> #/cenegetfx/c sink-authorized-name?)
+  (cenegetfx-bind (cenegetfx-read-lang-impl-qualify-root)
+  #/fn lang-impl-qualify-root
+  #/cenegetfx-done
+    (sink-authorized-name-subname
+      (sink-name-of-racket-string "init-package-pubsub")
+      lang-impl-qualify-root)))
 
-(define/contract (sink-authorized-name-for-init-package-pubsub)
-  (-> sink-authorized-name?)
-  (sink-authorized-name-subname
-    (sink-name-of-racket-string "init-package-pubsub")
-    (cene-definition-lang-impl-qualify-root)))
+; TODO: Once we have the ability to import names, we should make sure
+; this produces an authorized name whose name is importable from a
+; UUID-identified import. Modules identified by UUID can only be
+; implemented by the language implementation. And since that's the
+; case, there should be no way for Cene code to obtain these
+; authorized names; just the unauthorized equivalents.
+;
+(define/contract
+  (cenegetfx-sink-name-qualify-for-lang-impl unqualified-name)
+  (-> sink-name? #/cenegetfx/c sink-authorized-name?)
+  (cenegetfx-bind (cenegetfx-read-lang-impl-qualify-root)
+  #/fn lang-impl-qualify-root
+  #/cenegetfx-done
+    (sink-authorized-name-subname unqualified-name
+    #/sink-authorized-name-subname
+      (sink-name-of-racket-string "qualify")
+      lang-impl-qualify-root)))
 
-(define cene-definition-get-prompt-tag (make-continuation-prompt-tag))
+(define/contract (sink-getfx-run-cenegetfx effects)
+  (-> cenegetfx? sink-getfx?)
+  (sink-getfx effects))
 
-(define/contract (getfx-with-cene-definition-restorer body)
-  (-> (-> (-> (-> getfx?) getfx?) getfx?) getfx?)
-  (begin (assert-can-get-cene-definitions!)
-  #/w- val (cene-definition-get-param)
-  #/body #/fn body
-    (parameterize ([cene-definition-get-param val])
-    #/with-getfx-run-getfx #/fn
-    #/reset-at cene-definition-get-prompt-tag
-      (body))))
+(define/contract (cenegetfx-run-sink-getfx effects)
+  (-> sink-getfx? cenegetfx?)
+  (dissect effects (sink-getfx cenegetfx-go)
+    cenegetfx-go))
 
-(define/contract (extfx-with-cene-definition-restorer body)
-  (-> (-> (-> (-> extfx?) extfx?) extfx?) extfx?)
-  (begin (assert-can-get-cene-definitions!)
-  #/w- val (cene-definition-get-param)
-  #/body #/fn body
-    (parameterize ([cene-definition-get-param val])
-    #/with-extfx-run-getfx #/fn
-    #/reset-at cene-definition-get-prompt-tag
-      (body))))
+(define/contract (ceneextfx-run-sink-extfx effects)
+  (-> sink-extfx? #/cenegetfx/c extfx?)
+  (dissect effects (sink-extfx cenegetfx-go)
+    cenegetfx-go))
 
-(define/contract (with-getfx-run-getfx body)
-  (-> (-> any/c) any/c)
-  (expect (cene-definition-get-param)
-    (just #/list rinfo maybe-run-getfx)
-    (error "Expected every call to `with-getfx-run-getfx` to occur with an implementation in the dynamic scope")
-  #/parameterize
-    (
-      [
-        cene-definition-get-param
-        (just #/list rinfo #/just #/fn effects
-          (shift-at cene-definition-get-prompt-tag k
-          #/getfx-with-cene-definition-restorer #/fn restore
-          #/getfx-bind effects #/fn value
-          #/restore #/fn
-          #/k value))])
-    (body)))
+(define/contract (sink-extfx-run-cenegetfx effects then)
+  (-> cenegetfx? (-> any/c sink-extfx?) sink-extfx?)
+  (make-sink-extfx
+    (cenegetfx-bind effects #/fn intermediate
+    #/ceneextfx-run-sink-extfx #/then intermediate)))
 
-(define/contract (with-extfx-run-getfx body)
-  (-> (-> any/c) any/c)
-  (expect (cene-definition-get-param)
-    (just #/list rinfo maybe-run-getfx)
-    (error "Expected every call to `with-extfx-run-getfx` to occur with an implementation in the dynamic scope")
-  #/parameterize
-    (
-      [
-        cene-definition-get-param
-        (just #/list rinfo #/just #/fn effects
-          (shift-at cene-definition-get-prompt-tag k
-          #/extfx-with-cene-definition-restorer #/fn restore
-          #/extfx-run-getfx effects #/fn value
-          #/restore #/fn
-          #/k value))])
-    (body)))
+(define/contract (extfx-run-sink-extfx rinfo effects)
+  (-> (cene-root-info/c) sink-extfx? extfx?)
+  (extfx-run-getfx
+    (getfx-run-cenegetfx rinfo #/ceneextfx-run-sink-extfx effects)
+  #/fn extfx
+    extfx))
 
-(define/contract (with-gets-from rinfo body)
-  (-> (struct/c cene-root-info dspace? sink-authorized-name?) (-> any)
-    any)
-  (begin (assert-cannot-get-cene-definition-globals!)
-  #/parameterize
-    ([cene-definition-get-param (just #/list rinfo #/nothing)])
-    (body)))
+(define/contract (sink-getfx-done result)
+  (-> sink? sink-getfx?)
+  (sink-getfx-run-cenegetfx #/cenegetfx-done result))
 
-(define/contract (getfx-run-sink-getfx effects)
-  (-> sink-getfx? getfx?)
-  (begin (assert-can-get-cene-definition-globals!)
-  #/dissect effects (sink-getfx go)
-  #/with-getfx-run-getfx #/fn
-  #/go))
+(define/contract (sink-getfx-bind effects then)
+  (-> sink-getfx? (-> any/c sink-getfx?) sink-getfx?)
+  (sink-getfx-run-cenegetfx
+    (cenegetfx-bind (cenegetfx-run-sink-getfx effects)
+    #/fn intermediate
+    #/cenegetfx-run-sink-getfx #/then intermediate)))
 
-(define/contract (extfx-run-sink-extfx effects)
-  (-> sink-extfx? extfx?)
-  (begin (assert-can-get-cene-definition-globals!)
-  #/dissect effects (sink-extfx go)
-  #/with-extfx-run-getfx #/fn
-  #/go))
-
-(define/contract (cene-run-sink-getfx effects)
-  (-> sink-getfx? sink?)
-  (begin (assert-can-get-cene-definitions!)
-  #/cene-run-getfx #/getfx-run-sink-getfx effects))
 
 (define-generics cexpr
   (cexpr-has-free-vars? cexpr env)
-  (cexpr-eval-in-env fault cexpr env))
+  (cenegetfx-cexpr-eval-in-env fault cexpr env))
 
 (struct-easy (cexpr-var name)
   
@@ -500,12 +580,12 @@
         #t
         #f))
     
-    (define (cexpr-eval-in-env fault this env)
+    (define (cenegetfx-cexpr-eval-in-env fault this env)
       (expect this (cexpr-var name)
         (error "Expected this to be a cexpr-var")
       #/expect (table-get name env) (just value)
         (error "Tried to eval a cexpr that had a free variable")
-        value))
+      #/cenegetfx-done value))
   ])
 
 (struct-easy (cexpr-reified result)
@@ -519,10 +599,10 @@
         (error "Expected this to be a cexpr-reified")
         #f))
     
-    (define (cexpr-eval-in-env fault this env)
+    (define (cenegetfx-cexpr-eval-in-env fault this env)
       (expect this (cexpr-reified result)
         (error "Expected this to be a cexpr-reified")
-        result))
+      #/cenegetfx-done result))
   ])
 
 (struct-easy (cexpr-construct main-tag-name projs)
@@ -532,7 +612,7 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval-in-env cexpr-eval-in-env)
+    (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-construct main-tag-name projs)
@@ -540,15 +620,19 @@
       #/list-any projs #/dissectfn (list proj-name proj-cexpr)
         (-has-free-vars? proj-cexpr env)))
     
-    (define (cexpr-eval-in-env fault this env)
+    (define (cenegetfx-cexpr-eval-in-env fault this env)
       (expect this (cexpr-construct main-tag-name projs)
         (error "Expected this to be a cexpr-construct")
-      #/make-sink-struct
+      #/cenegetfx-bind
+        (cenegetfx-list-map #/list-map projs
+        #/dissectfn (list proj-name proj-cexpr)
+          (-eval-in-env fault proj-cexpr env))
+      #/fn vals
+      #/cenegetfx-done #/make-sink-struct
         (cons main-tag-name
         #/list-map projs #/dissectfn (list proj-name proj-cexpr)
           proj-name)
-      #/list-map projs #/dissectfn (list proj-name proj-cexpr)
-        (-eval-in-env fault proj-cexpr env)))
+        vals))
   ])
 
 (struct-easy (cexpr-call-fault fault-arg func arg)
@@ -558,7 +642,7 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval-in-env cexpr-eval-in-env)
+    (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-call-fault fault-arg func arg)
@@ -568,15 +652,16 @@
         (-has-free-vars? func env)
         (-has-free-vars? arg env)))
     
-    (define (cexpr-eval-in-env fault this env)
+    (define (cenegetfx-cexpr-eval-in-env fault this env)
       (expect this (cexpr-call-fault fault-arg func arg)
         (error "Expected this to be a cexpr-call-fault")
-      #/w- fault-arg (-eval-in-env fault fault-arg env)
-      #/w- func (-eval-in-env fault func env)
-      #/w- arg (-eval-in-env fault arg env)
+      #/cenegetfx-bind (-eval-in-env fault fault-arg env)
+      #/fn fault-arg
+      #/cenegetfx-bind (-eval-in-env fault func env) #/fn func
+      #/cenegetfx-bind (-eval-in-env fault arg env) #/fn arg
       #/expect (sink-fault? fault-arg) #t
-        (cene-err fault "Expected the blame argument to be a blame value")
-      #/sink-call-fault fault fault-arg func arg))
+        (cenegetfx-cene-err fault "Expected the blame argument to be a blame value")
+      #/cenegetfx-sink-call-fault fault fault-arg func arg))
   ])
 
 (struct-easy (cexpr-call func arg)
@@ -586,19 +671,19 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval-in-env cexpr-eval-in-env)
+    (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-call func arg)
         (error "Expected this to be a cexpr-call")
       #/or (-has-free-vars? func env) (-has-free-vars? arg env)))
     
-    (define (cexpr-eval-in-env fault this env)
+    (define (cenegetfx-cexpr-eval-in-env fault this env)
       (expect this (cexpr-call func arg)
         (error "Expected this to be a cexpr-call")
-      #/sink-call fault
-        (-eval-in-env fault func env)
-        (-eval-in-env fault arg env)))
+      #/cenegetfx-bind (-eval-in-env fault func env) #/fn func
+      #/cenegetfx-bind (-eval-in-env fault arg env) #/fn arg
+      #/cenegetfx-sink-call fault func arg))
   ])
 
 (struct-easy (cexpr-opaque-fn-fault fault-param param body)
@@ -611,7 +696,7 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval-in-env cexpr-eval-in-env)
+    (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-opaque-fn-fault fault-param param body)
@@ -621,14 +706,15 @@
       #/table-shadow param (just #/trivial)
         env))
     
-    (define (cexpr-eval-in-env caller-fault this env)
+    (define (cenegetfx-cexpr-eval-in-env caller-fault this env)
       (expect this (cexpr-opaque-fn-fault fault-param param body)
         (error "Expected this to be a cexpr-opaque-fn")
-      #/sink-opaque-fn-fault #/dissectfn (list explicit-fault arg)
-        (-eval-in-env caller-fault body
-          (table-shadow fault-param (just explicit-fault)
-          #/table-shadow param (just arg)
-            env))))
+      #/cenegetfx-done
+        (sink-opaque-fn-fault #/dissectfn (list explicit-fault arg)
+          (-eval-in-env caller-fault body
+            (table-shadow fault-param (just explicit-fault)
+            #/table-shadow param (just arg)
+              env)))))
   ])
 
 (struct-easy (cexpr-opaque-fn param body)
@@ -638,7 +724,7 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval-in-env cexpr-eval-in-env)
+    (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-opaque-fn param body)
@@ -646,10 +732,10 @@
       #/-has-free-vars? body
       #/table-shadow param (just #/trivial) env))
     
-    (define (cexpr-eval-in-env caller-fault this env)
+    (define (cenegetfx-cexpr-eval-in-env caller-fault this env)
       (expect this (cexpr-opaque-fn param body)
         (error "Expected this to be a cexpr-opaque-fn")
-      #/sink-opaque-fn #/fn arg
+      #/cenegetfx-done #/sink-opaque-fn #/fn arg
         (-eval-in-env caller-fault body
           (table-shadow param (just arg) env))))
   ])
@@ -661,7 +747,7 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval-in-env cexpr-eval-in-env)
+    (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-let bindings body)
@@ -674,16 +760,19 @@
         (dissect binding (list var val)
         #/table-shadow var (just #/trivial) env)))
     
-    (define (cexpr-eval-in-env fault this env)
+    (define (cenegetfx-cexpr-eval-in-env fault this env)
       (expect this (cexpr-let bindings body)
         (error "Expected this to be a cexpr-let")
+      #/cenegetfx-bind
+        (cenegetfx-list-map #/list-map bindings
+        #/dissectfn (list var val)
+          (cenegetfx-bind (-eval-in-env fault val env) #/fn val
+          #/cenegetfx-done #/list var val))
+      #/fn bindings
       #/-eval-in-env fault body
-      #/list-foldl env
-        (list-map bindings #/dissectfn (list var val)
-          (list var #/-eval-in-env fault val env))
-      #/fn env binding
-        (dissect binding (list var val)
-        #/table-shadow var (just val) env)))
+        (list-foldl env bindings #/fn env binding
+          (dissect binding (list var val)
+          #/table-shadow var (just val) env))))
   ])
 
 (struct-easy (cexpr-located location-definition-name body)
@@ -693,14 +782,14 @@
   #:methods gen:cexpr
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
-    (define/generic -eval-in-env cexpr-eval-in-env)
+    (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-located location-definition-name body)
         (error "Expected this to be a cexpr-located")
       #/-has-free-vars? body))
     
-    (define (cexpr-eval-in-env fault this env)
+    (define (cenegetfx-cexpr-eval-in-env fault this env)
       (expect this (cexpr-located location-definition-name body)
         (error "Expected this to be a cexpr-located")
       ; TODO CEXPR-LOCATED / TODO FAULT: Replace `fault` here with
@@ -728,42 +817,29 @@
   (extfx-fuse-list lst))
 
 ; NOTE: The only purpose of this is to help track down a common kind
-; of error where the result of `go!` is mistakenly a `sink-extfx?`
-; instead of an `extfx?`.
-(define/contract (make-sink-extfx go!)
-  (-> (-> extfx?) sink-extfx?)
-  (sink-extfx go!))
+; of error where the result of `cenegetfx-go` is mistakenly a
+; `sink-extfx?` instead of an `extfx?`.
+(define/contract (make-sink-extfx cenegetfx-go)
+  (-> (cenegetfx/c extfx?) sink-extfx?)
+  (sink-extfx cenegetfx-go))
 
-(define/contract (sink-extfx-run-getfx effects then)
+(define/contract (sink-extfx-run-sink-getfx effects then)
   (-> sink-getfx? (-> any/c sink-extfx?) sink-extfx?)
-  (dissect effects (sink-getfx go)
-  #/sink-extfx #/fn
-    (extfx-with-cene-definition-restorer #/fn restore
-    #/extfx-run-getfx (go) #/fn intermediate
-    #/restore #/fn
-    #/extfx-run-sink-extfx #/then intermediate)))
+  (sink-extfx
+    (cenegetfx-bind (cenegetfx-run-sink-getfx effects)
+    #/fn intermediate
+    #/ceneextfx-run-sink-extfx #/then intermediate)))
 
 (define/contract (sink-extfx-put name dex value)
   (-> sink-authorized-name? sink-dex? sink? sink-extfx?)
   (dissect name (sink-authorized-name name)
   #/dissect dex (sink-dex dex)
-  #/make-sink-extfx #/fn
-    (extfx-put (cene-definition-dspace) name
+  #/make-sink-extfx
+    (cenegetfx-bind (cenegetfx-read-definition-space) #/fn ds
+    #/cenegetfx-done #/extfx-put ds name
       (error-definer-from-message
         "Internal error: Expected the sink-extfx-put continuation ticket to be written to")
       (fn then
-        
-        ; NOTE: There is no dex that should rely on
-        ; `cene-definition-get-param`, since even the dex combinators
-        ; in Effection do nothing to help us restore that parameter as
-        ; they go along. Instead of relying on
-        ; `cene-definition-get-param`, dexes like `sink-dex-list`
-        ; store the values of `cene-definition-get-param` when they're
-        ; constructed and then restore them again using their own
-        ; `with-gets-from` call. Because of that, it's fine for us to
-        ; call `getfx-dexed-of` here in an
-        ; `assert-cannot-get-cene-definition-globals!` zone.
-        ;
         (extfx-run-getfx (getfx-dexed-of dex value) #/fn maybe-dexed
         #/extfx-ct-continue then
           (error-definer-from-message
@@ -779,12 +855,14 @@
 
 (define/contract (sink-extfx-noop)
   (-> sink-extfx?)
-  (make-sink-extfx #/fn #/extfx-noop))
+  (make-sink-extfx #/cenegetfx-done #/extfx-noop))
 
 (define/contract (sink-extfx-fuse-binary a b)
   (-> sink-extfx? sink-extfx? sink-extfx?)
-  (make-sink-extfx #/fn
-    (extfx-fuse (extfx-run-sink-extfx a) (extfx-run-sink-extfx b))))
+  (make-sink-extfx
+    (cenegetfx-bind (ceneextfx-run-sink-extfx a) #/fn a-go
+    #/cenegetfx-bind (ceneextfx-run-sink-extfx b) #/fn b-go
+    #/cenegetfx-done #/extfx-fuse a-go b-go)))
 
 (define/contract (sink-extfx-fuse-list effects)
   (-> (listof sink-extfx?) sink-extfx?)
@@ -800,14 +878,16 @@
 ; pure.
 (define/contract (sink-extfx-later then)
   (-> (-> sink-extfx?) sink-extfx?)
-  (make-sink-extfx #/fn #/extfx-run-sink-extfx #/then))
+  (make-sink-extfx
+    (cenegetfx-later #/fn #/ceneextfx-run-sink-extfx #/then)))
 
 (define/contract (sink-extfx-pub-write p unique-name arg)
   (-> sink-pub? sink-authorized-name? sink? sink-extfx?)
   (dissect p (sink-pub p)
   #/dissect unique-name (sink-authorized-name unique-name)
-  #/make-sink-extfx #/fn
-    (extfx-pub-write (cene-definition-dspace) p unique-name
+  #/make-sink-extfx
+    (cenegetfx-bind (cenegetfx-read-definition-space) #/fn ds
+    #/cenegetfx-done #/extfx-pub-write ds p unique-name
       #;on-conflict
       (success-or-error-definer
         (error-definer-uninformative)
@@ -819,16 +899,17 @@
     sink-extfx?)
   (dissect s (sink-sub s)
   #/dissect unique-name (sink-authorized-name unique-name)
-  #/make-sink-extfx #/fn
-    (extfx-with-cene-definition-restorer #/fn restore
-    #/extfx-sub-write (cene-definition-dspace) s unique-name
-      #;on-conflict
-      (success-or-error-definer
-        (error-definer-uninformative)
-        (extfx-noop))
-      (fn arg
-        (restore #/fn
-        #/extfx-run-sink-extfx #/func arg)))))
+  #/make-sink-extfx
+    (cenegetfx-bind (cenegetfx-read-root-info) #/fn rinfo
+    #/cenegetfx-bind (cenegetfx-read-definition-space) #/fn ds
+    #/cenegetfx-run-getfx #/getfx-done
+      (extfx-sub-write ds s unique-name
+        #;on-conflict
+        (success-or-error-definer
+          (error-definer-uninformative)
+          (extfx-noop))
+        (fn arg
+          (extfx-run-sink-extfx rinfo #/func arg))))))
 
 (define/contract (sink-cexpr-var name)
   (-> sink-name? sink-cexpr?)
@@ -914,34 +995,38 @@
     body))
 
 (define/contract
-  (sink-name-for-function-implementation
+  (cenegetfx-sink-name-for-function-implementation
     result-tag main-tag-name proj-tag-names)
-  (-> immutable-string? sink-name? sink-table? sink-name?)
+  (-> immutable-string? sink-name? sink-table?
+    (cenegetfx/c sink-name?))
   (dissect proj-tag-names (sink-table proj-tag-names)
-  #/sink-authorized-name-get-name
-  #/sink-authorized-name-subname
-    (sink-name-of-racket-string result-tag)
-  #/sink-authorized-name-subname
-    (sink-name #/just-value #/pure-run-getfx #/getfx-name-of
-      (dex-table #/dex-trivial)
-      proj-tag-names)
-  #/sink-authorized-name-subname main-tag-name
-  #/sink-authorized-name-subname
-    (sink-name-of-racket-string "function-implementation")
-    (cene-definition-lang-impl-qualify-root)))
+  #/cenegetfx-bind (cenegetfx-read-lang-impl-qualify-root)
+  #/fn lang-impl-qualify-root
+  #/cenegetfx-done
+    (sink-authorized-name-get-name
+    #/sink-authorized-name-subname
+      (sink-name-of-racket-string result-tag)
+    #/sink-authorized-name-subname
+      (sink-name #/just-value #/pure-run-getfx #/getfx-name-of
+        (dex-table #/dex-trivial)
+        proj-tag-names)
+    #/sink-authorized-name-subname main-tag-name
+    #/sink-authorized-name-subname
+      (sink-name-of-racket-string "function-implementation")
+      lang-impl-qualify-root)))
 
 (define/contract
-  (sink-name-for-function-implementation-code
+  (cenegetfx-sink-name-for-function-implementation-code
     main-tag-name proj-tag-names)
-  (-> sink-name? sink-table? sink-name?)
-  (sink-name-for-function-implementation
+  (-> sink-name? sink-table? #/cenegetfx/c sink-name?)
+  (cenegetfx-sink-name-for-function-implementation
     "code" main-tag-name proj-tag-names))
 
 (define/contract
-  (sink-name-for-function-implementation-value
+  (cenegetfx-sink-name-for-function-implementation-value
     main-tag-name proj-tag-names)
-  (-> sink-name? sink-table? sink-name?)
-  (sink-name-for-function-implementation
+  (-> sink-name? sink-table? #/cenegetfx/c sink-name?)
+  (cenegetfx-sink-name-for-function-implementation
     "value" main-tag-name proj-tag-names))
 
 (define/contract
@@ -960,37 +1045,41 @@
     #/trivial)))
 
 (define/contract
-  (sink-authorized-name-for-function-implementation
+  (cenegetfx-sink-authorized-name-for-function-implementation
     result-tag main-tag-name proj-tag-names)
   (-> immutable-string? sink-authorized-name? sink-table?
-    sink-authorized-name?)
-  (dissect
-    (sink-proj-tag-authorized-names->trivial proj-tag-names)
+    (cenegetfx/c sink-authorized-name?))
+  (dissect (sink-proj-tag-authorized-names->trivial proj-tag-names)
     (sink-table proj-tag-names)
-  #/sink-authorized-name-subname
-    (sink-name-of-racket-string result-tag)
-  #/sink-authorized-name-subname
-    (sink-name #/just-value #/pure-run-getfx #/getfx-name-of
-      (dex-table #/dex-trivial)
-      proj-tag-names)
-  #/sink-authorized-name-subname
-    (sink-authorized-name-get-name main-tag-name)
-  #/sink-authorized-name-subname
-    (sink-name-of-racket-string "function-implementation")
-    (cene-definition-lang-impl-qualify-root)))
+  #/cenegetfx-bind (cenegetfx-read-lang-impl-qualify-root)
+  #/fn lang-impl-qualify-root
+  #/cenegetfx-done
+    (sink-authorized-name-subname
+      (sink-name-of-racket-string result-tag)
+    #/sink-authorized-name-subname
+      (sink-name #/just-value #/pure-run-getfx #/getfx-name-of
+        (dex-table #/dex-trivial)
+        proj-tag-names)
+    #/sink-authorized-name-subname
+      (sink-authorized-name-get-name main-tag-name)
+    #/sink-authorized-name-subname
+      (sink-name-of-racket-string "function-implementation")
+      lang-impl-qualify-root)))
 
 (define/contract
-  (sink-authorized-name-for-function-implementation-code
+  (cenegetfx-sink-authorized-name-for-function-implementation-code
     main-tag-name proj-tag-names)
-  (-> sink-authorized-name? sink-table? sink-authorized-name?)
-  (sink-authorized-name-for-function-implementation
+  (-> sink-authorized-name? sink-table?
+    (cenegetfx/c sink-authorized-name?))
+  (cenegetfx-sink-authorized-name-for-function-implementation
     "code" main-tag-name proj-tag-names))
 
 (define/contract
-  (sink-authorized-name-for-function-implementation-value
+  (cenegetfx-sink-authorized-name-for-function-implementation-value
     main-tag-name proj-tag-names)
-  (-> sink-authorized-name? sink-table? sink-authorized-name?)
-  (sink-authorized-name-for-function-implementation
+  (-> sink-authorized-name? sink-table?
+    (cenegetfx/c sink-authorized-name?))
+  (cenegetfx-sink-authorized-name-for-function-implementation
     "value" main-tag-name proj-tag-names))
 
 (define/contract (sink-fn-curried-fault n-args racket-func)
@@ -1001,7 +1090,7 @@
       (sink-opaque-fn-fault #/dissectfn (list fault arg)
         (apply racket-func fault #/reverse #/cons arg rev-args))
     #/sink-opaque-fn #/fn arg
-      (next n-args-after-next #/cons arg rev-args))))
+      (cenegetfx-done #/next n-args-after-next #/cons arg rev-args))))
 
 (define/contract (sink-fn-curried n-args racket-func)
   (-> exact-positive-integer? procedure? sink-opaque-fn?)
@@ -1011,7 +1100,7 @@
       (sink-opaque-fn #/fn arg
         (apply racket-func #/reverse #/cons arg rev-args))
     #/sink-opaque-fn #/fn arg
-      (next n-args-after-next #/cons arg rev-args))))
+      (cenegetfx-done #/next n-args-after-next #/cons arg rev-args))))
 
 ; TODO: See if we have to use this as often as we do. Maybe some of
 ; those places should be abstracted over a fault value instead.
@@ -1019,84 +1108,118 @@
   (-> sink-fault?)
   (sink-fault #/just #/current-continuation-marks))
 
-(define/contract (getfx-err-clamor fault message)
-  (-> sink-fault? immutable-string? getfx?)
-  (getfx-err-from-clamor #/make-sink-struct (s-clamor-err) #/list
-    fault
-    (sink-string message)))
+(define/contract (cenegetfx-err-from-clamor clamor)
+  (-> sink? cenegetfx?)
+  (cenegetfx-tag cssm-clamor-err #/fn csst-clamor-err
+  #/dissect
+    (expect (unmake-sink-struct-maybe csst-clamor-err clamor)
+      (just #/list (sink-fault maybe-marks) (sink-string message))
+      (list (nothing) (format "~s" clamor))
+      (list maybe-marks message))
+    (list maybe-marks message)
+  #/w- marks
+    (mat maybe-marks (just marks) marks
+    #/current-continuation-marks)
+  #/cenegetfx-run-getfx
+    (getfx-err #/error-definer-from-exn #/exn:fail message marks)))
 
-(define-simple-macro (cene-err fault:expr message:string)
+(define/contract (cenegetfx-cene-err fault message)
+  (-> sink-fault? immutable-string? #/cenegetfx/c none/c)
   ; TODO: See if there's a way we can either stop depending on
-  ; `s-clamor-err` here or move this code after the place where
-  ; `s-clamor-err` is defined.
-  (begin (assert-can-get-cene-definitions!)
-  #/cene-run-getfx #/getfx-err-clamor fault message))
+  ; `cssm-clamor-err` here or move this code after the place where
+  ; `cssm-clamor-err` is defined.
+  (cenegetfx-tag cssm-clamor-err #/fn csst-clamor-err
+  #/cenegetfx-err-from-clamor
+    (make-sink-struct csst-clamor-err #/list
+      fault
+      (sink-string message))))
+
+(define/contract (sink-getfx-cene-err fault message)
+  (-> sink-fault? immutable-string? sink-getfx?)
+  (sink-getfx-run-cenegetfx #/cenegetfx-cene-err fault message))
+
+(define/contract (sink-extfx-cene-err fault message)
+  (-> sink-fault? immutable-string? sink-extfx?)
+  (sink-extfx-run-cenegetfx (cenegetfx-cene-err fault message)
+  #/fn result
+    (error "Internal error: Expected no return value from cenegetfx-cene-err")))
 
 (define/contract
-  (sink-call-fault-binary caller-fault explicit-fault func arg)
-  (-> sink-fault? sink-fault? sink? sink? sink?)
-  (begin (assert-can-get-cene-definitions!)
-  #/mat func (sink-opaque-fn racket-func)
+  (cenegetfx-sink-call-fault-binary
+    caller-fault explicit-fault func arg)
+  (-> sink-fault? sink-fault? sink? sink? #/cenegetfx/c sink?)
+  (mat func (sink-opaque-fn racket-func)
     (racket-func arg)
   #/mat func (sink-opaque-fn-fault racket-func)
     (racket-func #/list explicit-fault arg)
+  #/mat func (sink-opaque-fn-fusable racket-func)
+    (cenegetfx-bind (cenegetfx-read-root-info) #/fn rinfo
+    #/cenegetfx-run-getfx
+      (racket-func #/list explicit-fault rinfo arg))
   #/mat func (sink-struct tags projs)
     (dissect (list-map tags #/fn tag #/sink-name tag)
       (cons main-tag proj-tags)
     
     ; TODO: This lookup might be expensive. See if we should memoize
     ; it.
-    #/w- impl
-      (cene-run-sink-getfx #/sink-getfx-get
-      #/sink-name-for-function-implementation-value
-        main-tag
-        (list-foldr proj-tags (sink-table #/table-empty)
-        #/fn proj-tag rest
-          (sink-table-put-maybe rest proj-tag
-          ; TODO: See if there's a way we can either stop depending on
-          ; `s-trivial` here or move this code after the place where
-          ; `s-trivial` is defined.
-          #/just #/make-sink-struct (s-trivial) #/list)))
+    #/cenegetfx-bind
+      (cenegetfx-bind
+        ; TODO: See if there's a way we can either stop depending on
+        ; `cssm-trivial` here or move this code after the place where
+        ; `cssm-trivial` is defined.
+        (cenegetfx-tag cssm-trivial #/fn csst-trivial
+        #/cenegetfx-sink-name-for-function-implementation-value
+          main-tag
+          (list-foldr proj-tags (sink-table #/table-empty)
+          #/fn proj-tag rest
+            (sink-table-put-maybe rest proj-tag
+            #/just #/make-sink-struct csst-trivial #/list)))
+      #/fn name-for-impl
+      #/cenegetfx-run-sink-getfx #/sink-getfx-get name-for-impl)
+    #/fn impl
     
-    #/sink-call-fault-binary caller-fault explicit-fault
-      (sink-call-fault-binary caller-fault caller-fault impl func)
-      arg)
-  #/cene-err caller-fault "Tried to call a value that wasn't an opaque function or a struct"))
+    #/cenegetfx-bind
+      (cenegetfx-sink-call-fault-binary
+        caller-fault caller-fault impl func)
+    #/fn func
+    #/cenegetfx-sink-call-fault-binary
+      caller-fault explicit-fault func arg)
+  #/cenegetfx-cene-err caller-fault "Tried to call a value that wasn't an opaque function or a struct"))
 
-(define/contract (sink-call-binary caller-fault func arg)
-  (-> sink-fault? sink? sink? sink?)
-  (begin (assert-can-get-cene-definitions!)
-  #/sink-call-fault-binary caller-fault caller-fault func arg))
+(define/contract (cenegetfx-sink-call-binary caller-fault func arg)
+  (-> sink-fault? sink? sink? #/cenegetfx/c sink?)
+  (cenegetfx-sink-call-fault-binary
+    caller-fault caller-fault func arg))
 
 (define/contract
-  (sink-call-fault-list
+  (cenegetfx-sink-call-fault-list
     caller-fault explicit-fault func first-arg args)
-  (-> sink-fault? sink-fault? sink? sink? (listof sink?) sink?)
-  (begin (assert-can-get-cene-definitions!)
-  #/dissect (reverse #/cons first-arg args) (cons last-arg rev-args)
-  #/w- func
-    (list-foldl func (reverse rev-args) #/fn func arg
-      (sink-call-binary caller-fault func arg))
-  #/sink-call-fault-binary caller-fault explicit-fault func last-arg))
+  (-> sink-fault? sink-fault? sink? sink? (listof sink?)
+    (cenegetfx/c sink?))
+  (dissect (reverse #/cons first-arg args) (cons last-arg rev-args)
+  #/cenegetfx-bind
+    (cenegetfx-list-foldl func (reverse rev-args) #/fn func arg
+      (cenegetfx-sink-call-binary caller-fault func arg))
+  #/fn func
+  #/cenegetfx-sink-call-fault-binary
+    caller-fault explicit-fault func last-arg))
 
-(define/contract (sink-call-list caller-fault func args)
-  (-> sink-fault? sink? (listof sink?) sink?)
-  (begin (assert-can-get-cene-definitions!)
-  #/list-foldl func args #/fn func arg
-    (sink-call-binary caller-fault func arg)))
+(define/contract (cenegetfx-sink-call-list caller-fault func args)
+  (-> sink-fault? sink? (listof sink?) #/cenegetfx/c sink?)
+  (cenegetfx-list-foldl func args #/fn func arg
+    (cenegetfx-sink-call-binary caller-fault func arg)))
 
 (define/contract
-  (sink-call-fault caller-fault explicit-fault func first-arg . args)
+  (cenegetfx-sink-call-fault
+    caller-fault explicit-fault func first-arg . args)
   (->* (sink-fault? sink-fault? sink? sink?) #:rest (listof sink?)
-    sink?)
-  (begin (assert-can-get-cene-definitions!)
-  #/sink-call-fault-list
+    (cenegetfx/c sink?))
+  (cenegetfx-sink-call-fault-list
     caller-fault explicit-fault func first-arg args))
 
-(define/contract (sink-call caller-fault func . args)
-  (->* (sink-fault? sink?) #:rest (listof sink?) sink?)
-  (begin (assert-can-get-cene-definitions!)
-  #/sink-call-list caller-fault func args))
+(define/contract (cenegetfx-sink-call caller-fault func . args)
+  (->* (sink-fault? sink?) #:rest (listof sink?) #/cenegetfx/c sink?)
+  (cenegetfx-sink-call-list caller-fault func args))
 
 ; NOTE: We only use this from places where we're allowed to perform
 ; perffx (such as places where we're allowed to perform extfx).
@@ -1165,19 +1288,23 @@
     (list 'name:struct-proj qualified-main-tag-name n)))
 
 (define/contract
-  (sink-cexpr-sequence-output-stream-spend! fault stream)
+  (sink-extfx-sink-cexpr-sequence-output-stream-spend
+    fault stream then)
   (-> sink-fault? sink-cexpr-sequence-output-stream?
-    (list/c
-      any/c
-      (-> any/c sink-cexpr? (-> any/c sink-extfx?) sink-extfx?)))
-  (begin (assert-can-get-cene-definitions!)
-  #/dissect stream (sink-cexpr-sequence-output-stream id b)
+    (->
+      (list/c
+        any/c
+        (-> any/c sink-cexpr? (-> any/c sink-extfx?) sink-extfx?))
+      sink-extfx?)
+    sink-extfx?)
+  (dissect stream (sink-cexpr-sequence-output-stream id b)
+  #/sink-extfx-later #/fn
+  #/begin (assert-can-mutate!)
   ; TODO: See if this should be more thread-safe in some way.
   #/expect (unbox b) (just state-and-handler)
-    (cene-err fault "Tried to spend an expression output stream that was already spent")
-  #/begin
-    (set-box! b (nothing))
-    state-and-handler))
+    (sink-extfx-cene-err fault "Tried to spend an expression output stream that was already spent")
+  #/begin (set-box! b (nothing))
+  #/then state-and-handler))
 
 (define/contract
   (sink-extfx-make-cexpr-sequence-output-stream
@@ -1208,10 +1335,10 @@
         ; that, we're reporting this error message in such a way that
         ; it makes sense for Cene's
         ; `extfx-make-expr-sequence-output-stream` built-in.
-        (cene-err fault "Expected the expression sequence output stream given to an extfx-make-expr-sequence-output-stream unwrapper to be a descendant of the same one created by that call")
-      #/dissect
-        (sink-cexpr-sequence-output-stream-spend! fault output-stream)
-        (list state on-cexpr)
+        (sink-extfx-cene-err fault "Expected the expression sequence output stream given to an extfx-make-expr-sequence-output-stream unwrapper to be a descendant of the same one created by that call")
+      #/sink-extfx-sink-cexpr-sequence-output-stream-spend
+        fault output-stream
+      #/dissectfn (list state on-cexpr)
       #/then state))))
 
 (define/contract
@@ -1220,26 +1347,27 @@
     sink-fault? sink-cexpr-sequence-output-stream? sink-cexpr?
     (-> sink-cexpr-sequence-output-stream? sink-extfx?)
     sink-extfx?)
-  (sink-extfx-later #/fn
-  #/dissect output-stream (sink-cexpr-sequence-output-stream id _)
-  #/dissect
-    (sink-cexpr-sequence-output-stream-spend! fault output-stream)
-    (list state on-cexpr)
+  (dissect output-stream (sink-cexpr-sequence-output-stream id _)
+  #/sink-extfx-sink-cexpr-sequence-output-stream-spend
+    fault output-stream
+  #/dissectfn (list state on-cexpr)
   #/on-cexpr state cexpr #/fn state
   #/then #/sink-cexpr-sequence-output-stream id #/box #/just #/list
     state on-cexpr))
 
 (define/contract
-  (sink-text-input-stream-spend! fault text-input-stream)
-  (-> sink-fault? sink-text-input-stream? input-port?)
-  (begin (assert-can-get-cene-definitions!)
-  #/dissect text-input-stream (sink-text-input-stream b)
+  (sink-extfx-sink-text-input-stream-spend
+    fault text-input-stream then)
+  (-> sink-fault? sink-text-input-stream? (-> input-port? sink-extfx?)
+    sink-extfx?)
+  (dissect text-input-stream (sink-text-input-stream b)
+  #/sink-extfx-later #/fn
+  #/begin (assert-can-mutate!)
   ; TODO: See if this should be more thread-safe in some way.
   #/expect (unbox b) (just input-port)
-    (cene-err fault "Tried to spend a text input stream that was already spent")
-  #/begin
-    (set-box! b (nothing))
-    input-port))
+    (sink-extfx-cene-err fault "Tried to spend a text input stream that was already spent")
+  #/begin (set-box! b (nothing))
+  #/then input-port))
 
 (define/contract
   (sink-extfx-read-eof fault text-input-stream on-eof else)
@@ -1249,8 +1377,8 @@
     sink-extfx?
     (-> sink-text-input-stream? sink-extfx?)
     sink-extfx?)
-  (sink-extfx-later #/fn
-  #/w- in (sink-text-input-stream-spend! fault text-input-stream)
+  (sink-extfx-sink-text-input-stream-spend fault text-input-stream
+  #/fn in
   #/if (eof-object? #/peek-byte in)
     (begin (close-input-port in)
       on-eof)
@@ -1266,8 +1394,8 @@
     (-> sink-text-input-stream? (maybe/c sink-located-string?)
       sink-extfx?)
     sink-extfx?)
-  (sink-extfx-later #/fn
-  #/w- in (sink-text-input-stream-spend! fault text-input-stream)
+  (sink-extfx-sink-text-input-stream-spend fault text-input-stream
+  #/fn in
   #/let-values
     (
       [
@@ -1355,14 +1483,17 @@
 
 ; TODO: In each case where it's actually possible for this error to
 ; appear, use a more specific error message.
-(define/contract (sink-call-qualify fault qualify pre-qualified-name)
-  (-> sink-fault? sink? sink-name? sink-authorized-name?)
-  (begin (assert-can-get-cene-definitions!)
-  #/w- qualified-name (sink-call fault qualify pre-qualified-name)
+(define/contract
+  (cenegetfx-sink-call-qualify fault qualify pre-qualified-name)
+  (-> sink-fault? sink? sink-name?
+    (cenegetfx/c sink-authorized-name?))
+  (cenegetfx-bind
+    (cenegetfx-sink-call fault qualify pre-qualified-name)
+  #/fn qualified-name
   #/expect (sink-authorized-name? qualified-name) #t
-    (cene-err fault
+    (cenegetfx-cene-err fault
       "Expected the result of a qualify function to be an authorized name")
-    qualified-name))
+  #/cenegetfx-done qualified-name))
 
 (define/contract
   (sink-extfx-read-maybe-identifier
@@ -1382,11 +1513,13 @@
   #/fn text-input-stream maybe-located-string
   #/expect maybe-located-string (just located-string)
     (then text-input-stream #/nothing)
+  #/sink-extfx-run-cenegetfx
+    (cenegetfx-sink-call-qualify fault qualify
+      (pre-qualify #/sink-name-for-string
+        (sink-string-from-located-string located-string)))
+  #/fn qualified-sink-authorized-name
   #/then text-input-stream
-    (just #/list located-string
-      (sink-call-qualify fault qualify
-        (pre-qualify #/sink-name-for-string
-          (sink-string-from-located-string located-string))))))
+    (just #/list located-string qualified-sink-authorized-name)))
 
 (define sink-extfx-read-maybe-op-character-pat
   ; TODO: Support a more Unicode-aware notion here, maybe the
@@ -1459,10 +1592,12 @@
   (sink-extfx-read-maybe-op-character fault text-input-stream
   #/fn text-input-stream maybe-identifier
   #/mat maybe-identifier (just identifier)
-    (then text-input-stream
-      (sink-call-qualify fault qualify
+    (sink-extfx-run-cenegetfx
+      (cenegetfx-sink-call-qualify fault qualify
         (pre-qualify #/sink-name-for-string
-          (sink-string-from-located-string identifier))))
+          (sink-string-from-located-string identifier)))
+    #/fn qualified-sink-authorized-name
+    #/then text-input-stream qualified-sink-authorized-name)
   
   #/w- then
     (fn text-input-stream op-name
@@ -1478,13 +1613,13 @@
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     ; TODO FAULT: Make this `fault` more specific.
-    (cene-err fault "The use of ( to delimit a macro name is not yet supported")
+    (sink-extfx-cene-err fault "The use of ( to delimit a macro name is not yet supported")
   #/sink-extfx-optimized-textpat-read-located
     fault |pat "["| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     ; TODO FAULT: Make this `fault` more specific.
-    (cene-err fault "The use of [ to delimit a macro name is not yet supported")
+    (sink-extfx-cene-err fault "The use of [ to delimit a macro name is not yet supported")
   
   #/sink-extfx-read-maybe-identifier
     fault qualify text-input-stream pre-qualify
@@ -1493,7 +1628,7 @@
     (then text-input-stream name)
   
   ; TODO FAULT: Make this `fault` more specific.
-  #/cene-err fault "Encountered an unrecognized case of the expression operator syntax"))
+  #/sink-extfx-cene-err fault "Encountered an unrecognized case of the expression operator syntax"))
 
 (define/contract
   (sink-extfx-run-op
@@ -1508,21 +1643,23 @@
       sink-extfx?)
     sink-extfx?)
   (sink-extfx-claim-freshen unique-name #/fn unique-name
-  #/w- result
-    (sink-call fault op-impl
+  #/sink-extfx-run-cenegetfx
+    (cenegetfx-sink-call fault op-impl
       unique-name qualify text-input-stream output-stream
     #/sink-fn-curried-fault 4
     #/fn fault unique-name qualify text-input-stream output-stream
+    #/cenegetfx-done
     #/expect (sink-authorized-name? unique-name) #t
-      (cene-err fault "Expected the unique name of a macro's callback results to be an authorized name")
+      (sink-extfx-cene-err fault "Expected the unique name of a macro's callback results to be an authorized name")
     #/expect (sink-text-input-stream? text-input-stream) #t
-      (cene-err fault "Expected the text input stream of a macro's callback results to be a text input stream")
+      (sink-extfx-cene-err fault "Expected the text input stream of a macro's callback results to be a text input stream")
     #/expect (sink-cexpr-sequence-output-stream? output-stream) #t
-      (cene-err fault "Expected the expression sequence output stream of a macro's callback results to be an expression sequence output stream")
+      (sink-extfx-cene-err fault "Expected the expression sequence output stream of a macro's callback results to be an expression sequence output stream")
     #/sink-extfx-claim-freshen unique-name #/fn unique-name
     #/then unique-name qualify text-input-stream output-stream)
+  #/fn result
   #/expect (sink-extfx? result) #t
-    (cene-err fault "Expected the return value of a macro to be an effectful computation")
+    (sink-extfx-cene-err fault "Expected the return value of a macro to be an effectful computation")
     result))
 
 (define/contract
@@ -1544,7 +1681,7 @@
   (sink-extfx-claim-freshen unique-name #/fn unique-name
   #/sink-extfx-read-op fault text-input-stream qualify pre-qualify
   #/fn text-input-stream op-name
-  #/sink-extfx-run-getfx
+  #/sink-extfx-run-sink-getfx
     (sink-getfx-get #/sink-authorized-name-get-name op-name)
   #/fn op-impl
   #/sink-extfx-run-op
@@ -1595,10 +1732,13 @@
       sink-extfx?)
     sink-extfx?)
   (sink-extfx-claim-freshen unique-name #/fn unique-name
-  #/sink-extfx-run-getfx
-    (sink-getfx-get #/sink-authorized-name-get-name
-      (sink-call-qualify fault qualify
-        (sink-name-for-nameless-bounded-cexpr-op)))
+  #/sink-extfx-run-sink-getfx
+    (sink-getfx-bind
+      (sink-getfx-run-cenegetfx
+        (cenegetfx-sink-call-qualify fault qualify
+          (sink-name-for-nameless-bounded-cexpr-op)))
+    #/fn qualified
+    #/sink-getfx-get #/sink-authorized-name-get-name qualified)
   #/fn op-impl
   #/sink-extfx-run-op
     fault op-impl unique-name qualify text-input-stream output-stream
@@ -1662,13 +1802,13 @@
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     ; TODO FAULT: Make this `fault` more specific.
-    (cene-err fault "Encountered an unmatched )")
+    (sink-extfx-cene-err fault "Encountered an unmatched )")
   #/sink-extfx-optimized-textpat-read-located
     fault |pat "]"| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     ; TODO FAULT: Make this `fault` more specific.
-    (cene-err fault "Encountered an unmatched ]")
+    (sink-extfx-cene-err fault "Encountered an unmatched ]")
   
   #/sink-extfx-optimized-textpat-read-located
     fault |pat "\\"| text-input-stream
@@ -1688,7 +1828,7 @@
         #/fn text-input-stream maybe-str
         #/expect maybe-str (just _)
           ; TODO FAULT: Make this `fault` more specific.
-          (cene-err fault "Encountered a syntax that began with ( or (. and did not end with )")
+          (sink-extfx-cene-err fault "Encountered a syntax that began with ( or (. and did not end with )")
         #/then unique-name qualify text-input-stream output-stream))
     #/sink-extfx-optimized-textpat-read-located
       fault |pat "."| text-input-stream
@@ -1711,7 +1851,7 @@
         #/fn text-input-stream maybe-str
         #/expect maybe-str (just _)
           ; TODO FAULT: Make this `fault` more specific.
-          (cene-err fault "Encountered a syntax that began with [ or [. and did not end with ]")
+          (sink-extfx-cene-err fault "Encountered a syntax that began with [ or [. and did not end with ]")
         #/then unique-name qualify text-input-stream output-stream))
     #/sink-extfx-optimized-textpat-read-located
       fault |pat "."| text-input-stream
@@ -1734,7 +1874,7 @@
         #/fn text-input-stream is-closing-bracket
         #/if (not is-closing-bracket)
           ; TODO FAULT: Make this `fault` more specific.
-          (cene-err fault "Encountered a syntax that began with /. and did not end at ) or ]")
+          (sink-extfx-cene-err fault "Encountered a syntax that began with /. and did not end at ) or ]")
         #/then unique-name qualify text-input-stream output-stream))
     #/sink-extfx-optimized-textpat-read-located
       fault |pat "."| text-input-stream
@@ -1747,65 +1887,119 @@
       fault unique-name qualify text-input-stream output-stream then)
   
   ; TODO FAULT: Make this `fault` more specific.
-  #/cene-err fault "Encountered an unrecognized case of the expression syntax"))
+  #/sink-extfx-cene-err fault "Encountered an unrecognized case of the expression syntax"))
+
+(struct-easy
+  (core-sink-struct-metadata
+    tag-cache-key main-tag-string proj-strings))
 
 (define/contract (core-sink-struct main-tag-string proj-strings)
   (-> immutable-string? (listof immutable-string?)
-    (-> #/and/c pair? #/listof name?))
-  
-  ; TODO: Currently, we return a function that computes the tags each
-  ; and every time. Memoize this. The computation can be perfrmed in
-  ; `with-gets-from` once, and then the function returned here can
-  ; look it up from the dynamically scoped binding that
-  ; `with-gets-from` sets up.
-  ;
-  (fn
-    (begin (assert-can-get-cene-definition-globals!)
-    #/w- main-tag-authorized-name
-      (sink-name-qualify-for-lang-impl #/sink-name-for-struct-main-tag
-      #/sink-name-for-string #/sink-string main-tag-string)
-    #/w- main-tag-name
-      (sink-authorized-name-get-name main-tag-authorized-name)
-    #/list-map
-      (cons main-tag-name
-      #/list-map proj-strings #/fn proj-string
-        (sink-authorized-name-get-name
-        #/sink-name-qualify-for-lang-impl
-        #/sink-name-for-struct-proj main-tag-name
-        #/sink-name-for-string #/sink-string proj-string))
-    #/dissectfn (sink-name name)
-      name)))
+    core-sink-struct-metadata?)
+  (core-sink-struct-metadata (gensym) main-tag-string proj-strings))
 
-(define s-trivial (core-sink-struct "trivial" #/list))
+; NOTE: The prefix `cssm-...` stands for "core sink struct metadata."
+; The prefix `csst-...` stands for "core sink struct tag."
 
-(define s-nil (core-sink-struct "nil" #/list))
-(define s-cons (core-sink-struct "cons" #/list "first" "rest"))
+(define cssm-trivial (core-sink-struct "trivial" #/list))
 
-(define s-clamor-err
+(define cssm-nil (core-sink-struct "nil" #/list))
+(define cssm-cons (core-sink-struct "cons" #/list "first" "rest"))
+
+(define cssm-clamor-err
   (core-sink-struct "clamor-err" #/list "blame" "message"))
 
-(define/contract (sink-list->maybe-racket sink-list)
-  (-> sink? #/maybe/c #/listof sink?)
-  ; NOTE: We could call `sink-list->maybe-racket` itself recursively,
-  ; but we explicitly accumulate elements using a parameter
-  ; (`rev-racket-list`) of a recursive helper function (`next`) so
-  ; that we keep the call stack at a constant size throughout the list
-  ; traversal.
-  (begin (assert-can-get-cene-definition-globals!)
-  #/w-loop next sink-list sink-list rev-racket-list (list)
-  #/mat (unmake-sink-struct-maybe (s-nil) sink-list) (just #/list)
-    (just #/reverse rev-racket-list)
-  #/mat (unmake-sink-struct-maybe (s-cons) sink-list)
-    (just #/list elem sink-list)
-    (next sink-list #/cons elem rev-racket-list)
-  #/nothing))
+(define minimal-tags
+  (list
+    cssm-trivial
+    
+    cssm-nil
+    cssm-cons
+    
+    cssm-clamor-err))
 
-(define/contract (racket-list->sink racket-list)
-  (-> (listof sink?) sink?)
-  (begin (assert-can-get-cene-definition-globals!)
-  #/list-foldr racket-list (make-sink-struct (s-nil) #/list)
-  #/fn elem rest
-    (make-sink-struct (s-cons) #/list elem rest)))
+(define (cenegetfx-tag-direct metadata)
+  (-> core-sink-struct-metadata? #/and/c pair? #/listof name?)
+  (dissect metadata
+    (core-sink-struct-metadata
+      tag-cache-key main-tag-string proj-strings)
+  #/cenegetfx-bind (cenegetfx-read-root-info)
+  #/dissectfn (cene-root-info ds lang-impl-qualify-root tag-cache)
+  #/cenegetfx-done #/hash-ref tag-cache tag-cache-key))
+
+(define (cenegetfx-tag metadata then)
+  (->
+    core-sink-struct-metadata?
+    (-> (and/c pair? #/listof name?) cenegetfx?)
+    cenegetfx?)
+  (cenegetfx-bind (cenegetfx-tag-direct metadata) #/fn tag
+  #/then tag))
+
+(define (sink-extfx-tag metadata then)
+  (->
+    core-sink-struct-metadata?
+    (-> (and/c pair? #/listof name?) sink-extfx?)
+    sink-extfx?)
+  (sink-extfx-run-cenegetfx (cenegetfx-tag-direct metadata) #/fn tag
+  #/then tag))
+
+(define (make-cene-root-info ds lang-impl-qualify-root tags)
+  (-> dspace? authorized-name? (listof core-sink-struct-metadata?)
+    (cene-root-info/c))
+  (w- temp-rinfo (cene-root-info ds lang-impl-qualify-root (hash))
+  #/cene-root-info
+    ds
+    lang-impl-qualify-root
+    (list-foldl (hasheq) tags #/fn tag-cache metadata
+      (dissect metadata
+        (core-sink-struct-metadata
+          tag-cache-key main-tag-string proj-strings)
+      #/hash-set tag-cache tag-cache-key
+        (w- main-tag-authorized-name
+          (pure-run-getfx #/getfx-run-cenegetfx temp-rinfo
+            (cenegetfx-sink-name-qualify-for-lang-impl
+            #/sink-name-for-struct-main-tag
+            #/sink-name-for-string #/sink-string main-tag-string))
+        #/w- main-tag-name
+          (sink-authorized-name-get-name main-tag-authorized-name)
+        #/list-map
+          (cons main-tag-name
+          #/list-map proj-strings #/fn proj-string
+            (sink-authorized-name-get-name
+            #/pure-run-getfx #/getfx-run-cenegetfx temp-rinfo
+              (cenegetfx-sink-name-qualify-for-lang-impl
+              #/sink-name-for-struct-proj main-tag-name
+              #/sink-name-for-string #/sink-string proj-string)))
+        #/dissectfn (sink-name name)
+          name)))))
+
+(define/contract (sink-list->cenegetfx-maybe-racket sink-list)
+  (-> sink? #/cenegetfx/c #/maybe/c #/listof sink?)
+  ; NOTE: We could call `sink-list->cenegetfx-maybe-racket` itself
+  ; recursively, but we explicitly accumulate elements using a
+  ; parameter (`rev-racket-list`) of a recursive helper function
+  ; (`next`) so that we keep the call stack at a constant size
+  ; throughout the list traversal.
+  (cenegetfx-tag cssm-nil #/fn csst-nil
+  #/cenegetfx-tag cssm-cons #/fn csst-cons
+  #/cenegetfx-done
+    (w-loop next sink-list sink-list rev-racket-list (list)
+      (mat (unmake-sink-struct-maybe csst-nil sink-list)
+        (just #/list)
+        (just #/reverse rev-racket-list)
+      #/mat (unmake-sink-struct-maybe csst-cons sink-list)
+        (just #/list elem sink-list)
+        (next sink-list #/cons elem rev-racket-list)
+      #/nothing))))
+
+(define/contract (racket-list->cenegetfx-sink racket-list)
+  (-> (listof sink?) #/cenegetfx/c sink?)
+  (cenegetfx-tag cssm-nil #/fn csst-nil
+  #/cenegetfx-tag cssm-cons #/fn csst-cons
+  #/cenegetfx-done
+    (list-foldr racket-list (make-sink-struct csst-nil #/list)
+    #/fn elem rest
+      (make-sink-struct csst-cons #/list elem rest))))
 
 (define/contract (extfx-claim name on-success)
   (-> authorized-name? (-> extfx?) extfx?)
@@ -1848,11 +2042,11 @@
 (define/contract (sink-extfx-claim name on-success)
   (-> sink-authorized-name? (-> sink-extfx?) sink-extfx?)
   (dissect name (sink-authorized-name name)
-  #/make-sink-extfx #/fn
-    (extfx-with-cene-definition-restorer #/fn restore
-    #/extfx-claim name #/fn
-    #/restore #/fn
-    #/extfx-run-sink-extfx #/on-success)))
+  #/make-sink-extfx
+    (cenegetfx-bind (cenegetfx-read-root-info) #/fn rinfo
+    #/cenegetfx-done
+      (extfx-claim name #/fn
+      #/extfx-run-sink-extfx rinfo #/on-success))))
 
 (define/contract (sink-extfx-claim-and-split unique-name n then)
   (->
@@ -1860,12 +2054,12 @@
     (-> (listof sink-authorized-name?) sink-extfx?)
     sink-extfx?)
   (dissect unique-name (sink-authorized-name unique-name)
-  #/make-sink-extfx #/fn
-    (extfx-with-cene-definition-restorer #/fn restore
-    #/extfx-claim-and-split unique-name n #/fn names
-    #/restore #/fn
-    #/extfx-run-sink-extfx #/then #/list-map names #/fn name
-      (sink-authorized-name name))))
+  #/make-sink-extfx
+    (cenegetfx-bind (cenegetfx-read-root-info) #/fn rinfo
+    #/cenegetfx-done
+      (extfx-claim-and-split unique-name n #/fn names
+      #/extfx-run-sink-extfx rinfo #/then #/list-map names #/fn name
+        (sink-authorized-name name)))))
 
 (define/contract (sink-extfx-claim-freshen unique-name then)
   (-> sink-authorized-name? (-> sink-authorized-name? sink-extfx?)
@@ -1894,9 +2088,9 @@
 ; written is the macrexpander's (TODO), so this particular version
 ; always succeeds.
 ;
-(define/contract (cexpr-eval fault cexpr)
-  (-> sink-fault? (and/c cexpr? cexpr-is-closed?) sink?)
-  (cexpr-eval-in-env fault cexpr (table-empty)))
+(define/contract (cenegetfx-cexpr-eval fault cexpr)
+  (-> sink-fault? (and/c cexpr? cexpr-is-closed?) #/cenegetfx/c sink?)
+  (cenegetfx-cexpr-eval-in-env fault cexpr (table-empty)))
 
 ; This returns a computation that reads all the content of the given
 ; text input stream and runs the reader macros it encounters. Unlike
@@ -1930,19 +2124,22 @@
         ; TODO: Test that we can actually get this error. We might
         ; already be checking for this condition elsewhere.
         ; TODO FAULT: Make this `fault` more specific.
-        (cene-err fault "Encountered a top-level expression that compiled to a non-expression value")
+        (sink-extfx-cene-err fault "Encountered a top-level expression that compiled to a non-expression value")
       #/expect (cexpr-has-free-vars? cexpr #/table-empty) #f
         ; TODO FAULT: Make this `fault` more specific.
-        (cene-err fault "Encountered a top-level expression with at least one free variable")
+        (sink-extfx-cene-err fault "Encountered a top-level expression with at least one free variable")
       #/sink-extfx-fuse (then unique-name-rest)
-      #/expect (cexpr-eval fault cexpr) (sink-directive directive)
+      #/sink-extfx-run-cenegetfx (cenegetfx-cexpr-eval fault cexpr)
+      #/expectfn (sink-directive directive)
         ; TODO FAULT: Make this `fault` more specific.
-        (cene-err fault "Expected every top-level expression to evaluate to a directive")
-      #/w- effects
-        (sink-call fault directive unique-name-first qualify)
+        (sink-extfx-cene-err fault "Expected every top-level expression to evaluate to a directive")
+      #/sink-extfx-run-cenegetfx
+        (cenegetfx-sink-call
+          fault directive unique-name-first qualify)
+      #/fn effects
       #/expect (sink-extfx? effects) #t
         ; TODO FAULT: Make this `fault` more specific.
-        (cene-err fault "Expected every top-level expression to evaluate to a directive made from a callable value that takes two arguments and returns extfx side effects")
+        (sink-extfx-cene-err fault "Expected every top-level expression to evaluate to a directive made from a callable value that takes two arguments and returns extfx side effects")
         effects))
   #/fn output-stream unwrap
   #/sink-extfx-read-cexprs
@@ -1966,6 +2163,6 @@
     unique-name
     (sink-fn-curried-fault 1 #/fn fault name
       (expect (sink-name? name) #t
-        (cene-err fault "Expected the input to the root qualify function to be a name")
-      #/qualify name))
+        (cenegetfx-cene-err fault "Expected the input to the root qualify function to be a name")
+      #/cenegetfx-done #/qualify name))
     (sink-text-input-stream #/box #/just #/open-input-string string)))
