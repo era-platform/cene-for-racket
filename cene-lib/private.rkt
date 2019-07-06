@@ -2156,7 +2156,7 @@
     sink-fault?
     sink-authorized-name?
     (-> sink-name? sink-authorized-name?)
-    string?
+    immutable-string?
     sink-extfx?)
   (sink-extfx-read-top-level
     fault
