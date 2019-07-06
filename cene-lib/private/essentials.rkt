@@ -1471,30 +1471,30 @@
     (sink-fn-curried-fault 5 #/fn
       fault unique-name qualify text-input-stream output-stream then
       
-      (cenegetfx-done
-      #/expect (sink-authorized-name? unique-name) #t
-        (sink-extfx-cene-err fault "Expected unique-name to be an authorized name")
+      (expect (sink-authorized-name? unique-name) #t
+        (cenegetfx-cene-err fault "Expected unique-name to be an authorized name")
       #/expect (sink-text-input-stream? text-input-stream) #t
-        (sink-extfx-cene-err fault "Expected text-input-stream to be a text input stream")
+        (cenegetfx-cene-err fault "Expected text-input-stream to be a text input stream")
       #/expect (sink-cexpr-sequence-output-stream? output-stream) #t
-        (sink-extfx-cene-err fault "Expected output-stream to be an expression sequence output stream")
-      #/w- rinfo (cene-definition-root-info)
-      #/body fault unique-name qualify text-input-stream output-stream
-      #/fn unique-name qualify text-input-stream output-stream
-      #/with-gets-from rinfo #/fn
-      #/sink-extfx-with-run-getfx #/fn
-      #/w- effects
-        (sink-call fault then
-          unique-name qualify text-input-stream output-stream)
-      #/expect (sink-extfx? effects) #t
-        (sink-extfx-cene-err fault "Expected the return value of a macro's callback to be an extfx effectful computation")
-        effects)))
+        (cenegetfx-cene-err fault "Expected output-stream to be an expression sequence output stream")
+      #/cenegetfx-done
+        (body
+          fault unique-name qualify text-input-stream output-stream
+        #/fn unique-name qualify text-input-stream output-stream
+        #/sink-extfx-with-run-getfx #/fn
+        #/w- effects
+          (sink-call fault then
+            unique-name qualify text-input-stream output-stream)
+        #/expect (sink-extfx? effects) #t
+          (sink-extfx-cene-err fault "Expected the return value of a macro's callback to be an extfx effectful computation")
+          effects))))
   
   ; This creates a macro implementation function that reads a form
   ; body of precisely `n-args` cexprs, then writes a single cexpr
   ; computed from those using `body`.
   (define/contract (macro-impl-specific-number-of-args n-args body)
-    (-> natural? (-> (listof sink-cexpr?) sink-cexpr?) sink?)
+    (-> natural? (-> (listof sink-cexpr?) #/cenegetfx/c sink-cexpr?)
+      sink?)
     (macro-impl #/fn
       fault unique-name qualify text-input-stream output-stream then
       
@@ -1502,7 +1502,8 @@
         fault unique-name qualify text-input-stream n-args
       #/fn unique-name qualify text-input-stream args
       #/sink-extfx-with-run-getfx #/fn
-      #/sink-extfx-cexpr-write fault output-stream (body args)
+      #/sink-extfx-run-cenegetfx (body args) #/fn expr
+      #/sink-extfx-cexpr-write fault output-stream expr
       #/fn output-stream
       #/then unique-name qualify text-input-stream output-stream)))
   
@@ -1567,10 +1568,12 @@
         ; that kind of mistake.
         ;
         (macro-impl-specific-number-of-args n-args #/fn args
-          (list-foldl
-            (sink-cexpr-construct qualified-main-tag-name #/list)
-            args
-          #/fn func arg #/sink-cexpr-call func arg)))
+          (cenegetfx-done
+            (list-foldl
+              (sink-cexpr-construct qualified-main-tag-name #/list)
+              args
+            #/fn func arg
+              (sink-cexpr-call func arg)))))
       
       ; We define a Cene struct function implementation containing
       ; the function's run time behavior.
@@ -1639,9 +1642,10 @@
         ; just has the user pass `(trivial)` explicitly.
         ;
         (macro-impl-specific-number-of-args 0 #/fn args
-          (sink-cexpr-call
-            (sink-cexpr-construct qualified-main-tag-name #/list)
-            (make-sink-cexpr-construct (s-trivial) #/list))))
+          (cenegetfx-done
+            (sink-cexpr-call
+              (sink-cexpr-construct qualified-main-tag-name #/list)
+              (make-sink-cexpr-construct (s-trivial) #/list)))))
       
       ; We define a Cene struct function implementation containing
       ; the function's run time behavior.
@@ -1731,8 +1735,9 @@
         ; against that kind of mistake.
         ;
         #/macro-impl-specific-number-of-args n-projs #/fn proj-cexprs
-          (sink-cexpr-construct qualified-main-tag-name
-          #/map list qualified-proj-names proj-cexprs)))
+          (cenegetfx-done
+            (sink-cexpr-construct qualified-main-tag-name
+              (map list qualified-proj-names proj-cexprs)))))
       
       ; We define a Cene struct function implementation which throws
       ; an error. We do this so that we do in fact have a function
