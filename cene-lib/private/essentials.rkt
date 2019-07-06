@@ -219,16 +219,17 @@
       (make-sink-struct (s-nope) #/list
         (make-sink-struct (s-nil) #/list)))))
 
-(define/contract (sink-maybe->maybe-racket sink-maybe)
-  (-> sink? #/maybe/c #/maybe/c sink?)
-  (begin (assert-can-get-cene-definition-globals!)
-  #/mat (unmake-sink-struct-maybe (s-nothing) sink-maybe)
-    (just #/list)
-    (just #/nothing)
-  #/mat (unmake-sink-struct-maybe (s-just) sink-maybe)
-    (just #/list val)
-    (just #/just val)
-  #/nothing))
+(define/contract (sink-maybe->cenegetfx-maybe-racket sink-maybe)
+  (-> sink? #/cenegetfx/c #/maybe/c #/maybe/c sink?)
+  (cenegetfx-with-run-getfx #/fn
+  #/cenegetfx-done
+    (mat (unmake-sink-struct-maybe (s-nothing) sink-maybe)
+      (just #/list)
+      (just #/nothing)
+    #/mat (unmake-sink-struct-maybe (s-just) sink-maybe)
+      (just #/list val)
+      (just #/just val)
+    #/nothing)))
 
 (define/contract (racket-maybe->sink racket-maybe)
   (-> (maybe/c sink?) sink?)
@@ -1276,9 +1277,9 @@
       #/cenegetfx-bind
         (cenegetfx-run-sink-getfx sink-getfx-maybe-method)
       #/fn sink-maybe-method
-      #/cenegetfx-with-run-getfx #/fn
-      #/expect (sink-maybe->maybe-racket sink-maybe-method)
-        (just maybe-method)
+      #/cenegetfx-bind
+        (sink-maybe->cenegetfx-maybe-racket sink-maybe-method)
+      #/expectfn (just maybe-method)
         (cenegetfx-cene-err fault expected-maybe)
       #/expect maybe-method (just method) (cenegetfx-done #/nothing)
       #/expect method (sink-cmp method)
@@ -1327,9 +1328,9 @@
         (cenegetfx-cene-err fault expected-getfx)
       #/getfx-bind (cenegetfx-run-sink-getfx sink-getfx-maybe-method)
       #/fn sink-maybe-method
-      #/cenegetfx-with-run-getfx #/fn
-      #/expect (sink-maybe->maybe-racket sink-maybe-method)
-        (just maybe-method)
+      #/cenegetfx-bind
+        (sink-maybe->cenegetfx-maybe-racket sink-maybe-method)
+      #/expectfn (just maybe-method)
         (cenegetfx-cene-err fault expected-maybe)
       #/expect maybe-method (just method) (cenegetfx-done #/nothing)
       #/expect method (sink-furge method)
@@ -2911,7 +2912,8 @@
       (cenegetfx-cene-err fault "Expected key to be a name")
     #/expect (sink-table? table) #t
       (cenegetfx-cene-err fault "Expected table to be a table")
-    #/expect (sink-maybe->maybe-racket maybe-val) (just maybe-val)
+    #/cenegetfx-bind (sink-maybe->cenegetfx-maybe-racket maybe-val)
+    #/expectfn (just maybe-val)
       (cenegetfx-cene-err fault "Expected maybe-val to be a nothing or a just")
     #/cenegetfx-done #/sink-table-put-maybe table key maybe-val))
   
