@@ -1188,14 +1188,15 @@
       (dex-sink-struct (s-nil) #/list)
       (dex-sink-struct (s-cons) #/list dex-elem dex))))
 
-(define/contract (sink-dex-list fault dex-elem)
-  (-> sink-fault? sink-dex? sink-dex?)
-  (begin (assert-can-get-cene-definition-globals!)
-  #/dissect dex-elem (sink-dex dex-elem)
-  #/sink-dex #/dex-fix #/dexed-struct fix-for-sink-dex-list
-    (cene-definition-dexed-root-info)
-    (just-value #/pure-run-getfx #/getfx-dexed-of (dex-dex)
-      dex-elem)))
+(define/contract (cenegetfx-sink-dex-list fault dex-elem)
+  (-> sink-fault? sink-dex? #/cenegetfx/c sink-dex?)
+  (dissect dex-elem (sink-dex dex-elem)
+  #/cenegetfx-bind (cenegetfx-read-dexed-root-info) #/fn dexed-rinfo
+  #/cenegetfx-done
+    (sink-dex #/dex-fix #/dexed-struct fix-for-sink-dex-list
+      dexed-rinfo
+      (just-value #/pure-run-getfx #/getfx-dexed-of (dex-dex)
+        dex-elem))))
 
 (define/contract (sink-dex-name)
   (-> sink-dex?)
@@ -1816,14 +1817,19 @@
       ; TODO: We haven't even tried to store this in the same format
       ; as the JavaScript version of Cene does. See if we should.
       ;
-      (sink-extfx-def-fallibly-dexed-value-for-package
+      (sink-extfx-run-cenegetfx
+        (cenegetfx-sink-dex-list root-fault
+          (sink-dex-struct (s-assoc) #/list
+            (sink-dex-string)
+            (sink-dex-name)))
+      #/fn dex-projs
+      #/sink-extfx-with-run-getfx #/fn
+      #/sink-extfx-def-fallibly-dexed-value-for-package
         unique-name-for-metadata
         (sink-name-for-struct-metadata main-tag-name)
         (sink-dex-struct (s-struct-metadata) #/list
           (sink-dex-name)
-          (sink-dex-list root-fault #/sink-dex-struct (s-assoc) #/list
-            (sink-dex-string)
-            (sink-dex-name)))
+          dex-projs)
         (make-sink-struct (s-struct-metadata) #/list
           qualified-main-tag-name
           (racket-list->sink #/list-map qualified-proj-name-entries
@@ -2101,11 +2107,12 @@
   (def-func-fault! "dex-by-own-method" fault dexed-getfx-get-method
     (expect dexed-getfx-get-method (sink-dexed dexed-getfx-get-method)
       (cenegetfx-cene-err fault "Expected dexed-getfx-get-method to be a dexed value")
+    #/cenegetfx-bind (cenegetfx-read-dexed-root-info) #/fn dexed-rinfo
     #/cenegetfx-done #/sink-dex #/unsafe:dex-by-own-method-thorough
       (dexed-struct sink-dex-by-own-method-unthorough
         (just-value #/pure-run-getfx #/getfx-dexed-of (dex-sink-fault)
           fault)
-        (cene-definition-dexed-root-info)
+        dexed-rinfo
         dexed-getfx-get-method)))
   
   ; NOTE: In the JavaScript version of Cene, this took a dexable value
@@ -2113,11 +2120,12 @@
   (def-func-fault! "dex-fix" fault dexed-unwrap
     (expect dexed-unwrap (sink-dexed dexed-unwrap)
       (cenegetfx-cene-err fault "Expected dexed-unwrap to be a dexed value")
+    #/cenegetfx-bind (cenegetfx-read-dexed-root-info) #/fn dexed-rinfo
     #/cenegetfx-done #/sink-dex #/dex-fix
       (dexed-struct converter-for-dex-fix
         (just-value #/pure-run-getfx #/getfx-dexed-of (dex-sink-fault)
           fault)
-        (cene-definition-dexed-root-info)
+        dexed-rinfo
         dexed-unwrap)))
   
   ; NOTE: In the JavaScript version of Cene, there was a similar
@@ -2191,12 +2199,13 @@
   (def-func-fault! "cline-by-own-method" fault dexed-getfx-get-method
     (expect dexed-getfx-get-method (sink-dexed dexed-getfx-get-method)
       (cenegetfx-cene-err fault "Expected dexed-getfx-get-method to be a dexed value")
+    #/cenegetfx-bind (cenegetfx-read-dexed-root-info) #/fn dexed-rinfo
     #/cenegetfx-done #/sink-cline
       (unsafe:cline-by-own-method-thorough
       #/dexed-struct sink-cline-by-own-method-unthorough
         (just-value #/pure-run-getfx #/getfx-dexed-of (dex-sink-fault)
           fault)
-        (cene-definition-dexed-root-info)
+        dexed-rinfo
         dexed-getfx-get-method)))
   
   ; NOTE: In the JavaScript version of Cene, this took a dexable value
@@ -2204,11 +2213,12 @@
   (def-func-fault! "cline-fix" fault dexed-unwrap
     (expect dexed-unwrap (sink-dexed dexed-unwrap)
       (cenegetfx-cene-err fault "Expected dexed-unwrap to be a dexed value")
+    #/cenegetfx-bind (cenegetfx-read-dexed-root-info) #/fn dexed-rinfo
     #/cenegetfx-done #/sink-cline #/cline-fix
       (dexed-struct converter-for-cline-fix
         (just-value #/pure-run-getfx #/getfx-dexed-of (dex-sink-fault)
           fault)
-        (cene-definition-dexed-root-info)
+        dexed-rinfo
         dexed-unwrap)))
   
   (def-func-fault! "getfx-call-merge" fault merge a b
@@ -2272,12 +2282,13 @@
   (def-func-fault! "merge-by-own-method" fault dexed-getfx-get-method
     (expect dexed-getfx-get-method (sink-dexed dexed-getfx-get-method)
       (cenegetfx-cene-err fault "Expected dexed-getfx-get-method to be a dexed value")
+    #/cenegetfx-bind (cenegetfx-read-dexed-root-info) #/fn dexed-rinfo
     #/cenegetfx-done #/sink-merge
       (unsafe:merge-by-own-method-thorough
       #/dexed-struct sink-merge-by-own-method-unthorough
         (just-value #/pure-run-getfx #/getfx-dexed-of (dex-sink-fault)
           fault)
-        (cene-definition-dexed-root-info)
+        dexed-rinfo
         dexed-getfx-get-method)))
   
   ; NOTE: In the JavaScript version of Cene, this took a dexable value
@@ -2285,11 +2296,12 @@
   (def-func-fault! "fuse-by-own-method" fault dexed-getfx-get-method
     (expect dexed-getfx-get-method (sink-dexed dexed-getfx-get-method)
       (cenegetfx-cene-err fault "Expected dexed-getfx-get-method to be a dexed value")
+    #/cenegetfx-bind (cenegetfx-read-dexed-root-info) #/fn dexed-rinfo
     #/cenegetfx-done #/sink-fuse #/unsafe:fuse-by-own-method-thorough
       (dexed-struct sink-fuse-by-own-method-unthorough
         (just-value #/pure-run-getfx #/getfx-dexed-of (dex-sink-fault)
           fault)
-        (cene-definition-dexed-root-info)
+        dexed-rinfo
         dexed-getfx-get-method)))
   
   ; NOTE: In the JavaScript version of Cene, this took a dexable value
@@ -2297,11 +2309,12 @@
   (def-func-fault! "merge-fix" fault dexed-unwrap
     (expect dexed-unwrap (sink-dexed dexed-unwrap)
       (cenegetfx-cene-err fault "Expected dexed-unwrap to be a dexed value")
+    #/cenegetfx-bind (cenegetfx-read-dexed-root-info) #/fn dexed-rinfo
     #/cenegetfx-done #/sink-merge #/merge-fix
       (dexed-struct converter-for-merge-fix
         (just-value #/pure-run-getfx #/getfx-dexed-of (dex-sink-fault)
           fault)
-        (cene-definition-dexed-root-info)
+        dexed-rinfo
         dexed-unwrap)))
   
   ; NOTE: In the JavaScript version of Cene, this took a dexable value
@@ -2309,11 +2322,12 @@
   (def-func-fault! "fuse-fix" fault dexed-unwrap
     (expect dexed-unwrap (sink-dexed dexed-unwrap)
       (cenegetfx-cene-err fault "Expected dexed-unwrap to be a dexed value")
+    #/cenegetfx-bind (cenegetfx-read-dexed-root-info) #/fn dexed-rinfo
     #/cenegetfx-done #/sink-fuse #/fuse-fix
       (dexed-struct converter-for-fuse-fix
         (just-value #/pure-run-getfx #/getfx-dexed-of (dex-sink-fault)
           fault)
-        (cene-definition-dexed-root-info)
+        dexed-rinfo
         dexed-unwrap)))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
@@ -2340,12 +2354,13 @@
     (expect dexed-fault-and-arg-to-method
       (sink-dexed dexed-fault-and-arg-to-method)
       (cenegetfx-cene-err fault "Expected dexed-fault-and-arg-to-method to be a dexed value")
+    #/cenegetfx-bind (cenegetfx-read-dexed-root-info) #/fn dexed-rinfo
     #/cenegetfx-done #/sink-fuse #/fuse-struct sink-opaque-fn-fusable
       (unsafe:fuse-fusable-function-thorough
         (dexed-struct sink-fuse-fusable-fn-unthorough
           (just-value #/pure-run-getfx
             (getfx-dexed-of (dex-sink-fault) fault))
-          (cene-definition-dexed-root-info)
+          dexed-rinfo
           dexed-fault-and-arg-to-method))))
   
   
@@ -3912,7 +3927,7 @@
   (def-func-fault! "dex-list" fault dex-elem
     (expect (sink-dex? dex-elem) #t
       (cenegetfx-cene-err fault "Expected dex-elem to be a dex")
-    #/cenegetfx-done #/sink-dex-list fault dex-elem))
+    #/cenegetfx-sink-dex-list fault dex-elem))
   
   ; This installs all the built-ins so they're in the appropriate
   ; places for loading code under the given `qualify` function.

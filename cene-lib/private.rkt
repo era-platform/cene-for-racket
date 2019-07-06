@@ -449,6 +449,13 @@
   (-> #/cenegetfx/c #/cene-root-info/c)
   (cenegetfx #/fn rinfo #/getfx-done rinfo))
 
+(define/contract (cenegetfx-read-dexed-root-info)
+  (-> #/cenegetfx/c #/dexed-first-order/c #/cene-root-info/c)
+  (cenegetfx #/fn rinfo
+    (getfx-done #/just-value #/pure-run-getfx #/getfx-dexed-of
+      (dex-cene-root-info)
+      rinfo)))
+
 (define/contract (cenegetfx-read-definition-space)
   (-> #/cenegetfx/c dspace?)
   (cenegetfx-bind (cenegetfx-read-root-info)
@@ -509,14 +516,6 @@
   (expect (cene-definition-get-param)
     (just #/list rinfo maybe-run-getfx)
     (error "Expected every call to `cene-definition-oot-info` to occur with an implementation in the dynamic scope")
-    rinfo))
-
-(define/contract (cene-definition-dexed-root-info)
-  (-> #/dexed-first-order/c #/cene-root-info/c)
-  (expect (cene-definition-get-param)
-    (just #/list rinfo maybe-run-getfx)
-    (error "Expected every call to `cene-definition-dexed-root-info` to occur with an implementation in the dynamic scope")
-  #/just-value #/pure-run-getfx #/getfx-dexed-of (dex-cene-root-info)
     rinfo))
 
 (define/contract (cene-definition-dspace)
