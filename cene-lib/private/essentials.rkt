@@ -2392,30 +2392,32 @@
     (list "main-tag-name" "projections"))
   
   (define/contract
-    (verify-cexpr-struct-args! fault main-tag-name projections)
+    (cenegetfx-verify-cexpr-struct-args
+      fault main-tag-name projections)
     (-> sink-fault? sink? sink?
-      (list/c name? (listof #/list/c name? cexpr?)))
+      (cenegetfx/c #/list/c name? (listof #/list/c name? cexpr?)))
     
-    (begin (assert-can-get-cene-definitions!)
-    #/expect main-tag-name (sink-authorized-name main-tag-name)
-      (cene-err fault "Expected main-tag-name to be an authorized name")
+    (expect main-tag-name (sink-authorized-name main-tag-name)
+      (cenegetfx-cene-err fault "Expected main-tag-name to be an authorized name")
     #/expect (sink-list->maybe-racket projections) (just projections)
-      (cene-err fault "Expected projections to be a list made up of cons and nil values")
-    #/w- projections
-      (list-map projections #/fn projection
+      (cenegetfx-cene-err fault "Expected projections to be a list made up of cons and nil values")
+    #/cenegetfx-bind
+      (cenegetfx-list-map #/list-map projections #/fn projection
         (expect (unmake-sink-struct-maybe (s-assoc) projection)
           (just #/list k v)
-          (cene-err fault "Expected projections to be a list of assoc values")
+          (cenegetfx-cene-err fault "Expected projections to be a list of assoc values")
         #/expect k (sink-authorized-name k)
-          (cene-err fault "Expected projections to be an association list with authorized names as keys")
+          (cenegetfx-cene-err fault "Expected projections to be an association list with authorized names as keys")
         #/expect v (sink-cexpr v)
-          (cene-err fault "Expected projections to be an association list with expressions as values")
-        #/list (authorized-name-get-name k) v))
+          (cenegetfx-cene-err fault "Expected projections to be an association list with expressions as values")
+        #/cenegetfx-done #/list (authorized-name-get-name k) v))
+    #/fn projections
     #/if
       (names-have-duplicate?
         (list-map projections #/dissectfn (list k v) k))
-      (cene-err fault "Expected projections to be an association list with mutually unique names as keys")
-    #/list (authorized-name-get-name main-tag-name) projections))
+      (cenegetfx-cene-err fault "Expected projections to be an association list with mutually unique names as keys")
+    #/cenegetfx-done
+      (list (authorized-name-get-name main-tag-name) projections)))
   
   (define/contract
     (sink-extfx-expand-struct-op
@@ -2453,9 +2455,10 @@
   ; Nevertheless, we provide this operation directly.
   ;
   (def-func-fault! "expr-dex-struct" fault main-tag-name projections
-    (dissect
-      (verify-cexpr-struct-args! fault main-tag-name projections)
-      (list main-tag-name projections)
+    (cenegetfx-bind
+      (cenegetfx-verify-cexpr-struct-args
+        fault main-tag-name projections)
+    #/dissectfn (list main-tag-name projections)
     #/cenegetfx-done
       (sink-cexpr #/cexpr-dex-struct main-tag-name projections)))
   
@@ -2472,9 +2475,10 @@
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-cline-struct`.
   (def-func-fault! "expr-cline-struct" fault main-tag-name projections
-    (dissect
-      (verify-cexpr-struct-args! fault main-tag-name projections)
-      (list main-tag-name projections)
+    (cenegetfx-bind
+      (cenegetfx-verify-cexpr-struct-args
+        fault main-tag-name projections)
+    #/dissectfn (list main-tag-name projections)
     #/cenegetfx-done
       (sink-cexpr #/cexpr-cline-struct main-tag-name projections)))
   
@@ -2491,9 +2495,10 @@
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-merge-struct`.
   (def-func-fault! "expr-merge-struct" fault main-tag-name projections
-    (dissect
-      (verify-cexpr-struct-args! fault main-tag-name projections)
-      (list main-tag-name projections)
+    (cenegetfx-bind
+      (cenegetfx-verify-cexpr-struct-args
+        fault main-tag-name projections)
+    #/dissectfn (list main-tag-name projections)
     #/cenegetfx-done
       (sink-cexpr #/cexpr-merge-struct main-tag-name projections)))
   
@@ -2510,9 +2515,10 @@
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-fuse-struct`.
   (def-func-fault! "expr-fuse-struct" fault main-tag-name projections
-    (dissect
-      (verify-cexpr-struct-args! fault main-tag-name projections)
-      (list main-tag-name projections)
+    (cenegetfx-bind
+      (cenegetfx-verify-cexpr-struct-args
+        fault main-tag-name projections)
+    #/dissectfn (list main-tag-name projections)
     #/cenegetfx-done
       (sink-cexpr #/cexpr-fuse-struct main-tag-name projections)))
   
@@ -2529,9 +2535,10 @@
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-struct`.
   (def-func-fault! "expr-construct" fault main-tag-name projections
-    (dissect
-      (verify-cexpr-struct-args! fault main-tag-name projections)
-      (list main-tag-name projections)
+    (cenegetfx-bind
+      (cenegetfx-verify-cexpr-struct-args
+        fault main-tag-name projections)
+    #/dissectfn (list main-tag-name projections)
     #/cenegetfx-done
       (sink-cexpr #/cexpr-construct main-tag-name projections)))
   
