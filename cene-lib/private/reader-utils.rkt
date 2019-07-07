@@ -20,7 +20,7 @@
 ;   language governing permissions and limitations under the License.
 
 
-(require #/only-in racket/contract/base -> list/c listof or/c)
+(require #/only-in racket/contract/base -> any/c list/c listof)
 (require #/only-in racket/contract/region define/contract)
 (require #/only-in racket/math natural?)
 
@@ -36,6 +36,7 @@
 
 (provide
   sink-name-for-local-variable
+  id-or-expr?
   id-or-expr-id
   id-or-expr-expr
   id-or-expr->cexpr
@@ -54,8 +55,12 @@
 (struct-easy (id-or-expr-id located-string qualified-name))
 (struct-easy (id-or-expr-expr expr))
 
+(define/contract (id-or-expr? v)
+  (-> any/c boolean?)
+  (or (id-or-expr-id? v) (id-or-expr-expr? v)))
+
 (define/contract (id-or-expr->cexpr id-or-expr)
-  (-> (or/c id-or-expr-id? id-or-expr-expr?) sink-cexpr?)
+  (-> id-or-expr? sink-cexpr?)
   (mat id-or-expr (id-or-expr-id located-string qualified-name)
     ; TODO CEXPR-LOCATED: Wrap this in a located cexpr.
     (sink-cexpr-var #/sink-authorized-name-get-name qualified-name)
@@ -71,13 +76,13 @@
     sink-authorized-name?
     sink?
     sink-text-input-stream?
-    (listof #/or/c id-or-expr-id? id-or-expr-expr?)
+    (listof id-or-expr?)
     (-> sink-name? sink-name?)
     (->
       sink-authorized-name?
       sink?
       sink-text-input-stream?
-      (listof #/or/c id-or-expr-id? id-or-expr-expr?)
+      (listof id-or-expr?)
       sink-extfx?)
     sink-extfx?)
   (sink-extfx-claim-freshen unique-name #/fn unique-name
@@ -118,7 +123,7 @@
       sink-authorized-name?
       sink?
       sink-text-input-stream?
-      (listof #/or/c id-or-expr-id? id-or-expr-expr?)
+      (listof id-or-expr?)
       sink-extfx?)
     sink-extfx?)
   (sink-extfx-claim-freshen unique-name #/fn unique-name
@@ -217,7 +222,7 @@
       sink-authorized-name?
       sink?
       sink-text-input-stream?
-      (listof #/or/c id-or-expr-id? id-or-expr-expr?)
+      (listof id-or-expr?)
       sink-extfx?)
     sink-extfx?)
   (sink-extfx-claim-freshen unique-name #/fn unique-name

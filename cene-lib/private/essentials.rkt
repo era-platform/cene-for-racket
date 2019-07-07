@@ -89,6 +89,7 @@
 
 (require cene/private)
 (require #/only-in cene/private/reader-utils
+  id-or-expr?
   id-or-expr->cexpr
   id-or-expr-id
   sink-extfx-read-bounded-cexprs
@@ -372,12 +373,13 @@
   (sink-mobile value make-expr cenegetfx-mobile-perffx-mobile))
 
 (define/contract
-  (make-sink-mobile fault value make-expr cenegetfx-mobile-mobile)
-  (-> sink-fault? sink? sink-perffx? (cenegetfx/c sink-mobile?)
+  (make-sink-mobile value make-expr cenegetfx-mobile-mobile)
+  (-> sink? sink-perffx? (cenegetfx/c sink-mobile?)
     sink-mobile?)
   (make-sink-mobile-perffx value make-expr
     (cenegetfx-bind cenegetfx-mobile-mobile #/fn mobile-mobile
-    #/cenegetfx-sink-mobile-built-in-call fault "perffx-done"
+    #/cenegetfx-sink-mobile-built-in-call (make-fault-internal)
+      "perffx-done"
       mobile-mobile)))
 
 (define/contract
@@ -389,12 +391,12 @@
   #/expect
     (sink-authorized-name? qualified-main-tag-sink-authorized-name)
     #t
-    (error fault "Expected mobile-qualified-main-tag-authorized-name to be a mobile authorized name")
+    (error "Expected mobile-qualified-main-tag-authorized-name to be a mobile authorized name")
   #/dissect
     (sink-authorized-name-get-name
       qualified-main-tag-sink-authorized-name)
     (sink-name qualified-main-tag-name)
-  #/make-sink-mobile fault
+  #/make-sink-mobile
     (make-sink-struct (list qualified-main-tag-name) (list))
     (sink-perffx-done-later #/fn
       (sink-perffx-bind
@@ -429,24 +431,26 @@
       ; instead express the name using a module import so that
       ; compilers can anticipate having to serialize this kind of
       ; value.
-      (sink-mobile-reified
-        fault qualified-main-tag-sink-authorized-name))))
+      (sink-mobile-reified qualified-main-tag-sink-authorized-name))))
 
-(define/contract (sink-mobile-reified fault value)
-  (-> sink-fault? sink? sink-mobile?)
+(define/contract (sink-mobile-reified value)
+  (-> sink? sink-mobile?)
   (let next ()
-    (make-sink-mobile fault value
+    (make-sink-mobile value
       (sink-perffx-done-later #/fn
         (sink-perffx-bind
           (sink-perffx-run-cenegetfx
-            (cenegetfx-sink-mobile-built-in-call fault "expr-reified"
+            (cenegetfx-sink-mobile-built-in-call (make-fault-internal)
+              "expr-reified"
               (next)))
         #/fn expr
         #/sink-perffx-run-cenegetfx
-          (cenegetfx-sink-mobile-built-in-call fault "perffx-done"
+          (cenegetfx-sink-mobile-built-in-call (make-fault-internal)
+            "perffx-done"
             expr)))
       (cenegetfx-later #/fn
-        (cenegetfx-sink-mobile-built-in-call fault "mobile-reified"
+        (cenegetfx-sink-mobile-built-in-call (make-fault-internal)
+          "mobile-reified"
           (next))))))
 
 (define/contract
@@ -457,7 +461,7 @@
   #/dissect mobile-arg (sink-mobile arg make-arg-expr _)
   #/cenegetfx-bind (cenegetfx-sink-call-binary fault func arg)
   #/fn func-result
-  #/cenegetfx-done #/make-sink-mobile fault func-result
+  #/cenegetfx-done #/make-sink-mobile func-result
     (sink-perffx-bind make-func-expr #/fn func-expr
       (sink-perffx-bind make-arg-expr #/fn arg-expr
       #/sink-perffx-done #/sink-cexpr-call func-expr arg-expr))
@@ -1625,13 +1629,13 @@
   (define/contract
     (sink-extfx-def-func-verbose
       unique-name sink-extfx-def-value-custom main-tag-string n-args
-      racket-func)
+      func)
     (->
       sink-authorized-name?
       (-> sink-authorized-name? sink-name? sink? sink-extfx?)
       immutable-string?
       exact-positive-integer?
-      procedure?
+      sink?
       sink-extfx?)
     (sink-extfx-claim-and-split unique-name 2
     #/dissectfn (list unique-name-for-macro unique-name-for-impl)
@@ -1678,8 +1682,7 @@
         qualified-main-tag-authorized-name
         (sink-table #/table-empty)
         (sink-opaque-fn #/fn struct-value
-          (cenegetfx-done
-            (sink-fn-curried-fault n-args racket-func))))
+          (cenegetfx-done func)))
       
       ))
   
@@ -1694,8 +1697,8 @@
       void?)
     (add-init-essentials-step! #/fn unique-name
       (sink-extfx-def-func-verbose
-        unique-name sink-extfx-def-value-custom main-tag-string
-        n-args racket-func)))
+        unique-name sink-extfx-def-value-custom main-tag-string n-args
+        (sink-fn-curried-fault n-args racket-func))))
   
   (define-syntax (def-func-fault! stx)
     (syntax-parse stx #/
@@ -1896,6 +1899,53 @@
         unique-name main-tag-string proj-strings)))
   
   (define/contract
+    (sink-extfx-def-macro-verbose
+      unique-name sink-extfx-def-value-custom name-string body)
+    (->
+      sink-authorized-name?
+      (-> sink-authorized-name? sink-name? sink? sink-extfx?)
+      immutable-string?
+      (->
+        sink-fault?
+        sink-authorized-name? sink? sink-text-input-stream?
+        (->
+          sink-authorized-name? sink? sink-text-input-stream?
+          sink-cexpr?
+          sink-extfx?)
+        sink-extfx?)
+      sink-extfx?)
+    (sink-extfx-claim-freshen unique-name #/fn unique-name
+    #/sink-extfx-def-value-custom unique-name
+      (sink-name-for-bounded-cexpr-op
+      #/sink-name-for-string #/sink-string name-string)
+      (macro-impl #/fn
+        fault unique-name qualify text-input-stream output-stream then
+        
+        (body fault unique-name qualify text-input-stream
+        #/fn unique-name qualify text-input-stream cexpr
+        #/sink-extfx-cexpr-write fault output-stream cexpr
+        #/fn output-stream
+        #/then unique-name qualify text-input-stream output-stream))))
+  
+  (define/contract
+    (def-macro-verbose! sink-extfx-def-value-custom name-string body)
+    (->
+      (-> sink-authorized-name? sink-name? sink? sink-extfx?)
+      immutable-string?
+      (->
+        sink-fault?
+        sink-authorized-name? sink? sink-text-input-stream?
+        (->
+          sink-authorized-name? sink? sink-text-input-stream?
+          sink-cexpr?
+          sink-extfx?)
+        sink-extfx?)
+      void?)
+    (add-init-essentials-step! #/fn unique-name
+      (sink-extfx-def-macro-verbose
+        unique-name sink-extfx-def-value-custom name-string body)))
+  
+  (define/contract
     (sink-extfx-def-macro unique-name name-string body)
     (->
       sink-authorized-name?
@@ -1909,17 +1959,9 @@
           sink-extfx?)
         sink-extfx?)
       sink-extfx?)
-    (sink-extfx-def-value-for-package unique-name
-      (sink-name-for-bounded-cexpr-op
-      #/sink-name-for-string #/sink-string name-string)
-      (macro-impl #/fn
-        fault unique-name qualify text-input-stream output-stream then
-        
-        (body fault unique-name qualify text-input-stream
-        #/fn unique-name qualify text-input-stream cexpr
-        #/sink-extfx-cexpr-write fault output-stream cexpr
-        #/fn output-stream
-        #/then unique-name qualify text-input-stream output-stream))))
+    (sink-extfx-claim-freshen unique-name #/fn unique-name
+    #/sink-extfx-def-macro-verbose unique-name
+      sink-extfx-def-value-for-package name-string body))
   
   (define/contract (def-macro! name-string body)
     (->
@@ -2918,11 +2960,61 @@
   
   ; TODO BUILTINS: Implement `defn`, probably in a Cene prelude.
   
-  (define (parse-param param)
+  (define/contract (parse-param param)
+    (-> id-or-expr? #/maybe/c sink-name?)
     (expect param
       (id-or-expr-id param-located-string param-qualified-name)
       (nothing)
     #/just #/sink-authorized-name-get-name param-qualified-name))
+  
+  (define/contract (sink-extfx-parse-func-body fault args then)
+    (-> sink-fault? (listof id-or-expr?)
+      (-> (listof sink-name?) sink-cexpr? sink-extfx?)
+      sink-extfx?)
+    (expect (reverse args) (cons body rev-params)
+      (sink-extfx-cene-err fault "Expected a function body to have a body expression")
+    #/sink-extfx-run-cenegetfx
+      (cenegetfx-list-map #/list-map rev-params #/fn param
+        (expect (parse-param param) (just param)
+          (cenegetfx-cene-err fault "Expected every parameter of a function body to be an identifier")
+        #/cenegetfx-done param))
+    #/fn rev-params
+    #/if (sink-names-have-duplicate? rev-params)
+      (sink-extfx-cene-err fault "Expected every parameter of a function body to be unique")
+    #/then rev-params (id-or-expr->cexpr body)))
+  
+  ; TODO: See if this should make use of `sink-extfx-parse-func-body`.
+  ; One problem is that this needs to check that the blame parameter
+  ; is distinct from the others. We could just parse the function body
+  ; as a blame-oblivious function body first and then designate one of
+  ; the resulting parameters as the blame parameter, but then the
+  ; error messages might not be that good. Yet another issue is that
+  ; `sink-extfx-parse-func-body` doesn't check that there's at least
+  ; one parameter.
+  ;
+  (define/contract (sink-extfx-parse-func-body-fault fault args then)
+    (-> sink-fault? (listof id-or-expr?)
+      (-> sink-name? sink-name? (listof sink-name?) sink-cexpr?
+        sink-extfx?)
+      sink-extfx?)
+    (expect args (cons fault-param args)
+      (sink-extfx-cene-err fault "Expected a blame-aware function body to have a blame parameter")
+    #/expect (parse-param fault-param) (just fault-param)
+      (sink-extfx-cene-err fault "Expected the blame parameter of a blame-aware function body to be an identifier")
+    #/expect (reverse args) (cons body rev-params)
+      (sink-extfx-cene-err fault "Expected a blame-aware function body to have a body expression")
+    #/sink-extfx-run-cenegetfx
+      (cenegetfx-list-map #/list-map rev-params #/fn param
+        (expect (parse-param param) (just param)
+          (cenegetfx-cene-err fault "Expected every parameter of a blame-aware function body to be an identifier")
+        #/cenegetfx-done param))
+    #/fn rev-params
+    #/if (sink-names-have-duplicate? #/cons fault-param rev-params)
+      (sink-extfx-cene-err fault "Expected every parameter of a blame-aware function body to be unique, including the blame parameter")
+    #/expect rev-params (cons last-param rev-past-params)
+      (sink-extfx-cene-err fault "Expected a blame-aware function body to have at least one parameter aside from the blame parameter")
+    #/then fault-param last-param rev-past-params
+      (id-or-expr->cexpr body)))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-macro! "fn-blame" #/fn
@@ -2932,26 +3024,11 @@
       fault unique-name qualify text-input-stream
       sink-name-for-local-variable
     #/fn unique-name qualify text-input-stream args
-    #/expect args (cons fault-param args)
-      (sink-extfx-cene-err fault "Expected a fn-blame form to have a blame parameter")
-    #/expect (parse-param fault-param) (just fault-param)
-      (sink-extfx-cene-err fault "Expected the blame parameter of a fn-blame form to be an identifier")
-    #/expect (reverse args) (cons body rev-params)
-      (sink-extfx-cene-err fault "Expected a fn-blame form to have a body expression")
-    #/sink-extfx-run-cenegetfx
-      (cenegetfx-list-map #/list-map rev-params #/fn param
-        (expect (parse-param param) (just param)
-          (cenegetfx-cene-err fault "Expected every parameter of a fn form to be an identifier")
-        #/cenegetfx-done param))
-    #/fn rev-params
-    #/if (sink-names-have-duplicate? #/cons fault-param rev-params)
-      (sink-extfx-cene-err fault "Expected every parameter of a fn form to be unique, including the blame parameter")
-    #/expect rev-params (cons last-param rev-past-params)
-      (sink-extfx-cene-err fault "Expected a fn-blame form to have at least one parameter aside from the blame parameter")
+    #/sink-extfx-parse-func-body-fault fault args
+    #/fn fault-param last-param rev-past-params body
     #/then unique-name qualify text-input-stream
       (list-foldl
-        (sink-cexpr-opaque-fn-fault fault-param last-param
-          (id-or-expr->cexpr body))
+        (sink-cexpr-opaque-fn-fault fault-param last-param body)
         rev-past-params
       #/fn body param
         (sink-cexpr-opaque-fn param body))))
@@ -2963,18 +3040,9 @@
       fault unique-name qualify text-input-stream
       sink-name-for-local-variable
     #/fn unique-name qualify text-input-stream args
-    #/expect (reverse args) (cons body rev-params)
-      (sink-extfx-cene-err fault "Expected a fn form to have a body expression")
-    #/sink-extfx-run-cenegetfx
-      (cenegetfx-list-map #/list-map rev-params #/fn param
-        (expect (parse-param param) (just param)
-          (cenegetfx-cene-err fault "Expected every parameter of a fn form to be an identifier")
-        #/cenegetfx-done param))
-    #/fn rev-params
-    #/if (sink-names-have-duplicate? rev-params)
-      (sink-extfx-cene-err fault "Expected every parameter of a fn form to be mutually unique")
+    #/sink-extfx-parse-func-body fault args #/fn rev-params body
     #/then unique-name qualify text-input-stream
-      (list-foldl (id-or-expr->cexpr body) rev-params #/fn body param
+      (list-foldl body rev-params #/fn body param
         (sink-cexpr-opaque-fn param body))))
   
   
@@ -3259,8 +3327,8 @@
   ;   procure-macro-implementation-getdef
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
-  (def-func-fault! "mobile-reified" fault value
-    (cenegetfx-done #/sink-mobile-reified fault value))
+  (def-func! "mobile-reified" value
+    (cenegetfx-done #/sink-mobile-reified value))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   ;
@@ -3309,7 +3377,7 @@
     ; TODO: See if we can make a variation of this that passes an
     ; `explicit-fault` parameter to `cenegetfx-cexpr-eval`.
     #/cenegetfx-bind (cenegetfx-cexpr-eval fault expr) #/fn value
-    #/cenegetfx-done #/make-sink-mobile fault value
+    #/cenegetfx-done #/make-sink-mobile value
       (sink-perffx-run-cenegetfx
         (cenegetfx-sink-mobile-built-in-call fault "perffx-done"
           mobile-expr))
@@ -4108,6 +4176,63 @@
                 (expect (sink-name? name) #t
                   (cenegetfx-cene-err fault "Expected the input to an extfx-add-init-package-step qualify function to be a name")
                 #/cenegetfx-qualify name))))))))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  ; TODO: Use this.
+  (def-macro-verbose! sink-extfx-def-value-for-prelude
+    "prelude-to-everyone-def-func-blame"
+    (fn fault unique-name qualify text-input-stream then
+      (sink-extfx-read-bounded-ids-and-exprs
+        fault unique-name qualify text-input-stream
+        sink-name-for-local-variable
+      #/fn unique-name qualify text-input-stream args
+      #/expect args (cons func-name args)
+        ; TODO FAULT: Make this `fault` more specific.
+        (sink-extfx-cene-err fault "Expected a prelude-to-everyone-def-func-blame form to have a name")
+      #/expect func-name
+        (id-or-expr-id
+          func-name-located-string
+          func-name-qualified-name)
+        ; TODO FAULT: Make this `fault` more specific.
+        (sink-extfx-cene-err fault "Expected the name of a prelude-to-everyone-def-func-blame form to be an identifier")
+      #/dissect
+        (sink-string-from-located-string func-name-located-string)
+        (sink-string main-tag-string)
+      #/sink-extfx-parse-func-body-fault fault args
+      #/fn fault-param last-param rev-past-params body
+      #/w- func-expr
+        (list-foldl
+          (sink-cexpr-opaque-fn-fault fault-param last-param body)
+          rev-past-params
+        #/fn body param
+          (sink-cexpr-opaque-fn param body))
+      #/expect (cexpr-is-closed? func-expr) #t
+        (sink-extfx-cene-err fault "Expected the function body of a prelude-to-everyone-def-func-blame form to have no free variables")
+      #/sink-extfx-run-cenegetfx
+        (cenegetfx-cexpr-eval (make-fault-internal) func-expr)
+      #/fn func
+      #/sink-extfx-run-cenegetfx
+        (cenegetfx-bind
+          (cenegetfx-sink-mobile-built-in-call (make-fault-internal)
+            "directive"
+            ; TODO MOBILE: Stop using `sink-mobile-reified` here so
+            ; that we can compile the prelude by compiling the
+            ; expressions of the directives it generates.
+            (sink-mobile-reified
+              (sink-fn-curried-fault 2 #/fn unique-name qualify
+                (cenegetfx-done
+                  (sink-extfx-claim-freshen unique-name
+                  #/fn unique-name
+                  #/sink-extfx-def-func-verbose
+                    unique-name sink-extfx-def-value-for-package
+                    main-tag-string
+                    (length #/cons last-param rev-past-params)
+                    func)))))
+        #/dissectfn
+          (sink-mobile _ (sink-perffx cenegetfx-make-expr) _)
+          cenegetfx-make-expr)
+      #/fn expr
+      #/then unique-name qualify text-input-stream expr)))
   
   
   ; Define the other built-ins where the prelude code can see them.
