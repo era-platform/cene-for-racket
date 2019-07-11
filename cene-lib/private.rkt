@@ -388,6 +388,20 @@
     (getfx-bind (getfx-run-cenegetfx rinfo effects) #/fn intermediate
     #/getfx-run-cenegetfx rinfo #/then intermediate)))
 
+; TODO: This implementation of `cenegetfx-bind` has more helpful error
+; messages. See if we should use it instead.
+#;
+(define/contract (cenegetfx-bind effects then)
+  (-> cenegetfx? (-> any/c any/c) cenegetfx?)
+  (w- marks (current-continuation-marks)
+  #/cenegetfx #/fn rinfo
+    (getfx-bind (getfx-run-cenegetfx rinfo effects) #/fn intermediate
+    #/getfx-run-cenegetfx rinfo
+      (w- thenresult (then intermediate)
+      #/begin0 thenresult
+        (unless (cenegetfx? thenresult)
+          (raise #/exn:fail:contract "wasn't cenegetfx" marks))))))
+
 (define/contract (cenegetfx-map effects func)
   (-> cenegetfx? (-> any/c any/c) cenegetfx?)
   (cenegetfx-bind effects #/fn intermediate
@@ -957,11 +971,16 @@
   #/list-zip-map proj-names proj-cexprs #/fn proj-name proj-cexpr
     (list (sink-name proj-name) proj-cexpr)))
 
-(define/contract (sink-cexpr-call func arg)
+(define/contract (sink-cexpr-call-binary func arg)
   (-> sink-cexpr? sink-cexpr? sink-cexpr?)
   (dissect func (sink-cexpr func)
   #/dissect arg (sink-cexpr arg)
   #/sink-cexpr #/cexpr-call func arg))
+
+(define/contract (sink-cexpr-call-list func args)
+  (-> sink-cexpr? (listof sink-cexpr?) sink-cexpr?)
+  (list-foldl func args #/fn func arg
+    (sink-cexpr-call-binary func arg)))
 
 (define/contract (sink-cexpr-opaque-fn-fault fault-param param body)
   (-> sink-name? sink-name? sink-cexpr? sink-cexpr?)

@@ -21,61 +21,66 @@
 \= TODO: Finish implementing `extfx-read-bounded-exprs`.
 
 \= TODO: Work up to defining `defn` and `def-macro`. In order to do
-\= that, we've been porting things to Cene local variables that we've
-\= already implemented on the Racket side. Once we use these local
-\= variables to define `defn` and `def-macro`, we'll want to repeat a
-\= number of these ported definitions in `defn` form as well. It may
-\= be possible to reuse the definitions rather than copying and
-\= pasting, but let's regard copying and pasting as a serious option
-\= here.
+\= that, we've been porting things to Cene that we've already
+\= implemented on the Racket side.
 
-\= TODO: Make sure we make most of the things we define in the prelude
-\= visible to user-supplied Cene code by using
+\= TODO: We've been implementing them as local variables, but now that
+\= we have `prelude-to-everyone-def-func-blame`, let's implement them
+\= using that instead to avoid having to copy and paste to `defn`
+\= forms later on.
+
+\= TODO: If we define anything that should be visible to user-supplied
+\= Cene code but that doesn't make sense to define with
+\= `prelude-to-everyone-def-func-blame` (e.g. a macro or a struct tag
+\= rather than a function), let's make it visible using
 \= `extfx-add-init-package-step`.
+
+\= TODO: See if we should rename this.
+(prelude-to-everyone-def-func-blame
+  errb bl-implicit bl-explicit message
+  (follow-heart/clamor-err bl-explicit message))
+
+(prelude-to-everyone-def-func-blame
+  fix bl-f f
+  (fn-blame bl-arg arg
+    (c-blame bl-arg (c-blame bl-f f f) arg)))
+
+\= TODO: See if we'll use this.
+\= TODO: See if this should verify its output is a maybe as well.
+(prelude-to-everyone-def-func-blame
+  maybe-bind bl m then
+  (case m nothing (nothing)
+  /cast m just s
+    [errb bl /str-prim:Expected m to be a nothing or a just]
+  /c-blame bl then s))
+
+(prelude-to-everyone-def-func-blame
+  not bl b
+  (case b yep b (nope b)
+  /case b nope b (yep b)
+    [errb bl /str-prim:Expected b to be a yep or a nope]))
+
+\= NOTE: We could also call this `either-bind`.
+\= TODO: See if this should verify its output is an either as well.
+(prelude-to-everyone-def-func-blame
+  and bl a get-b
+  (case a nope s (nope s)
+  /cast a yep s
+    [errb bl /str-prim:Expected a to be a yep or a nope]
+  /c-blame bl get-b s))
+
+(prelude-to-everyone-def-func-blame
+  list-length bl xs
+  (case xs nil (int-zero)
+  /cast xs cons x xs
+    [errb bl /str-prim:Expected xs to be a cons list]
+  /pure-run-getfx /getfx-call-fuse (fuse-int-by-plus) (int-one)
+    (c-blame bl (prelude-to-everyone-construct list-length) xs)))
 
 (directive /fn root-unique-name root-qualify
   (let err
     (fn-blame bl str
       (follow-heart/clamor-err bl str))
-  /let self-app
-    (fn-blame bl f
-      (c-blame bl f f))
-  /let fix
-    (c self-app /fn make-fix
-    /fn-blame bl-f f
-      (let fix (c make-fix make-fix)
-      /fn-blame bl-arg arg
-        (c-blame bl-arg (c-blame bl-f f /c-blame bl-f fix f) arg)))
-  /let maybe-bind
-    \= TODO: See if we'll use this.
-    \= TODO: See if this should verify its output is a maybe as well.
-    (fn-blame bl m then
-      (case m nothing (nothing)
-      /cast m just s
-        [c-blame bl err /str-prim:Expected m to be a nothing or a just]
-      /c-blame bl then s))
-  /let not
-    (fn-blame bl b
-      (case b yep b (nope b)
-      /case b nope b (yep b)
-        [c-blame bl err /str-prim:Expected b to be a yep or a nope]))
-  /let and
-    \= NOTE: We could also call this `either-bind`.
-    \= TODO: See if this should verify its output is an either as
-    \= well.
-    (fn-blame bl a get-b
-      (case a nope s (nope s)
-      /cast a yep s
-        [c-blame bl err /str-prim:Expected a to be a yep or a nope]
-      /c-blame bl get-b s))
-  /let list-length
-    (c fix /fn list-length
-    /fn-blame bl xs
-      (case xs nil (int-zero)
-      /cast xs cons x xs
-        [c-blame bl err /str-prim:Expected xs to be a cons list]
-      /pure-run-getfx /getfx-call-fuse (fuse-int-by-plus) (int-one)
-        (c-blame bl list-length xs)))
   /let is-blame
     (fn x
       (pure-run-getfx/getfx-is-in-dex (dex-blame) x))
@@ -107,7 +112,7 @@
       (c-blame bl pure-is-lt cline b a))
   /let pure-is-lte
     (fn-blame bl cline a b
-      (c not /c-blame bl pure-is-gt cline a b))
+      (not /c-blame bl pure-is-gt cline a b))
   /let pure-is-gte
     (fn-blame bl cline a b
       (c-blame bl pure-is-lte cline b a))
@@ -133,7 +138,7 @@
       (pure-run-getfx/getfx-is-in-dex (dex-int) x))
   /let is-nat
     (fn x
-      (c and (c is-int x) /fn -
+      (and (c is-int x) /fn -
       /c pure-is-lte (cline-int) (int-zero) x))
   /let nat-to-maybe
     (fn-blame bl n
@@ -152,7 +157,8 @@
       (c-blame bl f a1 a2 a3))
   /let loop3
     (fn-blame bl s1 s2 s3 body
-      (c-blame bl give3 s1 s2 s3 /c-blame bl fix body))
+      (c-blame bl give3 s1 s2 s3
+        (c-blame bl (prelude-to-everyone-construct fix) body)))
   /let unique-name-for-split-first
     (authorized-name-get-name/authorized-name-subname
       [c name-of-string /str-prim:first]
@@ -211,7 +217,7 @@
       /c extfx-read-bounded-exprs
         bl-explicit unique-name qualify text-input-stream
       /fn unique-name qualify text-input-stream exprs
-      /let actual-n (c list-length exprs)
+      /let actual-n (list-length exprs)
       /case (c pure-is-lt (cline-int) n actual-n) yep -
         \= TODO FAULT: Make this `bl-explicit` more specific.
         [c-blame bl-explicit err /str-prim:Encountered too many expressions]

@@ -258,7 +258,8 @@
 (struct-easy (sink-perffx getfx)
   #:other #:methods gen:sink [])
 (struct-easy
-  (sink-mobile value make-cexpr cenegetfx-mobile-perffx-mobile)
+  (sink-mobile
+    value perffx-expr-perffx cenegetfx-mobile-perffx-mobile)
   #:other #:methods gen:sink [])
 (struct-easy (sink-int racket-int)
   #:other #:methods gen:sink [])
@@ -281,16 +282,19 @@
   (sink-perffx-run-sink-getfx #/sink-getfx-done result))
 
 (define/contract (sink-perffx-bind effects then)
-  (-> sink-perffx? (-> any/c sink-perffx?) sink-perffx?)
+  (-> sink-perffx? (-> sink? sink-perffx?) sink-perffx?)
   (dissect effects (sink-perffx effects)
   #/sink-perffx-run-sink-getfx
     (sink-getfx-bind effects #/fn intermediate
-    #/dissect (then intermediate) (sink-perffx getfx)
-      getfx)))
+    #/dissect (then intermediate) (sink-perffx sink-getfx)
+      sink-getfx)))
 
 (define/contract (sink-perffx-later then)
   (-> (-> sink-perffx?) sink-perffx?)
-  (sink-perffx-bind (sink-perffx-done #/trivial) #/dissectfn (trivial)
+  ; NOTE: We use a `sink-fault` here right now, but we could use any
+  ; sink value.
+  (sink-perffx-bind (sink-perffx-done #/sink-fault #/trivial)
+  #/dissectfn (sink-fault #/trivial)
   #/then))
 
 (define/contract (sink-perffx-done-later compute-result)
@@ -368,15 +372,15 @@
 
 (define/contract
   (make-sink-mobile-perffx
-    value make-expr cenegetfx-mobile-perffx-mobile)
+    value perffx-expr-perffx cenegetfx-mobile-perffx-mobile)
   (-> sink? sink-perffx? (cenegetfx/c sink-mobile?) sink-mobile?)
-  (sink-mobile value make-expr cenegetfx-mobile-perffx-mobile))
+  (sink-mobile
+    value perffx-expr-perffx cenegetfx-mobile-perffx-mobile))
 
 (define/contract
-  (make-sink-mobile value make-expr cenegetfx-mobile-mobile)
-  (-> sink? sink-perffx? (cenegetfx/c sink-mobile?)
-    sink-mobile?)
-  (make-sink-mobile-perffx value make-expr
+  (make-sink-mobile value perffx-expr-perffx cenegetfx-mobile-mobile)
+  (-> sink? sink-perffx? (cenegetfx/c sink-mobile?) sink-mobile?)
+  (make-sink-mobile-perffx value perffx-expr-perffx
     (cenegetfx-bind cenegetfx-mobile-mobile #/fn mobile-mobile
     #/cenegetfx-sink-mobile-built-in-call (make-fault-internal)
       "perffx-done"
@@ -392,25 +396,15 @@
     (sink-authorized-name? qualified-main-tag-sink-authorized-name)
     #t
     (error "Expected mobile-qualified-main-tag-authorized-name to be a mobile authorized name")
-  #/dissect
+  #/w- qualified-main-tag-sink-name
     (sink-authorized-name-get-name
       qualified-main-tag-sink-authorized-name)
+  #/dissect qualified-main-tag-sink-name
     (sink-name qualified-main-tag-name)
   #/make-sink-mobile
     (make-sink-struct (list qualified-main-tag-name) (list))
-    (sink-perffx-done-later #/fn
-      (sink-perffx-bind
-        (sink-perffx-run-cenegetfx
-          (cenegetfx-bind
-            (cenegetfx-sink-mobile-built-in-construct-nullary fault
-              "nil")
-          #/fn nil
-          #/cenegetfx-sink-mobile-built-in-call fault "expr-construct"
-            mobile-qualified-main-tag-sink-authorized-name nil))
-      #/fn expr
-      #/sink-perffx-run-cenegetfx
-        (cenegetfx-sink-mobile-built-in-call fault "perffx-done"
-          expr)))
+    (sink-perffx-cexpr-perffx-done
+      (sink-cexpr-construct qualified-main-tag-sink-name #/list))
     (cenegetfx-sink-mobile-built-in-call fault
       "mobile-construct-nullary"
       mobile-qualified-main-tag-sink-authorized-name)))
@@ -437,17 +431,7 @@
   (-> sink? sink-mobile?)
   (let next ()
     (make-sink-mobile value
-      (sink-perffx-done-later #/fn
-        (sink-perffx-bind
-          (sink-perffx-run-cenegetfx
-            (cenegetfx-sink-mobile-built-in-call (make-fault-internal)
-              "expr-reified"
-              (next)))
-        #/fn expr
-        #/sink-perffx-run-cenegetfx
-          (cenegetfx-sink-mobile-built-in-call (make-fault-internal)
-            "perffx-done"
-            expr)))
+      (sink-perffx-cexpr-perffx-done #/sink-cexpr-reified value)
       (cenegetfx-later #/fn
         (cenegetfx-sink-mobile-built-in-call (make-fault-internal)
           "mobile-reified"
@@ -457,14 +441,24 @@
   (cenegetfx-sink-mobile-call-binary fault mobile-func mobile-arg)
   (-> sink-fault? sink-mobile? sink-mobile?
     (cenegetfx/c sink-mobile?))
-  (dissect mobile-func (sink-mobile func make-func-expr _)
-  #/dissect mobile-arg (sink-mobile arg make-arg-expr _)
+  (dissect mobile-func (sink-mobile func perffx-expr-perffx-func _)
+  #/dissect mobile-arg (sink-mobile arg perffx-expr-perffx-arg _)
   #/cenegetfx-bind (cenegetfx-sink-call-binary fault func arg)
   #/fn func-result
   #/cenegetfx-done #/make-sink-mobile func-result
-    (sink-perffx-bind make-func-expr #/fn func-expr
-      (sink-perffx-bind make-arg-expr #/fn arg-expr
-      #/sink-perffx-done #/sink-cexpr-call func-expr arg-expr))
+    (sink-perffx-bind perffx-expr-perffx-func #/fn expr-perffx-func
+      (sink-perffx-bind perffx-expr-perffx-arg #/fn expr-perffx-arg
+      #/sink-perffx-run-cenegetfx
+        (cenegetfx-sink-cexpr-perffx-bind expr-perffx-func
+          (sink-name #/unsafe:name #/list
+            'name:mobile-call-binary-func-var)
+        #/fn expr-func
+        #/cenegetfx-sink-cexpr-perffx-bind expr-perffx-arg
+          (sink-name #/unsafe:name #/list
+            'name:mobile-call-binary-arg-var)
+        #/fn expr-arg
+        #/cenegetfx-sink-cexpr-perffx-done
+          (sink-cexpr-call-binary expr-func expr-arg))))
     (cenegetfx-sink-mobile-built-in-call fault "mobile-call-binary"
       mobile-func mobile-arg)))
 
@@ -504,6 +498,71 @@
     #/cenegetfx-done #/list nil)
   #/fn mobile-args
   #/cenegetfx-sink-mobile-call-list fault func mobile-args))
+
+(define/contract
+  (cenegetfx-sink-cexpr-built-in-construct-nullary main-tag-string)
+  (-> immutable-string? #/cenegetfx/c sink-cexpr?)
+  (w- main-tag-name
+    (sink-name-for-string #/sink-string main-tag-string)
+  #/cenegetfx-bind
+    (cenegetfx-sink-name-qualify-for-lang-impl
+      (sink-name-for-struct-main-tag main-tag-name))
+  #/fn qualified-main-tag-sink-authorized-name
+  #/w- qualified-main-tag-sink-name
+    (sink-authorized-name-get-name
+      qualified-main-tag-sink-authorized-name)
+  #/cenegetfx-done
+    (sink-cexpr-construct qualified-main-tag-sink-name #/list)))
+
+(define/contract
+  (cenegetfx-sink-cexpr-built-in-call
+    built-in-name-string . expr-args)
+  (->* (immutable-string?) #:rest (listof sink-cexpr?)
+    (cenegetfx/c sink-cexpr?))
+  (cenegetfx-bind
+    (cenegetfx-sink-cexpr-built-in-construct-nullary
+      built-in-name-string)
+  #/fn func
+  #/cenegetfx-bind
+    (expect expr-args (list) (cenegetfx-done expr-args)
+    ; NOTE: Nullary built-in functions work differently. We have to
+    ; pass them `(nil)`. Yes, this means
+    ; `cenegetfx-sink-cexpr-built-in-call` can be used to call a
+    ; built-in unary function as though it were nullary, but we just
+    ; don't do that.
+    #/cenegetfx-bind
+      (cenegetfx-sink-cexpr-built-in-construct-nullary "nil")
+    #/fn nil
+    #/cenegetfx-done #/list nil)
+  #/fn expr-args
+  #/cenegetfx-done #/sink-cexpr-call-list func expr-args))
+
+(define/contract (cenegetfx-sink-cexpr-perffx-done expr-result)
+  (-> sink-cexpr? #/cenegetfx/c sink-cexpr?)
+  (cenegetfx-sink-cexpr-built-in-call "perffx-done" expr-result))
+
+(define/contract (sink-perffx-cexpr-perffx-done expr-result)
+  (-> sink-cexpr? sink-perffx?)
+  (sink-perffx-run-cenegetfx
+    (cenegetfx-sink-cexpr-perffx-done expr-result)))
+
+(define/contract
+  (cenegetfx-sink-cexpr-perffx-bind
+    expr-prefix
+    intermediate-var
+    expr-intermediate-to-cenegetfx-expr-suffix)
+  (->
+    sink-cexpr?
+    sink-name?
+    (-> sink-cexpr? #/cenegetfx/c sink-cexpr?)
+    (cenegetfx/c sink-cexpr?))
+  (cenegetfx-bind
+    (expr-intermediate-to-cenegetfx-expr-suffix
+      (sink-cexpr-var intermediate-var))
+  #/fn expr-suffix-for-intermediate
+  #/cenegetfx-sink-cexpr-built-in-call "perffx-bind" expr-prefix
+    (sink-cexpr-opaque-fn intermediate-var
+      expr-suffix-for-intermediate)))
 
 
 (struct-easy
@@ -1670,11 +1729,9 @@
         ;
         (macro-impl-specific-number-of-args n-args #/fn args
           (cenegetfx-done
-            (list-foldl
+            (sink-cexpr-call-list
               (sink-cexpr-construct qualified-main-tag-name #/list)
-              args
-            #/fn func arg
-              (sink-cexpr-call func arg)))))
+              args))))
       
       ; We define a Cene struct function implementation containing
       ; the function's run time behavior.
@@ -1745,7 +1802,7 @@
         ;
         (macro-impl-specific-number-of-args 0 #/fn args
           (cenegetfx-done
-            (sink-cexpr-call
+            (sink-cexpr-call-binary
               (sink-cexpr-construct qualified-main-tag-name #/list)
               (make-sink-cexpr-construct csst-trivial #/list)))))
       
@@ -3354,7 +3411,7 @@
     #/cenegetfx-done
       (sink-perffx-bind perffx-value #/fn value
       #/sink-perffx-done #/make-sink-mobile-perffx value
-        (sink-perffx-done mobile-expr)
+        (sink-perffx-done expr)
         (cenegetfx-sink-mobile-built-in-call fault
           "perffx-mobile-evaluated"
           mobile-expr))))
@@ -3378,9 +3435,7 @@
     ; `explicit-fault` parameter to `cenegetfx-cexpr-eval`.
     #/cenegetfx-bind (cenegetfx-cexpr-eval fault expr) #/fn value
     #/cenegetfx-done #/make-sink-mobile value
-      (sink-perffx-run-cenegetfx
-        (cenegetfx-sink-mobile-built-in-call fault "perffx-done"
-          mobile-expr))
+      (sink-perffx-cexpr-perffx-done expr)
       (cenegetfx-sink-mobile-built-in-call fault
         "pure-mobile-evaluated"
         mobile-expr)))
@@ -3392,10 +3447,10 @@
     #/cenegetfx-done value))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
-  (def-func-fault! "perffx-mobile-make-expr" fault mobile
-    (expect mobile (sink-mobile _ make-expr _)
+  (def-func-fault! "perffx-mobile-get-expr-perffx" fault mobile
+    (expect mobile (sink-mobile _ perffx-expr-perffx _)
       (cenegetfx-cene-err fault "Expected mobile to be a mobile value")
-    #/cenegetfx-done make-expr))
+    #/cenegetfx-done perffx-expr-perffx))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   ;
@@ -4178,10 +4233,11 @@
                 #/cenegetfx-qualify name))))))))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
-  ; TODO: Use this.
   (def-macro-verbose! sink-extfx-def-value-for-prelude
     "prelude-to-everyone-def-func-blame"
     (fn fault unique-name qualify text-input-stream then
+      ; TODO: See if we can avoid computing `func-name-qualified-name`
+      ; since we don't use it.
       (sink-extfx-read-bounded-ids-and-exprs
         fault unique-name qualify text-input-stream
         sink-name-for-local-variable
@@ -4200,39 +4256,94 @@
         (sink-string main-tag-string)
       #/sink-extfx-parse-func-body-fault fault args
       #/fn fault-param last-param rev-past-params body
-      #/w- func-expr
+      #/dissect
         (list-foldl
           (sink-cexpr-opaque-fn-fault fault-param last-param body)
           rev-past-params
         #/fn body param
           (sink-cexpr-opaque-fn param body))
+        (sink-cexpr func-expr)
       #/expect (cexpr-is-closed? func-expr) #t
         (sink-extfx-cene-err fault "Expected the function body of a prelude-to-everyone-def-func-blame form to have no free variables")
       #/sink-extfx-run-cenegetfx
         (cenegetfx-cexpr-eval (make-fault-internal) func-expr)
       #/fn func
       #/sink-extfx-run-cenegetfx
-        (cenegetfx-bind
-          (cenegetfx-sink-mobile-built-in-call (make-fault-internal)
-            "directive"
-            ; TODO MOBILE: Stop using `sink-mobile-reified` here so
-            ; that we can compile the prelude by compiling the
-            ; expressions of the directives it generates.
-            (sink-mobile-reified
-              (sink-fn-curried-fault 2 #/fn unique-name qualify
-                (cenegetfx-done
-                  (sink-extfx-claim-freshen unique-name
-                  #/fn unique-name
-                  #/sink-extfx-def-func-verbose
-                    unique-name sink-extfx-def-value-for-package
-                    main-tag-string
-                    (length #/cons last-param rev-past-params)
-                    func)))))
-        #/dissectfn
-          (sink-mobile _ (sink-perffx cenegetfx-make-expr) _)
-          cenegetfx-make-expr)
+        (cenegetfx-sink-cexpr-built-in-call "directive"
+          ; TODO MOBILE: Stop using `sink-cexpr-reified` here so that
+          ; we can compile the prelude by compiling the expressions of
+          ; the directives it generates.
+          (sink-cexpr-reified
+            (sink-fn-curried 2 #/fn unique-name qualify
+              (cenegetfx-done
+                (sink-extfx-claim-freshen unique-name
+                #/fn unique-name
+                #/sink-extfx-def-func-verbose
+                  unique-name sink-extfx-def-value-for-package
+                  main-tag-string
+                  (length #/cons last-param rev-past-params)
+                  func)))))
       #/fn expr
       #/then unique-name qualify text-input-stream expr)))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-macro-verbose! sink-extfx-def-value-for-prelude
+    "prelude-to-everyone-construct"
+    (fn fault unique-name qualify text-input-stream then
+      ; TODO: See if we can avoid computing the qualified names since
+      ; we don't use them.
+      (sink-extfx-read-bounded-ids-and-exprs
+        fault unique-name qualify text-input-stream
+        sink-name-for-local-variable
+      #/fn unique-name qualify text-input-stream args
+      #/expect args (cons main-tag-name args)
+        ; TODO FAULT: Make this `fault` more specific.
+        (sink-extfx-cene-err fault "Expected a prelude-to-everyone-construct form to have a main tag name")
+      #/expect main-tag-name
+        (id-or-expr-id
+          main-tag-name-located-string
+          main-tag-name-qualified-name)
+        ; TODO FAULT: Make this `fault` more specific.
+        (sink-extfx-cene-err fault "Expected the main tag name of a prelude-to-everyone-construct form to be an identifier")
+      #/sink-extfx-run-cenegetfx
+        (cenegetfx-sink-name-qualify-for-lang-impl
+          (sink-name-for-struct-main-tag
+            (sink-name-for-string
+              (sink-string-from-located-string
+                main-tag-name-located-string))))
+      #/fn qualified-main-tag-sink-authorized-name
+      #/w- qualified-main-tag-sink-name
+        (sink-authorized-name-get-name
+          qualified-main-tag-sink-authorized-name)
+      #/sink-extfx-run-cenegetfx
+        (w-loop next args args rev-projs (list)
+          (mat args (list) (cenegetfx-done #/reverse rev-projs)
+          #/expect args (list* proj-name proj-expr args)
+            (cenegetfx-cene-err fault "Expected a prelude-to-everyone-construct form to have a projection expression for every projection name")
+          #/expect proj-name
+            (id-or-expr-id
+              proj-name-located-string
+              proj-name-qualified-name)
+            ; TODO FAULT: Make this `fault` more specific.
+            (cenegetfx-cene-err fault "Expected each projection name of a prelude-to-everyone-construct form to be an identifier")
+          #/sink-extfx-run-cenegetfx
+            (cenegetfx-sink-name-qualify-for-lang-impl
+              (sink-name-for-struct-proj qualified-main-tag-sink-name
+                (sink-name-for-string
+                  (sink-string-from-located-string
+                    proj-name-located-string))))
+          #/fn qualified-proj-sink-authorized-name
+          #/w- qualified-proj-sink-name
+            (sink-authorized-name-get-name
+              qualified-proj-sink-authorized-name)
+          #/next args
+            (cons
+              (list qualified-proj-sink-name
+                (id-or-expr->cexpr proj-expr))
+              rev-projs)))
+      #/fn projs
+      #/then unique-name qualify text-input-stream
+        (sink-cexpr-construct qualified-main-tag-sink-name projs))))
   
   
   ; Define the other built-ins where the prelude code can see them.
