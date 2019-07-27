@@ -26,7 +26,7 @@
 
 
 (require #/only-in racket/contract/base
-  -> ->* ->i any/c cons/c list/c listof)
+  -> ->* ->i and/c any/c cons/c list/c listof)
 (require #/only-in racket/contract/region define/contract)
 (require #/only-in racket/generic define/generic)
 (require #/only-in racket/match match-define)
@@ -40,7 +40,7 @@
   list-all list-any list-foldl list-foldr list-kv-map list-map
   list-zip-map)
 (require #/only-in lathe-comforts/maybe
-  just just-value maybe-bind maybe/c maybe-map nothing)
+  just just-value maybe? maybe-bind maybe/c maybe-map nothing)
 (require #/only-in lathe-comforts/string immutable-string?)
 (require #/only-in lathe-comforts/struct struct-easy)
 (require #/only-in lathe-comforts/trivial trivial)
@@ -51,8 +51,7 @@
 (require #/only-in effection/order
   assocs->table-if-mutually-unique cline-exact-rational
   dex-exact-rational dex-immutable-string fuse-exact-rational-by-plus
-  fuse-exact-rational-by-times getfx-is-eq-by-dex table-kv-all?
-  table-v-all?)
+  fuse-exact-rational-by-times)
 (require #/only-in effection/order/base
   cline-by-dex cline-default cline-fix cline-give-up cline-opaque
   cline-result? cline-struct dex? dex-cline dex-default dex-dex dexed?
@@ -119,11 +118,13 @@
 
 
 
-(define cssm-yep (core-sink-struct "yep" #/list "val"))
-(define cssm-nope (core-sink-struct "nope" #/list "val"))
+(define cssm-trivial (core-sink-struct "trivial" #/list))
 
 (define cssm-nothing (core-sink-struct "nothing" #/list))
 (define cssm-just (core-sink-struct "just" #/list "val"))
+
+(define cssm-yep (core-sink-struct "yep" #/list "val"))
+(define cssm-nope (core-sink-struct "nope" #/list "val"))
 
 (define cssm-assoc (core-sink-struct "assoc" #/list "key" "val"))
 
@@ -142,7 +143,11 @@
 
 (define cssm-struct-metadata
   (core-sink-struct "struct-metadata"
-  #/list "main-tag-name" "projections"))
+  #/list
+    "maybe-i-am-an-author"
+    "maybe-i-am-a-user"
+    "innate-main-tag-entry"
+    "projections"))
 
 (define cssm-carried
   (core-sink-struct "carried" #/list "main" "carry"))
@@ -156,11 +161,13 @@
 
 (define essential-tags
   (list
-    cssm-yep
-    cssm-nope
+    cssm-trivial
     
     cssm-nothing
     cssm-just
+    
+    cssm-yep
+    cssm-nope
     
     cssm-assoc
     
@@ -182,6 +189,12 @@
 (define minimal-and-essential-tags
   (append minimal-tags essential-tags))
 
+
+; TODO: See if we should add this to Lathe Comforts.
+(define/contract (maybe-all? maybe-value check-value?)
+  (-> maybe? (-> any/c boolean?) boolean?)
+  (expect maybe-value (just value) #t
+  #/check-value? value))
 
 ; TODO: We used this in `effection/order/base`, and we're using it
 ; again here. See if it should be an export of Effection.
@@ -345,7 +358,7 @@
 ; `expr-case`, and `expr-{dex,...}-struct` so that they take mobile
 ; authorized names rather than unadorned authorized names. We'll also
 ; need to take care of the TODO MOBILE described in
-; `cenegetfx-sink-mobile-built-in-construct-nullary`.)
+; `sink-mobile-built-in-construct-nullary`.)
 ;
 ; We're using the terminology "mobile" as seen in sources like
 ; Tom Murphy VII's "Modal Types for Mobile Code," where
@@ -387,51 +400,43 @@
       mobile-mobile)))
 
 (define/contract
-  (sink-mobile-construct-nullary
-    fault mobile-qualified-main-tag-sink-authorized-name)
+  (sink-mobile-construct-nullary-as-someone
+    fault mobile-innate-main-tag-entry)
   (-> sink-fault? sink-mobile? sink-mobile?)
-  (dissect mobile-qualified-main-tag-sink-authorized-name
-    (sink-mobile qualified-main-tag-sink-authorized-name _ _)
-  #/expect
-    (sink-authorized-name? qualified-main-tag-sink-authorized-name)
-    #t
-    (error "Expected mobile-qualified-main-tag-authorized-name to be a mobile authorized name")
-  #/w- qualified-main-tag-sink-name
-    (sink-authorized-name-get-name
-      qualified-main-tag-sink-authorized-name)
-  #/dissect qualified-main-tag-sink-name
-    (sink-name qualified-main-tag-name)
+  (dissect mobile-innate-main-tag-entry
+    (sink-mobile innate-main-tag-entry _ _)
+  #/expect innate-main-tag-entry
+    (sink-innate-main-tag-entry
+      main-tag-name author-must-be user-must-be)
+    (error "Expected mobile-innate-main-tag-entry to be a mobile innate main tag entry")
+  #/expect user-must-be (sink-you-must-be-someone)
+    (error "Expected mobile-innate-main-tag-entry to be a mobile innate main tag entry where the client of the tag could be anyone")
   #/make-sink-mobile
-    (make-sink-struct (list qualified-main-tag-name) (list))
-    (sink-perffx-cexpr-perffx-done
-      (sink-cexpr-construct qualified-main-tag-sink-name #/list))
+    (make-sink-struct (list innate-main-tag-entry) (list))
+    (sink-perffx-done #/sink-cexpr-perffx-done
+      (sink-cexpr-construct innate-main-tag-entry #/list))
     (cenegetfx-sink-mobile-built-in-call fault
-      "mobile-construct-nullary"
-      mobile-qualified-main-tag-sink-authorized-name)))
+      "mobile-construct-nullary-as-someone"
+      mobile-innate-main-tag-entry)))
 
 (define/contract
-  (cenegetfx-sink-mobile-built-in-construct-nullary
-    fault main-tag-string)
-  (-> sink-fault? immutable-string? #/cenegetfx/c sink-mobile?)
-  (w- main-tag-name
-    (sink-name-for-string #/sink-string main-tag-string)
-  #/cenegetfx-bind
-    (cenegetfx-sink-name-qualify-for-lang-impl
-      (sink-name-for-struct-main-tag main-tag-name))
-  #/fn qualified-main-tag-sink-authorized-name
-  #/cenegetfx-done
-    (sink-mobile-construct-nullary fault
-      ; TODO MOBILE: Stop using `sink-mobile-reified` here, and
-      ; instead express the name using a module import so that
-      ; compilers can anticipate having to serialize this kind of
-      ; value.
-      (sink-mobile-reified qualified-main-tag-sink-authorized-name))))
+  (sink-mobile-built-in-construct-nullary fault main-tag-string)
+  (-> sink-fault? immutable-string? sink-mobile?)
+  (sink-mobile-construct-nullary-as-someone fault
+    ; TODO MOBILE: Stop using `sink-mobile-reified` here, and instead
+    ; express the name using a module import so that compilers can
+    ; anticipate having to serialize this kind of value.
+    (sink-mobile-reified #/sink-innate-main-tag-entry
+      (sink-name-for-string #/sink-string main-tag-string)
+      (sink-you-must-be-this-lang-impl)
+      (sink-you-must-be-someone))))
 
 (define/contract (sink-mobile-reified value)
   (-> sink? sink-mobile?)
   (let next ()
     (make-sink-mobile value
-      (sink-perffx-cexpr-perffx-done #/sink-cexpr-reified value)
+      (sink-perffx-done #/sink-cexpr-perffx-done
+        (sink-cexpr-reified value))
       (cenegetfx-later #/fn
         (cenegetfx-sink-mobile-built-in-call (make-fault-internal)
           "mobile-reified"
@@ -448,16 +453,16 @@
   #/cenegetfx-done #/make-sink-mobile func-result
     (sink-perffx-bind perffx-expr-perffx-func #/fn expr-perffx-func
       (sink-perffx-bind perffx-expr-perffx-arg #/fn expr-perffx-arg
-      #/sink-perffx-run-cenegetfx
-        (cenegetfx-sink-cexpr-perffx-bind expr-perffx-func
+      #/sink-perffx-done
+        (sink-cexpr-perffx-bind expr-perffx-func
           (sink-name #/unsafe:name #/list
             'name:mobile-call-binary-func-var)
         #/fn expr-func
-        #/cenegetfx-sink-cexpr-perffx-bind expr-perffx-arg
+        #/sink-cexpr-perffx-bind expr-perffx-arg
           (sink-name #/unsafe:name #/list
             'name:mobile-call-binary-arg-var)
         #/fn expr-arg
-        #/cenegetfx-sink-cexpr-perffx-done
+        #/sink-cexpr-perffx-done
           (sink-cexpr-call-binary expr-func expr-arg))))
     (cenegetfx-sink-mobile-built-in-call fault "mobile-call-binary"
       mobile-func mobile-arg)))
@@ -481,92 +486,60 @@
     fault built-in-name-string . mobile-args)
   (->* (sink-fault? immutable-string?) #:rest (listof sink-mobile?)
     (cenegetfx/c sink-mobile?))
-  (cenegetfx-bind
-    (cenegetfx-sink-mobile-built-in-construct-nullary
+  (cenegetfx-sink-mobile-call-list fault
+    (sink-mobile-built-in-construct-nullary
       fault built-in-name-string)
-  #/fn func
-  #/cenegetfx-bind
-    (expect mobile-args (list) (cenegetfx-done mobile-args)
-    ; NOTE: Nullary built-in functions work differently. We have to
-    ; pass them `(nil)`. Yes, this means
-    ; `cenegetfx-sink-mobile-built-in-call` can be used to call a
-    ; built-in unary function as though it were nullary, but we just
-    ; don't do that.
-    #/cenegetfx-bind
-      (cenegetfx-sink-mobile-built-in-construct-nullary fault "nil")
-    #/fn nil
-    #/cenegetfx-done #/list nil)
-  #/fn mobile-args
-  #/cenegetfx-sink-mobile-call-list fault func mobile-args))
+    (expect mobile-args (list) mobile-args
+      ; NOTE: Nullary built-in functions work differently. We have to
+      ; pass them `(nil)`. Yes, this means
+      ; `cenegetfx-sink-mobile-built-in-call` can be used to call a
+      ; built-in unary function as though it were nullary, but we just
+      ; don't do that.
+      (list #/sink-mobile-built-in-construct-nullary fault "nil"))))
 
 (define/contract
-  (cenegetfx-sink-cexpr-built-in-construct-nullary main-tag-string)
-  (-> immutable-string? #/cenegetfx/c sink-cexpr?)
-  (w- main-tag-name
-    (sink-name-for-string #/sink-string main-tag-string)
-  #/cenegetfx-bind
-    (cenegetfx-sink-name-qualify-for-lang-impl
-      (sink-name-for-struct-main-tag main-tag-name))
-  #/fn qualified-main-tag-sink-authorized-name
-  #/w- qualified-main-tag-sink-name
-    (sink-authorized-name-get-name
-      qualified-main-tag-sink-authorized-name)
-  #/cenegetfx-done
-    (sink-cexpr-construct qualified-main-tag-sink-name #/list)))
+  (sink-cexpr-built-in-construct-nullary main-tag-string)
+  (-> immutable-string? sink-cexpr?)
+  (sink-cexpr-construct
+    (sink-innate-main-tag-entry
+      (sink-name-for-string #/sink-string main-tag-string)
+      (sink-you-must-be-this-lang-impl)
+      (sink-you-must-be-someone))
+    (list)))
 
 (define/contract
-  (cenegetfx-sink-cexpr-built-in-call
-    built-in-name-string . expr-args)
-  (->* (immutable-string?) #:rest (listof sink-cexpr?)
-    (cenegetfx/c sink-cexpr?))
-  (cenegetfx-bind
-    (cenegetfx-sink-cexpr-built-in-construct-nullary
-      built-in-name-string)
-  #/fn func
-  #/cenegetfx-bind
-    (expect expr-args (list) (cenegetfx-done expr-args)
-    ; NOTE: Nullary built-in functions work differently. We have to
-    ; pass them `(nil)`. Yes, this means
-    ; `cenegetfx-sink-cexpr-built-in-call` can be used to call a
-    ; built-in unary function as though it were nullary, but we just
-    ; don't do that.
-    #/cenegetfx-bind
-      (cenegetfx-sink-cexpr-built-in-construct-nullary "nil")
-    #/fn nil
-    #/cenegetfx-done #/list nil)
-  #/fn expr-args
-  #/cenegetfx-done #/sink-cexpr-call-list func expr-args))
+  (sink-cexpr-built-in-call built-in-name-string . expr-args)
+  (->* (immutable-string?) #:rest (listof sink-cexpr?) sink-cexpr?)
+  (sink-cexpr-call-list
+    (sink-cexpr-built-in-construct-nullary built-in-name-string)
+    (expect expr-args (list) expr-args
+      ; NOTE: Nullary built-in functions work differently. We have to
+      ; pass them `(nil)`. Yes, this means `sink-cexpr-built-in-call`
+      ; can be used to call a built-in unary function as though it
+      ; were nullary, but we just don't do that.
+      (list #/sink-cexpr-built-in-construct-nullary "nil"))))
 
-(define/contract (cenegetfx-sink-cexpr-perffx-done expr-result)
-  (-> sink-cexpr? #/cenegetfx/c sink-cexpr?)
-  (cenegetfx-sink-cexpr-built-in-call "perffx-done" expr-result))
-
-(define/contract (sink-perffx-cexpr-perffx-done expr-result)
-  (-> sink-cexpr? sink-perffx?)
-  (sink-perffx-run-cenegetfx
-    (cenegetfx-sink-cexpr-perffx-done expr-result)))
+(define/contract (sink-cexpr-perffx-done expr-result)
+  (-> sink-cexpr? sink-cexpr?)
+  (sink-cexpr-built-in-call "perffx-done" expr-result))
 
 (define/contract
-  (cenegetfx-sink-cexpr-perffx-bind
-    expr-prefix
-    intermediate-var
-    expr-intermediate-to-cenegetfx-expr-suffix)
-  (->
-    sink-cexpr?
-    sink-name?
-    (-> sink-cexpr? #/cenegetfx/c sink-cexpr?)
-    (cenegetfx/c sink-cexpr?))
-  (cenegetfx-bind
-    (expr-intermediate-to-cenegetfx-expr-suffix
-      (sink-cexpr-var intermediate-var))
-  #/fn expr-suffix-for-intermediate
-  #/cenegetfx-sink-cexpr-built-in-call "perffx-bind" expr-prefix
+  (sink-cexpr-perffx-bind
+    expr-prefix intermediate-var expr-intermediate-to-expr-suffix)
+  (-> sink-cexpr? sink-name? (-> sink-cexpr? sink-cexpr?) sink-cexpr?)
+  (sink-cexpr-built-in-call "perffx-bind" expr-prefix
     (sink-cexpr-opaque-fn intermediate-var
-      expr-suffix-for-intermediate)))
+      (expr-intermediate-to-expr-suffix
+        (sink-cexpr-var intermediate-var)))))
 
 
 (struct-easy
-  (cene-struct-metadata tags proj-string-to-name proj-name-to-string))
+  (cene-struct-metadata
+    maybe-i-am-an-author
+    maybe-i-am-a-user
+    tags
+    proj-string-to-name
+    proj-name-to-string))
 
 (define/contract
   (cenegetfx-verify-sink-struct-metadata fault sink-metadata)
@@ -574,10 +547,42 @@
   (cenegetfx-tag cssm-struct-metadata #/fn csst-struct-metadata
   #/expect
     (unmake-sink-struct-maybe csst-struct-metadata sink-metadata)
-    (just #/list main-tag-name projs)
+    (just
+      (list
+        maybe-i-am-an-author maybe-i-am-a-user main-tag-entry projs))
     (cenegetfx-cene-err fault "Expected a defined struct metadata entry to be a struct-metadata")
-  #/expect main-tag-name (sink-name main-tag-name)
-    (cenegetfx-cene-err fault "Expected a defined struct metadata entry to have a main tag name that was a name")
+  #/cenegetfx-bind
+    (sink-maybe->cenegetfx-maybe-racket maybe-i-am-an-author)
+  #/expectfn (just maybe-i-am-an-author)
+    (cenegetfx-cene-err fault "Expected a defined struct metadata entry to have a maybe-i-am-an-author field that was a nothing or a just")
+  #/expect
+    (maybe-all? maybe-i-am-an-author #/fn i-am-an-author
+      (sink-i-am? i-am-an-author))
+    #t
+    (cenegetfx-cene-err fault "Expected a defined struct metadata entry to have a maybe-i-am-an-author field that was a maybe of an authorization witness")
+  #/cenegetfx-bind
+    (sink-maybe->cenegetfx-maybe-racket maybe-i-am-a-user)
+  #/expectfn (just maybe-i-am-a-user)
+    (cenegetfx-cene-err fault "Expected a defined struct metadata entry to have a maybe-i-am-a-user field that was a nothing or a just")
+  #/expect
+    (maybe-all? maybe-i-am-a-user #/fn i-am-a-user
+      (sink-i-am? i-am-a-user))
+    #t
+    (cenegetfx-cene-err fault "Expected a defined struct metadata entry to have a maybe-i-am-a-user field that was a maybe of an authorization witness")
+  #/expect main-tag-entry
+    (sink-innate-main-tag-entry
+      main-tag-name author-must-be user-must-be)
+    (cenegetfx-cene-err fault "Expected a defined struct metadata entry to have an innate main tag entry that was an innate main tag entry")
+  #/expect
+    (maybe-all? maybe-i-am-an-author #/fn i-am-an-author
+      (sink-i-am-whom-i-must-be? i-am-an-author author-must-be))
+    #t
+    (cenegetfx-cene-err fault "Expected a defined struct metadata entry to have a maybe-i-am-an-author field that was a maybe of an authorization witness for the metadata entry's innate main tag entry")
+  #/expect
+    (maybe-all? maybe-i-am-a-user #/fn i-am-a-user
+      (sink-i-am-whom-i-must-be? i-am-a-user user-must-be))
+    #t
+    (cenegetfx-cene-err fault "Expected a defined struct metadata entry to have a maybe-i-am-a-user field that was a maybe of an authorization witness for the metadata entry's innate main tag entry")
   #/cenegetfx-bind (sink-list->cenegetfx-maybe-racket projs)
   #/expectfn (just projs)
     (cenegetfx-cene-err fault "Expected a defined struct metadata entry to have a cons list of projections")
@@ -608,10 +613,24 @@
     (just proj-name-to-string)
     (cenegetfx-cene-err fault "Expected a defined struct metadata entry to have a projection list with mutually unique names")
   #/cenegetfx-done #/cene-struct-metadata
-    (cons main-tag-name
+    maybe-i-am-an-author
+    maybe-i-am-a-user
+    (cons main-tag-entry
       (list-map projs #/dissectfn (list string string-name name)
         name))
     proj-string-to-name proj-name-to-string))
+
+(define/contract
+  (cenegetfx-verify-sink-struct-metadata-authorized-as-user
+    fault sink-metadata)
+  (-> sink-fault? sink? #/cenegetfx/c cene-struct-metadata?)
+  (cenegetfx-bind
+    (cenegetfx-verify-sink-struct-metadata fault sink-metadata)
+  #/fn result
+  #/expect result
+    (cene-struct-metadata _ (just i-am-a-user) _ _ _)
+    (cenegetfx-cene-err fault "Expected the struct metadata entry to have a user authorization witness")
+  #/cenegetfx-done result))
 
 (define/contract (sink-name-for-struct-metadata inner-name)
   (-> sink-name? sink-name?)
@@ -619,7 +638,7 @@
     (list 'name:struct-metadata n)))
 
 (define/contract
-  (sink-extfx-read-struct-metadata
+  (sink-extfx-read-struct-metadata-authorized-as-user
     fault unique-name qualify text-input-stream then)
   (->
     sink-fault?
@@ -642,19 +661,21 @@
   #/fn metadata
   ; TODO FAULT: Make this `fault` more specific.
   #/sink-extfx-run-cenegetfx
-    (cenegetfx-verify-sink-struct-metadata fault metadata)
+    (cenegetfx-verify-sink-struct-metadata-authorized-as-user
+      fault metadata)
   #/fn metadata
   #/then unique-name qualify text-input-stream metadata))
 
 (define/contract (struct-metadata-tags metadata)
-  (-> cene-struct-metadata? #/listof name?)
-  (dissect metadata (cene-struct-metadata tags _ _)
+  (-> cene-struct-metadata?
+    (cons/c sink-innate-main-tag-entry? #/listof name?))
+  (dissect metadata (cene-struct-metadata _ _ tags _ _)
     tags))
 
 (define/contract (struct-metadata-n-projs metadata)
   (-> cene-struct-metadata? natural?)
   (dissect metadata
-    (cene-struct-metadata (cons main-tag-name proj-names) _ _)
+    (cene-struct-metadata _ _ (cons main-tag-entry proj-names) _ _)
   #/length proj-names))
 
 
@@ -673,19 +694,25 @@
     (list-map entries #/dissectfn (list proj-tag val) val)))
 
 (define/contract (normalize-tags-and-vals tags vals)
-  (->i ([tags (listof name?)] [vals list?])
+  (->i
+    (
+      [tags (cons/c sink-innate-main-tag-entry? #/listof name?)]
+      [vals list?])
     #:pre (tags vals) (= (length tags) (add1 #/length vals))
-    [_ (list/c (listof name?) list?)])
-  (dissect tags (cons main-tag proj-tags)
+    [_
+      (list/c
+        (cons/c sink-innate-main-tag-entry? #/listof name?)
+        list?)])
+  (dissect tags (cons main-tag-entry proj-tags)
   #/dissect (normalize-proj-tags-and-vals proj-tags vals)
     (list proj-tags vals)
-  #/list (cons main-tag proj-tags) vals))
+  #/list (cons main-tag-entry proj-tags) vals))
 
 (define/contract
   (sink-struct-op-autoname tags fields name-tag autoname-field-method)
   (->i
     (
-      [tags (listof name?)]
+      [tags (cons/c sink-innate-main-tag-entry? #/listof name?)]
       [fields list?]
       [name-tag symbol?]
       [autoname-field-method (-> any/c any/c)])
@@ -695,16 +722,25 @@
     (normalize-tags-and-vals tags
     #/list-kv-map fields #/fn i field-method
       (list i #/autoname-field-method field-method))
-    (list tags fields)
-  #/list* name-tag tags fields))
+    (list (cons main-tag-entry proj-tags) fields)
+  #/list*
+    name-tag
+    (list-map
+      (cons
+        (just-value #/pure-run-getfx #/getfx-name-of
+          (dex-sink-innate-main-tag-entry)
+          main-tag-entry)
+        proj-tags)
+      (dissectfn (unsafe:name rep) rep))
+    fields))
 
 (define/contract
   (sink-struct-op-autodex a-tags a-fields b-tags b-fields dex-field)
   (->i
     (
-      [a-tags (listof name?)]
+      [a-tags (cons/c sink-innate-main-tag-entry? #/listof name?)]
       [a-fields list?]
-      [b-tags (listof name?)]
+      [b-tags (cons/c sink-innate-main-tag-entry? #/listof name?)]
       [b-fields list?]
       [dex-field dex?])
     #:pre (a-tags a-fields)
@@ -712,12 +748,19 @@
     #:pre (b-tags b-fields)
       (= (length b-tags) (add1 #/length b-fields))
     [_ (maybe/c cline-result?)])
-  (maybe-ordering-or
+  (dissect a-tags (cons a-main-tag-entry a-proj-tags)
+  #/dissect b-tags (cons b-main-tag-entry b-proj-tags)
+  #/maybe-ordering-or
+    (pure-run-getfx #/getfx-compare-by-dex
+      (dex-sink-innate-main-tag-entry)
+      a-main-tag-entry
+      b-main-tag-entry)
+  #/maybe-ordering-or
     (pure-run-getfx #/getfx-compare-by-dex (dex-name)
       (unsafe:name
-      #/list-map a-tags #/dissectfn (unsafe:name tag) tag)
+        (list-map a-proj-tags #/dissectfn (unsafe:name tag) tag))
       (unsafe:name
-      #/list-map b-tags #/dissectfn (unsafe:name tag) tag))
+        (list-map b-proj-tags #/dissectfn (unsafe:name tag) tag)))
   #/maybe-compare-aligned-lists a-fields b-fields #/fn a-field b-field
     (pure-run-getfx
       (getfx-compare-by-dex dex-field a-field b-field))))
@@ -726,7 +769,7 @@
   (getfx-sink-struct-is-in tags comparators getfx-is-in-comparator x)
   (->i
     (
-      [tags (listof name?)]
+      [tags (cons/c sink-innate-main-tag-entry? #/listof name?)]
       [comparators list?]
       [getfx-is-in-comparator (-> any/c any/c #/getfx/c boolean?)]
       [x any/c])
@@ -755,7 +798,7 @@
     getfx-compare-by-comparator a b)
   (->i
     (
-      [tags (listof name?)]
+      [tags (cons/c sink-innate-main-tag-entry? #/listof name?)]
       [comparators list?]
       [getfx-is-in-comparator (-> any/c any/c #/getfx/c boolean?)]
       [getfx-compare-by-comparator
@@ -803,8 +846,15 @@
 
 (struct-easy (dex-internals-sink-struct tags fields)
   (#:guard-easy
-    (unless (and (list? tags) (list-all tags #/fn tag #/name? tag))
-      (error "Expected tags to be a list of names"))
+    (expect tags (cons main-tag-entry proj-tags)
+      (error "Expected tags to be a list")
+      (begin
+        (unless (sink-innate-main-tag-entry? main-tag-entry)
+          (error "Expected tags to be a list where the first element was an innate main tag entry"))
+        (unless
+          (and (list? proj-tags)
+            (list-all proj-tags #/fn tag #/name? tag))
+          (error "Expected tags to be a list where the elements after the first were names"))))
     (unless
       (and
         (list? fields)
@@ -846,17 +896,20 @@
         rev-result (list)
         
         (expect field-dexes (cons dex-field field-dexes)
-          (dissect tags (cons (unsafe:name main-tag-rep) proj-tags)
+          (dissect tags (cons main-tag-entry proj-tags)
           #/dissect
             (normalize-proj-tags-and-vals
               proj-tags
               (reverse rev-result))
             (list proj-tags field-name-reps)
           #/getfx-done #/just #/unsafe:name #/list* 'name:sink-struct
-            (cons main-tag-rep
-              (list-map proj-tags
-              #/dissectfn (unsafe:name proj-tag-rep)
-                proj-tag-rep))
+            (list-map
+              (cons
+                (just-value #/pure-run-getfx #/getfx-name-of
+                  (dex-sink-innate-main-tag-entry)
+                  main-tag-entry)
+                proj-tags)
+              (dissectfn (unsafe:name rep) rep))
             field-name-reps)
         #/dissect field-vals (cons field-val field-vals)
         #/getmaybefx-bind (getfx-name-of dex-field field-val)
@@ -874,20 +927,26 @@
         
         (expect field-dexes (cons dex-field field-dexes)
           (w- result (reverse rev-result)
-          #/dissect tags (cons main-tag proj-tags)
+          #/dissect tags (cons main-tag-entry proj-tags)
           #/dissect (normalize-proj-tags-and-vals proj-tags result)
             (list proj-tags field-dexeds)
-          #/w- tags (cons main-tag proj-tags)
+          #/w- tags (cons main-tag-entry proj-tags)
           #/getfx-done #/just #/unsafe:dexed
             (unsafe:dex #/dex-internals-sink-struct tags
               (list-map field-dexeds
               #/dissectfn (unsafe:dexed dex name val)
                 dex))
             (unsafe:name #/list* 'name:sink-struct
-              (list-map tags #/dissectfn (unsafe:name rep) rep)
+              (list-map
+                (cons
+                  (just-value #/pure-run-getfx #/getfx-name-of
+                    (dex-sink-innate-main-tag-entry)
+                    main-tag-entry)
+                  proj-tags)
+                (dissectfn (unsafe:name rep) rep))
               (list-map field-dexeds
-              #/dissectfn (unsafe:dexed dex (unsafe:name rep) val)
-                rep))
+                (dissectfn (unsafe:dexed dex (unsafe:name rep) val)
+                  rep)))
             x)
         #/dissect field-vals (cons field-val field-vals)
         #/getmaybefx-bind (getfx-dexed-of dex-field field-val)
@@ -901,20 +960,26 @@
   ])
 
 (define/contract (dex-sink-struct tags fields)
-  (->i ([tags (listof name?)] [fields (listof dex?)])
+  (->i
+    (
+      [tags (cons/c sink-innate-main-tag-entry? #/listof name?)]
+      [fields (listof dex?)])
     #:pre (tags fields) (= (length tags) (add1 #/length fields))
     [_ dex?])
   (unsafe:dex #/dex-internals-sink-struct tags fields))
 
 (define/contract (sink-dex-struct tags fields)
-  (->i ([tags (listof name?)] [fields (listof sink-dex?)])
+  (->i
+    (
+      [tags (cons/c sink-innate-main-tag-entry? #/listof name?)]
+      [fields (listof sink-dex?)])
     #:pre (tags fields) (= (length tags) (add1 #/length fields))
     [_ sink-dex?])
   (sink-dex #/dex-sink-struct tags
   #/list-map fields #/dissectfn (sink-dex dex-field)
     dex-field))
 
-(struct-easy (cexpr-dex-struct main-tag-name projs)
+(struct-easy (cexpr-dex-struct main-tag-entry projs)
   
   #:other
   
@@ -924,13 +989,13 @@
     (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
-      (expect this (cexpr-dex-struct main-tag-name projs)
+      (expect this (cexpr-dex-struct main-tag-entry projs)
         (error "Expected this to be a cexpr-dex-struct")
       #/list-any projs #/dissectfn (list proj-name proj-cexpr)
         (-has-free-vars? proj-cexpr env)))
     
     (define (cenegetfx-cexpr-eval-in-env fault this env)
-      (expect this (cexpr-dex-struct main-tag-name projs)
+      (expect this (cexpr-dex-struct main-tag-entry projs)
         (error "Expected this to be a cexpr-dex-struct")
       #/cenegetfx-bind
         (cenegetfx-list-map #/list-map projs
@@ -939,7 +1004,7 @@
       #/fn vals
       #/cenegetfx-done
         (sink-dex #/unsafe:dex #/dex-internals-sink-struct
-          (cons main-tag-name
+          (cons main-tag-entry
           #/list-map projs #/dissectfn (list proj-name proj-cexpr)
             proj-name)
           vals)))
@@ -948,8 +1013,15 @@
 
 (struct-easy (cline-internals-sink-struct tags fields)
   (#:guard-easy
-    (unless (and (list? tags) (list-all tags #/fn tag #/name? tag))
-      (error "Expected tags to be a list of names"))
+    (expect tags (cons main-tag-entry proj-tags)
+      (error "Expected tags to be a list")
+      (begin
+        (unless (sink-innate-main-tag-entry? main-tag-entry)
+          (error "Expected tags to be a list where the first element was an innate main tag entry"))
+        (unless
+          (and (list? proj-tags)
+            (list-all proj-tags #/fn tag #/name? tag))
+          (error "Expected tags to be a list where the elements after the first were names"))))
     (unless
       (and
         (list? fields)
@@ -993,7 +1065,7 @@
         tags fields getfx-is-in-cline getfx-compare-by-cline a b))
   ])
 
-(struct-easy (cexpr-cline-struct main-tag-name projs)
+(struct-easy (cexpr-cline-struct main-tag-entry projs)
   
   #:other
   
@@ -1003,13 +1075,13 @@
     (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
-      (expect this (cexpr-cline-struct main-tag-name projs)
+      (expect this (cexpr-cline-struct main-tag-entry projs)
         (error "Expected this to be a cexpr-cline-struct")
       #/list-any projs #/dissectfn (list proj-name proj-cexpr)
         (-has-free-vars? proj-cexpr env)))
     
     (define (cenegetfx-cexpr-eval-in-env fault this env)
-      (expect this (cexpr-cline-struct main-tag-name projs)
+      (expect this (cexpr-cline-struct main-tag-entry projs)
         (error "Expected this to be a cexpr-cline-struct")
       #/cenegetfx-bind
         (cenegetfx-list-map #/list-map projs
@@ -1018,7 +1090,7 @@
       #/fn vals
       #/cenegetfx-done
         (sink-cline #/unsafe:cline #/cline-internals-sink-struct
-          (cons main-tag-name
+          (cons main-tag-entry
           #/list-map projs #/dissectfn (list proj-name proj-cexpr)
             proj-name)
           vals)))
@@ -1069,7 +1141,7 @@
         #/next fields as bs (cons elem-furged rev-furged))))
   ])
 
-(struct-easy (cexpr-merge-struct main-tag-name projs)
+(struct-easy (cexpr-merge-struct main-tag-entry projs)
   
   #:other
   
@@ -1079,13 +1151,13 @@
     (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
-      (expect this (cexpr-merge-struct main-tag-name projs)
+      (expect this (cexpr-merge-struct main-tag-entry projs)
         (error "Expected this to be a cexpr-merge-struct")
       #/list-any projs #/dissectfn (list proj-name proj-cexpr)
         (-has-free-vars? proj-cexpr env)))
     
     (define (cenegetfx-cexpr-eval-in-env fault this env)
-      (expect this (cexpr-merge-struct main-tag-name projs)
+      (expect this (cexpr-merge-struct main-tag-entry projs)
         (error "Expected this to be a cexpr-merge-struct")
       #/cenegetfx-bind
         (cenegetfx-list-map #/list-map projs
@@ -1095,13 +1167,13 @@
       #/cenegetfx-done
         (sink-merge #/unsafe:merge #/furge-internals-sink-struct
           unsafe:autoname-merge (dex-merge) getfx-call-merge
-          (cons main-tag-name
+          (cons main-tag-entry
           #/list-map projs #/dissectfn (list proj-name proj-cexpr)
             proj-name)
           vals)))
   ])
 
-(struct-easy (cexpr-fuse-struct main-tag-name projs)
+(struct-easy (cexpr-fuse-struct main-tag-entry projs)
   
   #:other
   
@@ -1111,13 +1183,13 @@
     (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
-      (expect this (cexpr-fuse-struct main-tag-name projs)
+      (expect this (cexpr-fuse-struct main-tag-entry projs)
         (error "Expected this to be a cexpr-fuse-struct")
       #/list-any projs #/dissectfn (list proj-name proj-cexpr)
         (-has-free-vars? proj-cexpr env)))
     
     (define (cenegetfx-cexpr-eval-in-env fault this env)
-      (expect this (cexpr-fuse-struct main-tag-name projs)
+      (expect this (cexpr-fuse-struct main-tag-entry projs)
         (error "Expected this to be a cexpr-fuse-struct")
       #/cenegetfx-bind
         (cenegetfx-list-map #/list-map projs
@@ -1127,7 +1199,7 @@
       #/cenegetfx-map
         (sink-fuse #/unsafe:fuse #/furge-internals-sink-struct
           unsafe:autoname-fuse (dex-fuse) getfx-call-fuse
-          (cons main-tag-name
+          (cons main-tag-entry
           #/list-map projs #/dissectfn (list proj-name proj-cexpr)
             proj-name)
           vals)))
@@ -1244,7 +1316,7 @@
   (->i
     (
       [subject-expr sink-cexpr?]
-      [tags (listof name?)]
+      [tags (cons/c sink-innate-main-tag-entry? #/listof name?)]
       [vars (listof sink-name?)]
       [then-expr sink-cexpr?]
       [else-expr sink-cexpr?])
@@ -1279,6 +1351,16 @@
       dexed-rinfo
       (just-value #/pure-run-getfx #/getfx-dexed-of (dex-dex)
         dex-elem))))
+
+(define/contract (cenegetfx-sink-dex-maybe dex-value)
+  (-> sink-dex? #/cenegetfx/c sink-dex?)
+  (dissect dex-value (sink-dex dex-value)
+  #/cenegetfx-tag cssm-nothing #/fn csst-nothing
+  #/cenegetfx-tag cssm-just #/fn csst-just
+  #/cenegetfx-done
+    (sink-dex #/dex-default
+      (dex-sink-struct csst-nothing #/list)
+      (dex-sink-struct csst-just #/list dex-value))))
 
 (define/contract (sink-dex-name)
   (-> sink-dex?)
@@ -1659,30 +1741,46 @@
       #/then unique-name qualify text-input-stream output-stream)))
   
   (define/contract
-    (sink-extfx-def-func-impl-reified
-      unique-name qualified-main-tag-name qualified-proj-tag-names
-      impl)
-    (-> sink-authorized-name? sink-authorized-name? sink-table? sink?
+    (sink-extfx-def-func-impl
+      unique-name main-tag-entry proj-tag-names impl-code)
+    (->
+      sink-authorized-name?
+      sink-innate-main-tag-entry?
+      table?
+      (and/c cexpr? cexpr-is-closed?)
       sink-extfx?)
     (sink-extfx-claim-and-split unique-name 2
     #/dissectfn (list unique-name-for-code unique-name-for-value)
     #/sink-extfx-run-cenegetfx
       (cenegetfx-sink-authorized-name-for-function-implementation-code
-        qualified-main-tag-name qualified-proj-tag-names)
+        main-tag-entry proj-tag-names)
     #/fn target-name-for-code
     #/sink-extfx-run-cenegetfx
       (cenegetfx-sink-authorized-name-for-function-implementation-value
-        qualified-main-tag-name qualified-proj-tag-names)
+        main-tag-entry proj-tag-names)
     #/fn target-name-for-value
+    #/sink-extfx-run-cenegetfx
+      (cenegetfx-cexpr-eval (make-fault-internal) impl-code)
+    #/fn impl-value
     #/sink-extfx-fuse
       (sink-extfx-def-value-for-lang-impl
         unique-name-for-code
         target-name-for-code
-        (sink-cexpr-reified impl))
+        (sink-cexpr impl-code))
       (sink-extfx-def-value-for-lang-impl
         unique-name-for-value
         target-name-for-value
-        impl)))
+        impl-value)))
+  
+  (define/contract
+    (sink-extfx-def-func-impl-reified
+      unique-name main-tag-entry proj-tag-names impl-value)
+    (-> sink-authorized-name? sink-innate-main-tag-entry? table? sink?
+      sink-extfx?)
+    (sink-extfx-claim-freshen unique-name #/fn unique-name
+    #/sink-extfx-def-func-impl
+      unique-name main-tag-entry proj-tag-names
+      (cexpr-reified impl-value)))
   
   
   (define/contract
@@ -1700,13 +1798,11 @@
     #/dissectfn (list unique-name-for-macro unique-name-for-impl)
     #/w- main-tag-name
       (sink-name-for-string #/sink-string main-tag-string)
-    #/sink-extfx-run-cenegetfx
-      (cenegetfx-sink-name-qualify-for-lang-impl
-        (sink-name-for-struct-main-tag main-tag-name))
-    #/fn qualified-main-tag-authorized-name
-    #/w- qualified-main-tag-name
-      (sink-authorized-name-get-name
-        qualified-main-tag-authorized-name)
+    #/w- main-tag-entry
+      (sink-innate-main-tag-entry
+        main-tag-name
+        (sink-you-must-be-this-lang-impl)
+        (sink-you-must-be-someone))
     #/sink-extfx-fuse
       
       ; We define a reader macro so that the user can write code that
@@ -1715,9 +1811,9 @@
         (sink-name-for-bounded-cexpr-op main-tag-name)
         
         ; Given precisely `n-args` cexprs, we construct a cexpr that
-        ; first constructs a nullary struct with tag
-        ; `qualified-main-tag-name` and then calls it with the given
-        ; cexprs one by one.
+        ; first constructs a nullary struct with innate main tag entry
+        ; `main-tag-entry` and then calls it with the given cexprs one
+        ; by one.
         ;
         ; The JavaScript implementation of Cene doesn't verify the
         ; number of arguments to a function; instead it just passes in
@@ -1730,14 +1826,14 @@
         (macro-impl-specific-number-of-args n-args #/fn args
           (cenegetfx-done
             (sink-cexpr-call-list
-              (sink-cexpr-construct qualified-main-tag-name #/list)
+              (sink-cexpr-construct main-tag-entry #/list)
               args))))
       
       ; We define a Cene struct function implementation containing
       ; the function's run time behavior.
       (sink-extfx-def-func-impl-reified unique-name-for-impl
-        qualified-main-tag-authorized-name
-        (sink-table #/table-empty)
+        main-tag-entry
+        (table-empty)
         (sink-opaque-fn #/fn struct-value
           (cenegetfx-done func)))
       
@@ -1771,25 +1867,32 @@
       #`(def-func-fault! main-tag-string fault param ... body)))
   
   (define/contract
-    (sink-extfx-def-nullary-func unique-name main-tag-string result)
-    (-> sink-authorized-name? immutable-string? sink? sink-extfx?)
+    (sink-extfx-def-nullary-func-verbose
+      unique-name
+      sink-extfx-def-value-custom
+      main-tag-string
+      result)
+    (->
+      sink-authorized-name?
+      (-> sink-authorized-name? sink-name? sink? sink-extfx?)
+      immutable-string?
+      sink?
+      sink-extfx?)
     (sink-extfx-claim-and-split unique-name 2
     #/dissectfn (list unique-name-for-macro unique-name-for-impl)
     #/w- main-tag-name
       (sink-name-for-string #/sink-string main-tag-string)
-    #/sink-extfx-run-cenegetfx
-      (cenegetfx-sink-name-qualify-for-lang-impl
-        (sink-name-for-struct-main-tag main-tag-name))
-    #/fn qualified-main-tag-authorized-name
-    #/w- qualified-main-tag-name
-      (sink-authorized-name-get-name
-        qualified-main-tag-authorized-name)
+    #/w- main-tag-entry
+      (sink-innate-main-tag-entry
+        main-tag-name
+        (sink-you-must-be-this-lang-impl)
+        (sink-you-must-be-someone))
     #/sink-extfx-tag cssm-trivial #/fn csst-trivial
     #/sink-extfx-fuse
       
       ; We define a reader macro so that the user can write code that
       ; compiles into a call to this function.
-      (sink-extfx-def-value-for-package unique-name-for-macro
+      (sink-extfx-def-value-custom unique-name-for-macro
         (sink-name-for-bounded-cexpr-op main-tag-name)
         
         ; Given precisely zero cexprs, we construct a cexpr that first
@@ -1803,14 +1906,14 @@
         (macro-impl-specific-number-of-args 0 #/fn args
           (cenegetfx-done
             (sink-cexpr-call-binary
-              (sink-cexpr-construct qualified-main-tag-name #/list)
+              (sink-cexpr-construct main-tag-entry #/list)
               (make-sink-cexpr-construct csst-trivial #/list)))))
       
       ; We define a Cene struct function implementation containing
       ; the function's run time behavior.
       (sink-extfx-def-func-impl-reified unique-name-for-impl
-        qualified-main-tag-authorized-name
-        (sink-table #/table-empty)
+        main-tag-entry
+        (table-empty)
         (sink-fn-curried-fault 2 #/fn fault struct-value arg
           (expect (unmake-sink-struct-maybe csst-trivial arg)
             (just #/list)
@@ -1819,11 +1922,23 @@
       
       ))
   
+  (define/contract
+    (def-nullary-func-verbose!
+      sink-extfx-def-value-custom main-tag-string result)
+    (->
+      (-> sink-authorized-name? sink-name? sink? sink-extfx?)
+      immutable-string?
+      sink?
+      void?)
+    (add-init-essentials-step! #/fn unique-name
+      (sink-extfx-def-nullary-func-verbose
+        unique-name sink-extfx-def-value-custom main-tag-string
+        result)))
+  
   (define/contract (def-nullary-func! main-tag-string result)
     (-> immutable-string? sink? void?)
-    (add-init-essentials-step! #/fn unique-name
-      (sink-extfx-def-nullary-func
-        unique-name main-tag-string result)))
+    (def-nullary-func-verbose!
+      sink-extfx-def-value-for-package main-tag-string result))
   
   (define/contract
     (sink-extfx-def-data-struct
@@ -1841,39 +1956,25 @@
         unique-name-for-metadata)
     #/w- main-tag-name
       (sink-name-for-string #/sink-string main-tag-string)
-    #/sink-extfx-run-cenegetfx
-      (cenegetfx-sink-name-qualify-for-lang-impl
-        (sink-name-for-struct-main-tag main-tag-name))
-    #/fn qualified-main-tag-authorized-name
-    #/w- qualified-main-tag-name
-      (sink-authorized-name-get-name
-        qualified-main-tag-authorized-name)
-    #/sink-extfx-run-cenegetfx
-      (cenegetfx-list-map #/list-map proj-strings #/fn proj-string
-        (cenegetfx-bind
-          (cenegetfx-sink-name-qualify-for-lang-impl
-            (sink-name-for-struct-proj qualified-main-tag-name
-            #/sink-name-for-string #/sink-string proj-string))
-        #/fn qualified-proj-name
-        #/cenegetfx-done #/list proj-string qualified-proj-name))
-    #/fn qualified-proj-name-entries
-    #/w- qualified-proj-authorized-names
-      (list-map qualified-proj-name-entries
-      #/dissectfn (list proj-string qualified-proj-name)
-        qualified-proj-name)
-    #/w- qualified-proj-names
-      (list-map qualified-proj-authorized-names
-      #/fn proj-authorized-name
-        (sink-authorized-name-get-name proj-authorized-name))
+    #/w- main-tag-entry
+      (sink-innate-main-tag-entry
+        main-tag-name
+        (sink-you-must-be-this-lang-impl)
+        (sink-you-must-be-someone))
+    #/w- proj-name-entries
+      (list-map proj-strings #/fn proj-string
+        (list
+          proj-string
+          (sink-name-for-string #/sink-string proj-string)))
+    #/w- proj-names
+      (list-map proj-name-entries
+      #/dissectfn (list proj-string proj-name)
+        proj-name)
     #/expect
       (assocs->table-if-mutually-unique
-        (list-map qualified-proj-authorized-names
-        #/fn proj-authorized-name
-          (dissect
-            (sink-authorized-name-get-name proj-authorized-name)
-            (sink-name proj-name)
-          #/cons proj-name proj-authorized-name)))
-      (just qualified-proj-names-table)
+        (list-map proj-names #/dissectfn (sink-name proj-name)
+          (cons proj-name (trivial))))
+      (just proj-names-table)
       (error "Expected the projection strings to be mutually unique")
     #/sink-extfx-fuse
       
@@ -1883,7 +1984,7 @@
       (sink-extfx-def-value-for-package unique-name-for-macro
         (sink-name-for-bounded-cexpr-op main-tag-name)
         
-        (w- n-projs (length qualified-proj-names)
+        (w- n-projs (length proj-names)
         
         ; Given precisely `n-projs` cexprs, we construct a cexpr that
         ; constructs a struct.
@@ -1899,8 +2000,8 @@
         ;
         #/macro-impl-specific-number-of-args n-projs #/fn proj-cexprs
           (cenegetfx-done
-            (sink-cexpr-construct qualified-main-tag-name
-              (map list qualified-proj-names proj-cexprs)))))
+            (sink-cexpr-construct main-tag-entry
+              (map list proj-names proj-cexprs)))))
       
       ; We define a Cene struct function implementation which throws
       ; an error. We do this so that we do in fact have a function
@@ -1908,15 +2009,16 @@
       ; invariant that comes in handy. (TODO: See if it does.)
       ;
       (sink-extfx-def-func-impl-reified unique-name-for-impl
-        qualified-main-tag-authorized-name
-        (sink-table qualified-proj-names-table)
+        main-tag-entry
+        proj-names-table
         (sink-opaque-fn-fault #/dissectfn (list fault struct-value)
           (cenegetfx-cene-err fault "Called a struct that wasn't intended for calling")))
       
-      ; We also define something we can use to look up a qualified
-      ; main tag name and an ordered list of qualified and unqualified
-      ; projection names, given the `sink-name-for-string` name the
-      ; main tag name is made from.
+      ; We also define something we can use to look up a
+      ; main tag entry and an ordered list of
+      ; surface-syntax projection strings and innate projection names,
+      ; given the `sink-name-for-string` of the
+      ; surface-syntax main tag string.
       ;
       ; TODO: We haven't even tried to store this in the same format
       ; as the JavaScript version of Cene does. See if we should.
@@ -1930,22 +2032,35 @@
       #/fn dex-projs
       #/sink-extfx-run-cenegetfx
         (racket-list->cenegetfx-sink
-          (list-map qualified-proj-name-entries
-          #/dissectfn (list proj-string qualified-proj-name)
+          (list-map proj-name-entries
+          #/dissectfn (list proj-string proj-name)
             (make-sink-struct csst-assoc #/list
               (sink-string proj-string)
-              (sink-authorized-name-get-name qualified-proj-name))))
-      #/fn qualified-proj-names
+              proj-name)))
+      #/fn proj-name-assocs
       #/sink-extfx-tag cssm-struct-metadata #/fn csst-struct-metadata
+      #/sink-extfx-run-cenegetfx
+        (cenegetfx-sink-dex-maybe #/sink-dex #/dex-sink-i-am)
+      #/fn sink-dex-maybe-i-am
+      #/sink-extfx-run-cenegetfx
+        (racket-maybe->cenegetfx-sink #/nothing)
+      #/fn sink-nothing
+      #/sink-extfx-run-cenegetfx
+        (racket-maybe->cenegetfx-sink #/just #/sink-i-am-someone)
+      #/fn sink-just-i-am-someone
       #/sink-extfx-def-fallibly-dexed-value-for-package
         unique-name-for-metadata
         (sink-name-for-struct-metadata main-tag-name)
         (sink-dex-struct csst-struct-metadata #/list
-          (sink-dex-name)
+          sink-dex-maybe-i-am
+          sink-dex-maybe-i-am
+          (sink-dex #/dex-sink-innate-main-tag-entry)
           dex-projs)
         (make-sink-struct csst-struct-metadata #/list
-          qualified-main-tag-name
-          qualified-proj-names))
+          sink-nothing
+          sink-just-i-am-someone
+          main-tag-entry
+          proj-name-assocs))
       
       ))
   
@@ -2554,20 +2669,31 @@
   
   ; NOTE: In the JavaScript version of Cene, this was called
   ; `constructor-glossary` with projections `main-tag` and
-  ; `source-to-rep`. The representation was otherwise the same except
-  ; that the keys of the `source-to-rep`/`projections` assoc list were
-  ; names, and now we store them as strings.
+  ; `source-to-rep`, it didn't have `maybe-i-am-an-author` or
+  ; `maybe-i-am-a-user`, and the keys of the
+  ; `source-to-rep`/`projections` assoc list were names. Now we store
+  ; them as strings.
   (def-data-struct! "struct-metadata"
-    (list "main-tag-name" "projections"))
+    (list
+      "maybe-i-am-an-author"
+      "maybe-i-am-a-user"
+      "innate-main-tag-entry"
+      "projections"))
   
   (define/contract
     (cenegetfx-verify-cexpr-struct-args
-      fault main-tag-name projections)
-    (-> sink-fault? sink? sink?
-      (cenegetfx/c #/list/c name? (listof #/list/c name? cexpr?)))
+      fault i-am-a-user main-tag-entry projections)
+    (-> sink-fault? sink? sink? sink?
+      (cenegetfx/c #/listof #/list/c name? cexpr?))
     
-    (expect main-tag-name (sink-authorized-name main-tag-name)
-      (cenegetfx-cene-err fault "Expected main-tag-name to be an authorized name")
+    (expect (sink-i-am? i-am-a-user) #t
+      (cenegetfx-cene-err fault "Expected i-am-a-user to be an authorization witness")
+    #/expect main-tag-entry
+      (sink-innate-main-tag-entry
+        main-tag-name author-must-be user-must-be)
+      (cenegetfx-cene-err fault "Expected main-tag-entry to be an innate main tag entry")
+    #/expect (sink-i-am-whom-i-must-be? i-am-a-user user-must-be) #t
+      (cenegetfx-cene-err fault "Expected i-am-a-user to be an authorization witness for the main-tag-entry innate main tag entry")
     #/cenegetfx-bind (sink-list->cenegetfx-maybe-racket projections)
     #/expectfn (just projections)
       (cenegetfx-cene-err fault "Expected projections to be a list made up of cons and nil values")
@@ -2587,8 +2713,7 @@
       (names-have-duplicate?
         (list-map projections #/dissectfn (list k v) k))
       (cenegetfx-cene-err fault "Expected projections to be an association list with mutually unique names as keys")
-    #/cenegetfx-done
-      (list (authorized-name-get-name main-tag-name) projections)))
+    #/cenegetfx-done projections))
   
   (define/contract
     (sink-extfx-expand-struct-op
@@ -2598,24 +2723,24 @@
       sink-authorized-name? sink? sink-text-input-stream?
       (->
         sink-authorized-name? sink? sink-text-input-stream?
-        name?
+        sink-innate-main-tag-entry?
         (listof #/list/c name? cexpr?)
         sink-extfx?)
       sink-extfx?)
     
     (sink-extfx-claim-freshen unique-name #/fn unique-name
-    #/sink-extfx-read-struct-metadata
+    #/sink-extfx-read-struct-metadata-authorized-as-user
       fault unique-name qualify text-input-stream
     #/fn unique-name qualify text-input-stream metadata
     #/dissect (struct-metadata-tags metadata)
-      (cons main-tag-name proj-names)
+      (cons main-tag-entry proj-names)
     
     #/sink-extfx-read-bounded-specific-number-of-cexprs
       fault unique-name qualify text-input-stream
       (length proj-names)
     #/fn unique-name qualify text-input-stream proj-exprs
     
-    #/then unique-name qualify text-input-stream main-tag-name
+    #/then unique-name qualify text-input-stream main-tag-entry
       (map list proj-names proj-exprs)))
   
   ; NOTE: The JavaScript version of Cene makes this functionality
@@ -2625,13 +2750,15 @@
   ; `dex-by-cline`, but the same circuitous combination would work.
   ; Nevertheless, we provide this operation directly.
   ;
-  (def-func-fault! "expr-dex-struct" fault main-tag-name projections
+  (def-func-fault! "expr-dex-struct"
+    fault i-am-a-user main-tag-entry projections
+    
     (cenegetfx-bind
       (cenegetfx-verify-cexpr-struct-args
-        fault main-tag-name projections)
-    #/dissectfn (list main-tag-name projections)
+        fault i-am-a-user main-tag-entry projections)
+    #/fn projections
     #/cenegetfx-done
-      (sink-cexpr #/cexpr-dex-struct main-tag-name projections)))
+      (sink-cexpr #/cexpr-dex-struct main-tag-entry projections)))
   
   (def-macro! "dex-struct" #/fn
     fault unique-name qualify text-input-stream then
@@ -2639,19 +2766,21 @@
     (sink-extfx-expand-struct-op
       fault unique-name qualify text-input-stream
     #/fn
-      unique-name qualify text-input-stream main-tag-name projections
+      unique-name qualify text-input-stream main-tag-entry projections
     #/then unique-name qualify text-input-stream
-    #/sink-cexpr #/cexpr-dex-struct main-tag-name projections))
+    #/sink-cexpr #/cexpr-dex-struct main-tag-entry projections))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-cline-struct`.
-  (def-func-fault! "expr-cline-struct" fault main-tag-name projections
+  (def-func-fault! "expr-cline-struct"
+    fault i-am-a-user main-tag-entry projections
+    
     (cenegetfx-bind
       (cenegetfx-verify-cexpr-struct-args
-        fault main-tag-name projections)
-    #/dissectfn (list main-tag-name projections)
+        fault i-am-a-user main-tag-entry projections)
+    #/fn projections
     #/cenegetfx-done
-      (sink-cexpr #/cexpr-cline-struct main-tag-name projections)))
+      (sink-cexpr #/cexpr-cline-struct main-tag-entry projections)))
   
   (def-macro! "cline-struct" #/fn
     fault unique-name qualify text-input-stream then
@@ -2659,19 +2788,21 @@
     (sink-extfx-expand-struct-op
       fault unique-name qualify text-input-stream
     #/fn
-      unique-name qualify text-input-stream main-tag-name projections
+      unique-name qualify text-input-stream main-tag-entry projections
     #/then unique-name qualify text-input-stream
-    #/sink-cexpr #/cexpr-cline-struct main-tag-name projections))
+    #/sink-cexpr #/cexpr-cline-struct main-tag-entry projections))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-merge-struct`.
-  (def-func-fault! "expr-merge-struct" fault main-tag-name projections
+  (def-func-fault! "expr-merge-struct"
+    fault i-am-a-user main-tag-entry projections
+    
     (cenegetfx-bind
       (cenegetfx-verify-cexpr-struct-args
-        fault main-tag-name projections)
-    #/dissectfn (list main-tag-name projections)
+        fault i-am-a-user main-tag-entry projections)
+    #/fn projections
     #/cenegetfx-done
-      (sink-cexpr #/cexpr-merge-struct main-tag-name projections)))
+      (sink-cexpr #/cexpr-merge-struct main-tag-entry projections)))
   
   (def-macro! "merge-struct" #/fn
     fault unique-name qualify text-input-stream then
@@ -2679,19 +2810,21 @@
     (sink-extfx-expand-struct-op
       fault unique-name qualify text-input-stream
     #/fn
-      unique-name qualify text-input-stream main-tag-name projections
+      unique-name qualify text-input-stream main-tag-entry projections
     #/then unique-name qualify text-input-stream
-    #/sink-cexpr #/cexpr-merge-struct main-tag-name projections))
+    #/sink-cexpr #/cexpr-merge-struct main-tag-entry projections))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-fuse-struct`.
-  (def-func-fault! "expr-fuse-struct" fault main-tag-name projections
+  (def-func-fault! "expr-fuse-struct"
+    fault i-am-a-user main-tag-entry projections
+    
     (cenegetfx-bind
       (cenegetfx-verify-cexpr-struct-args
-        fault main-tag-name projections)
-    #/dissectfn (list main-tag-name projections)
+        fault i-am-a-user main-tag-entry projections)
+    #/fn projections
     #/cenegetfx-done
-      (sink-cexpr #/cexpr-fuse-struct main-tag-name projections)))
+      (sink-cexpr #/cexpr-fuse-struct main-tag-entry projections)))
   
   (def-macro! "fuse-struct" #/fn
     fault unique-name qualify text-input-stream then
@@ -2699,19 +2832,21 @@
     (sink-extfx-expand-struct-op
       fault unique-name qualify text-input-stream
     #/fn
-      unique-name qualify text-input-stream main-tag-name projections
+      unique-name qualify text-input-stream main-tag-entry projections
     #/then unique-name qualify text-input-stream
-    #/sink-cexpr #/cexpr-fuse-struct main-tag-name projections))
+    #/sink-cexpr #/cexpr-fuse-struct main-tag-entry projections))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-struct`.
-  (def-func-fault! "expr-construct" fault main-tag-name projections
+  (def-func-fault! "expr-construct"
+    fault i-am-a-user main-tag-entry projections
+    
     (cenegetfx-bind
       (cenegetfx-verify-cexpr-struct-args
-        fault main-tag-name projections)
-    #/dissectfn (list main-tag-name projections)
+        fault i-am-a-user main-tag-entry projections)
+    #/fn projections
     #/cenegetfx-done
-      (sink-cexpr #/cexpr-construct main-tag-name projections)))
+      (sink-cexpr #/cexpr-construct main-tag-entry projections)))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   ;
@@ -2725,18 +2860,20 @@
   ; constructed as well, and either turn this into a derived operation
   ; or remove it altogether.
   ;
-  (def-func-fault! "mobile-construct-nullary"
-    fault mobile-qualified-main-tag-authorized-name
+  (def-func-fault! "mobile-construct-nullary-as-someone"
+    fault mobile-innate-main-tag-entry
     
-    (expect mobile-qualified-main-tag-authorized-name
-      (sink-mobile qualified-main-tag-authorized-name _ _)
-      (cenegetfx-cene-err fault "Expected mobile-qualified-main-tag-authorized-name to be a mobile value")
-    #/expect
-      (sink-authorized-name? qualified-main-tag-authorized-name)
-      #t
-      (cenegetfx-cene-err fault "Expected mobile-qualified-main-tag-authorized-name to be a mobile authorized name")
-    #/cenegetfx-done #/sink-mobile-construct-nullary
-      fault mobile-qualified-main-tag-authorized-name))
+    (expect mobile-innate-main-tag-entry
+      (sink-mobile innate-main-tag-entry _ _)
+      (cenegetfx-cene-err fault "Expected mobile-innate-main-tag-entry to be a mobile value")
+    #/expect innate-main-tag-entry
+      (sink-innate-main-tag-entry
+        main-tag-name author-must-be user-must-be)
+      (cenegetfx-cene-err fault "Expected mobile-innate-main-tag-entry to be a mobile innate main tag entry")
+    #/expect user-must-be (sink-you-must-be-someone)
+      (cenegetfx-cene-err fault "Expected mobile-innate-main-tag-entry to be a mobile innate main tag entry where the client of the tag could be anyone")
+    #/cenegetfx-done #/sink-mobile-construct-nullary-as-someone
+      fault mobile-innate-main-tag-entry))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-macro! "construct" #/fn
@@ -2745,19 +2882,26 @@
     (sink-extfx-expand-struct-op
       fault unique-name qualify text-input-stream
     #/fn
-      unique-name qualify text-input-stream main-tag-name projections
+      unique-name qualify text-input-stream main-tag-entry projections
     #/then unique-name qualify text-input-stream
-    #/sink-cexpr #/cexpr-construct main-tag-name projections))
+    #/sink-cexpr #/cexpr-construct main-tag-entry projections))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-case`.
   (def-func-fault! "expr-case"
-    fault subject-expr main-tag-name projections then-expr else-expr
+    fault subject-expr i-am-a-user main-tag-entry projections
+    then-expr else-expr
     
     (expect subject-expr (sink-cexpr subject-expr)
       (cenegetfx-cene-err fault "Expected subject-expr to be an expression")
-    #/expect main-tag-name (sink-authorized-name main-tag-name)
-      (cenegetfx-cene-err fault "Expected main-tag-name to be an authorized name")
+    #/expect (sink-i-am? i-am-a-user) #t
+      (cenegetfx-cene-err fault "Expected i-am-a-user to be an authorization witness")
+    #/expect main-tag-entry
+      (sink-innate-main-tag-entry
+        main-tag-name author-must-be user-must-be)
+      (cenegetfx-cene-err fault "Expected main-tag-entry to be an innate main tag entry")
+    #/expect (sink-i-am-whom-i-must-be? i-am-a-user user-must-be) #t
+      (cenegetfx-cene-err fault "Expected i-am-a-user to be an authorization witness for the main-tag-entry innate main tag entry")
     #/cenegetfx-bind (sink-list->cenegetfx-maybe-racket projections)
     #/expectfn (just projections)
       (cenegetfx-cene-err fault "Expected projections to be a list made up of cons and nil values")
@@ -2787,9 +2931,9 @@
     #/expect else-expr (sink-cexpr else-expr)
       (cenegetfx-cene-err fault "Expected else-expr to be an expression")
     #/cenegetfx-done #/sink-cexpr #/cexpr-case subject-expr
-      (cons (authorized-name-get-name main-tag-name)
-      #/list-map projections #/dissectfn (list proj-name var)
-        (authorized-name-get-name proj-name))
+      (cons main-tag-entry
+        (list-map projections #/dissectfn (list proj-name var)
+          (authorized-name-get-name proj-name)))
       (list-map projections #/dissectfn (list proj-name var)
         var)
       then-expr
@@ -2808,14 +2952,14 @@
           [unique-name sink-authorized-name?]
           [qualify sink?]
           [text-input-stream sink-text-input-stream?]
-          [tags (listof name?)]
+          [tags (cons/c sink-innate-main-tag-entry? #/listof name?)]
           [vars (listof sink-name?)])
         #:pre (tags vars) (= (length tags) (add1 #/length vars))
         [_ sink-extfx?])
       sink-extfx?)
     
     (sink-extfx-claim-freshen unique-name #/fn unique-name
-    #/sink-extfx-read-struct-metadata
+    #/sink-extfx-read-struct-metadata-authorized-as-user
       fault unique-name qualify text-input-stream
     #/fn unique-name qualify text-input-stream metadata
     #/w- tags (struct-metadata-tags metadata)
@@ -3435,7 +3579,7 @@
     ; `explicit-fault` parameter to `cenegetfx-cexpr-eval`.
     #/cenegetfx-bind (cenegetfx-cexpr-eval fault expr) #/fn value
     #/cenegetfx-done #/make-sink-mobile value
-      (sink-perffx-cexpr-perffx-done expr)
+      (sink-perffx-done #/sink-cexpr-perffx-done expr)
       (cenegetfx-sink-mobile-built-in-call fault
         "pure-mobile-evaluated"
         mobile-expr)))
@@ -3894,6 +4038,53 @@
   ; NOTE: These have not been designed based on the JavaScript version
   ; of Cene, so it may or may not have operations similar to these.
   
+  (def-nullary-func! "you-must-be-this-lang-impl"
+    (sink-you-must-be-this-lang-impl))
+  
+  (def-nullary-func! "you-must-be-someone" (sink-you-must-be-someone))
+  
+  (def-nullary-func! "i-am-someone" (sink-i-am-someone))
+  
+  (def-nullary-func! "dex-must-be" (sink-dex #/dex-sink-must-be))
+  
+  (def-nullary-func! "dex-i-am" (sink-dex #/dex-sink-i-am))
+  
+  ; TODO: See if there's a better name for this.
+  ;
+  ; TODO: See if we should replace this functionality with an
+  ; assertion that the return value is true. That might be the only
+  ; reason to use this check.
+  ;
+  (def-func-fault! "witnesses-i-am-whom-i-must-be"
+    fault i-am-this that-must-be
+    
+    (expect (sink-i-am? i-am-this) #t
+      (cenegetfx-cene-err fault "Expected i-am-this to be an authorization witness")
+    #/expect (sink-must-be? that-must-be) #t
+      (cenegetfx-cene-err fault "Expected that-must-be to be an authorization condition")
+    #/cenegetfx-done
+      (racket-boolean->cenegetfx-sink
+        (sink-i-am-whom-i-must-be? i-am-this that-must-be))))
+  
+  (def-func-fault! "innate-main-tag-entry"
+    fault main-tag-name author-must-be user-must-be
+    
+    (expect (sink-name? main-tag-name) #t
+      (cenegetfx-cene-err fault "Expected main-tag-name to be a name")
+    #/expect (sink-must-be? author-must-be) #t
+      ; TODO: See if we should rename `...must-be...` things to
+      ; `...authorization-condition...` and `...i-am...` things to
+      ; `...authorization-witness...`.
+      (cenegetfx-cene-err fault "Expected author-must-be to be an authorization condition")
+    #/expect (sink-must-be? user-must-be) #t
+      (cenegetfx-cene-err fault "Expected user-must-be to be an authorization condition")
+    #/cenegetfx-done
+      (sink-innate-main-tag-entry
+        main-tag-name author-must-be user-must-be)))
+  
+  (def-nullary-func! "dex-innate-main-tag-entry"
+    (sink-dex #/dex-sink-innate-main-tag-entry))
+  
   (def-func! "directive" directive
     (cenegetfx-done #/sink-directive directive))
   
@@ -3907,11 +4098,12 @@
         (cenegetfx-sink-call fault on-success
           (make-sink-struct csst-trivial #/list)))))
   
-  (def-func-fault! "name-for-function-implementation-code"
-    fault main-tag-name proj-tag-names
-    
-    (expect (sink-name? main-tag-name) #t
-      (cenegetfx-cene-err fault "Expected main-tag-name to be a name")
+  (def-func-fault! "extfx-def-func-impl"
+    fault unique-name main-tag-entry proj-tag-names impl-code
+    (expect (sink-authorized-name? unique-name) #t
+      (cenegetfx-cene-err fault "Expected unique-name to be an authorized name")
+    #/expect (sink-innate-main-tag-entry? main-tag-entry) #t
+      (cenegetfx-cene-err fault "Expected main-tag-entry to be an innate main tag entry")
     #/cenegetfx-tag cssm-trivial #/fn csst-trivial
     #/expect
       (pure-run-getfx #/getfx-is-in-dex
@@ -3919,69 +4111,18 @@
         proj-tag-names)
       #t
       (cenegetfx-cene-err fault "Expected proj-tag-names to be a table of trivial values")
+    #/expect impl-code (sink-cexpr impl-code)
+      (cenegetfx-cene-err fault "Expected the function implementation to be an expression")
+    #/expect (cexpr-is-closed? impl-code) #t
+      (cenegetfx-cene-err fault "Expected the function implementation to have no free variables")
     #/dissect proj-tag-names (sink-table proj-tag-names)
-    #/w- proj-tag-names (table-v-map proj-tag-names #/fn v #/trivial)
-    #/cenegetfx-sink-name-for-function-implementation-code
-      main-tag-name proj-tag-names))
-  
-  (def-func-fault! "name-for-function-implementation-value"
-    fault main-tag-name proj-tag-names
-    
-    (expect (sink-name? main-tag-name) #t
-      (cenegetfx-cene-err fault "Expected main-tag-name to be a name")
-    #/cenegetfx-tag cssm-trivial #/fn csst-trivial
-    #/expect
-      (pure-run-getfx #/getfx-is-in-dex
-        (sink-dex-table #/sink-dex-struct csst-trivial #/list)
-        proj-tag-names)
-      #t
-      (cenegetfx-cene-err fault "Expected proj-tag-names to be a table of trivial values")
-    #/dissect proj-tag-names (sink-table proj-tag-names)
-    #/w- proj-tag-names (table-v-map proj-tag-names #/fn v #/trivial)
-    #/cenegetfx-sink-name-for-function-implementation-value
-      main-tag-name proj-tag-names))
-  
-  (define
-    (cenegetfx-verify-proj-tag-authorized-names fault proj-tag-names)
-    (expect proj-tag-names (sink-table proj-tag-names)
-      (cenegetfx-cene-err fault "Expected proj-tag-names to be a table")
-    #/expect
-      (table-v-all? proj-tag-names #/fn v #/sink-authorized-name? v)
-      #t
-      (cenegetfx-cene-err fault "Expected each value of proj-tag-names to be an authorized name")
-    #/expect
-      (table-kv-all? proj-tag-names #/fn k v
-        (dissect v (sink-authorized-name name)
-      #/pure-run-getfx #/getfx-is-eq-by-dex (dex-name)
-        k
-        (authorized-name-get-name name)))
-      #t
-      (cenegetfx-cene-err fault "Expected each value of proj-tag-names to be an authorized name where the name authorized is the same as the name it's filed under")
-    #/cenegetfx-done #/trivial))
-  
-  (def-func-fault! "authorized-name-for-function-implementation-code"
-    fault main-tag-name proj-tag-names
-    
-    (expect (sink-authorized-name? main-tag-name) #t
-      (cenegetfx-cene-err fault "Expected main-tag-name to be an authorized name")
-    #/cenegetfx-bind
-      (cenegetfx-verify-proj-tag-authorized-names
-        fault proj-tag-names)
-    #/dissectfn (trivial)
-    #/cenegetfx-sink-authorized-name-for-function-implementation-code
-      main-tag-name proj-tag-names))
-  
-  (def-func-fault! "authorized-name-for-function-implementation-value"
-    fault main-tag-name proj-tag-names
-    
-    (expect (sink-authorized-name? main-tag-name) #t
-      (cenegetfx-cene-err fault "Expected main-tag-name to be an authorized name")
-    #/cenegetfx-bind
-      (cenegetfx-verify-proj-tag-authorized-names
-        fault proj-tag-names)
-    #/dissectfn (trivial)
-    #/cenegetfx-sink-authorized-name-for-function-implementation-value
-      main-tag-name proj-tag-names))
+    #/cenegetfx-done
+      (sink-extfx-claim-freshen unique-name #/fn unique-name
+      #/sink-extfx-def-func-impl
+        unique-name
+        main-tag-entry
+        (table-v-map proj-tag-names #/dissectfn _ #/trivial)
+        impl-code)))
   
   (def-func-fault! "name-for-freestanding-expr-op" fault name
     (expect (sink-name? name) #t
@@ -3997,21 +4138,6 @@
     (expect (sink-name? name) #t
       (cenegetfx-cene-err fault "Expected name to be a name")
     #/cenegetfx-done #/sink-name-for-nameless-bounded-cexpr-op name))
-  
-  (def-func-fault! "name-for-struct-main-tag" fault name
-    (expect (sink-name? name) #t
-      (cenegetfx-cene-err fault "Expected name to be a name")
-    #/cenegetfx-done #/sink-name-for-struct-main-tag name))
-  
-  (def-func-fault! "name-for-struct-proj"
-    fault qualified-main-tag-name proj-name
-    
-    (expect (sink-name? qualified-main-tag-name) #t
-      (cenegetfx-cene-err fault "Expected qualified-main-tag-name to be a name")
-    #/expect (sink-name? proj-name) #t
-      (cenegetfx-cene-err fault "Expected proj-name to be a name")
-    #/cenegetfx-done
-      (sink-name-for-struct-proj qualified-main-tag-name proj-name)))
   
   (def-func-fault! "name-for-local-variable" fault name
     (expect (sink-name? name) #t
@@ -4208,13 +4334,9 @@
   
   ; We define these built-ins only in the scope of prelude.cene.
   
-  (def-func-verbose! sink-extfx-def-value-for-prelude
-    "qualify-for-lang-impl"
-    1
-    (fn fault name
-      (expect (sink-name? name) #t
-        (cenegetfx-cene-err fault "Expected name to be a name")
-      #/cenegetfx-sink-name-qualify-for-lang-impl name)))
+  (def-nullary-func-verbose! sink-extfx-def-value-for-prelude
+    "i-am-this-lang-impl"
+    (sink-i-am-this-lang-impl))
   
   (def-func-verbose! sink-extfx-def-value-for-prelude
     "extfx-add-init-package-step"
@@ -4268,8 +4390,8 @@
       #/sink-extfx-run-cenegetfx
         (cenegetfx-cexpr-eval (make-fault-internal) func-expr)
       #/fn func
-      #/sink-extfx-run-cenegetfx
-        (cenegetfx-sink-cexpr-built-in-call "directive"
+      #/then unique-name qualify text-input-stream
+        (sink-cexpr-built-in-call "directive"
           ; TODO MOBILE: Stop using `sink-cexpr-reified` here so that
           ; we can compile the prelude by compiling the expressions of
           ; the directives it generates.
@@ -4282,9 +4404,7 @@
                   unique-name sink-extfx-def-value-for-package
                   main-tag-string
                   (length #/cons last-param rev-past-params)
-                  func)))))
-      #/fn expr
-      #/then unique-name qualify text-input-stream expr)))
+                  func))))))))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-macro-verbose! sink-extfx-def-value-for-prelude
@@ -4296,54 +4416,46 @@
         fault unique-name qualify text-input-stream
         sink-name-for-local-variable
       #/fn unique-name qualify text-input-stream args
-      #/expect args (cons main-tag-name args)
+      #/expect args (cons main-tag-id-or-expr-id args)
         ; TODO FAULT: Make this `fault` more specific.
         (sink-extfx-cene-err fault "Expected a prelude-to-everyone-construct form to have a main tag name")
-      #/expect main-tag-name
+      #/expect main-tag-id-or-expr-id
         (id-or-expr-id
           main-tag-name-located-string
           main-tag-name-qualified-name)
         ; TODO FAULT: Make this `fault` more specific.
         (sink-extfx-cene-err fault "Expected the main tag name of a prelude-to-everyone-construct form to be an identifier")
-      #/sink-extfx-run-cenegetfx
-        (cenegetfx-sink-name-qualify-for-lang-impl
-          (sink-name-for-struct-main-tag
-            (sink-name-for-string
-              (sink-string-from-located-string
-                main-tag-name-located-string))))
-      #/fn qualified-main-tag-sink-authorized-name
-      #/w- qualified-main-tag-sink-name
-        (sink-authorized-name-get-name
-          qualified-main-tag-sink-authorized-name)
+      #/w- main-tag-name
+        (sink-name-for-string
+          (sink-string-from-located-string
+            main-tag-name-located-string))
+      #/w- main-tag-entry
+        (sink-innate-main-tag-entry
+          main-tag-name
+          (sink-you-must-be-this-lang-impl)
+          (sink-you-must-be-someone))
       #/sink-extfx-run-cenegetfx
         (w-loop next args args rev-projs (list)
           (mat args (list) (cenegetfx-done #/reverse rev-projs)
-          #/expect args (list* proj-name proj-expr args)
+          #/expect args (list* proj-id-or-expr-id proj-expr args)
             (cenegetfx-cene-err fault "Expected a prelude-to-everyone-construct form to have a projection expression for every projection name")
-          #/expect proj-name
+          #/expect proj-id-or-expr-id
             (id-or-expr-id
               proj-name-located-string
               proj-name-qualified-name)
             ; TODO FAULT: Make this `fault` more specific.
             (cenegetfx-cene-err fault "Expected each projection name of a prelude-to-everyone-construct form to be an identifier")
-          #/sink-extfx-run-cenegetfx
-            (cenegetfx-sink-name-qualify-for-lang-impl
-              (sink-name-for-struct-proj qualified-main-tag-sink-name
-                (sink-name-for-string
-                  (sink-string-from-located-string
-                    proj-name-located-string))))
-          #/fn qualified-proj-sink-authorized-name
-          #/w- qualified-proj-sink-name
-            (sink-authorized-name-get-name
-              qualified-proj-sink-authorized-name)
           #/next args
             (cons
-              (list qualified-proj-sink-name
+              (list
+                (sink-name-for-string
+                  (sink-string-from-located-string
+                    proj-name-located-string))
                 (id-or-expr->cexpr proj-expr))
               rev-projs)))
       #/fn projs
       #/then unique-name qualify text-input-stream
-        (sink-cexpr-construct qualified-main-tag-sink-name projs))))
+        (sink-cexpr-construct main-tag-entry projs))))
   
   
   ; Define the other built-ins where the prelude code can see them.

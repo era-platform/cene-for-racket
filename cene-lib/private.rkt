@@ -29,8 +29,8 @@
 ; documentation correctly says it is, we require it from there.
 (require #/only-in racket/contract get/build-late-neg-projection)
 (require #/only-in racket/contract/base
-  -> ->* and/c any any/c contract? contract-name list/c listof none/c
-  or/c rename-contract struct/c)
+  -> ->* and/c any any/c contract? cons/c contract-name list/c listof
+  none/c or/c rename-contract struct/c)
 (require #/only-in racket/contract/combinator
   blame-add-context coerce-contract make-contract raise-blame-error)
 (require #/only-in racket/contract/region define/contract)
@@ -64,10 +64,11 @@
   assocs->table-if-mutually-unique dex-immutable-string dex-trivial
   getfx-is-eq-by-dex ordering-eq)
 (require #/only-in effection/order/base
-  dex? dexed-first-order/c dex-give-up dex-dex dex-name dex-struct
-  dex-table fuse-by-merge getfx-call-fuse getfx-dexed-of getfx-name-of
-  getfx-table-map-fuse merge-by-dex merge-table name? ordering-eq?
-  table? table-empty? table-empty table-get table-shadow)
+  dex? dex-default dexed-first-order/c dex-give-up dex-name dex-struct
+  dex-table fuse-by-merge getfx-call-fuse getfx-dexed-of
+  getfx-is-in-dex getfx-name-of getfx-table-map-fuse merge-by-dex
+  merge-table name? ordering-eq? table? table-empty? table-empty
+  table-get table-shadow)
 (require #/prefix-in unsafe: #/only-in effection/order/unsafe
   dex dexed gen:dex-internals name)
 
@@ -172,6 +173,40 @@
   ; values which are the values of the projections.
   (sink-struct tags projs))
 
+(define/contract (dex-sink-must-be)
+  (-> dex?)
+  (dex-default
+    (dex-struct sink-you-must-be-this-lang-impl)
+    (dex-struct sink-you-must-be-someone)))
+
+(define/contract (dex-sink-i-am)
+  (-> dex?)
+  (dex-default
+    (dex-struct sink-i-am-this-lang-impl)
+    (dex-struct sink-i-am-someone)))
+
+(define/contract (sink-must-be? v)
+  (-> sink? boolean?)
+  (pure-run-getfx #/getfx-is-in-dex (dex-sink-must-be) v))
+
+(define/contract (sink-i-am? v)
+  (-> sink? boolean?)
+  (pure-run-getfx #/getfx-is-in-dex (dex-sink-i-am) v))
+
+(define/contract (sink-i-am-whom-i-must-be? i-am-this that-must-be)
+  (-> sink-i-am? sink-must-be? boolean?)
+  (if (sink-you-must-be-this-lang-impl? that-must-be)
+    (sink-i-am-this-lang-impl? i-am-this)
+  #/dissect (sink-you-must-be-someone? that-must-be) #t
+    (sink-i-am-someone? i-am-this)))
+
+(define/contract (dex-sink-innate-main-tag-entry)
+  (-> dex?)
+  (dex-struct sink-innate-main-tag-entry
+    (dex-struct sink-name #/dex-name)
+    (dex-sink-must-be)
+    (dex-sink-must-be)))
+
 (define/contract (unmake-sink-struct-maybe tags s)
   (-> pair? sink-struct? #/maybe/c #/or/c (list) pair?)
   (dissect s (sink-struct s-tags s-projs)
@@ -184,8 +219,10 @@
   #/dissect tags (cons main-tag proj-tags)
   #/dissect s-tags (cons s-main-tag s-proj-tags)
   #/expect
-    (pure-run-getfx
-      (getfx-is-eq-by-dex (dex-name) main-tag s-main-tag))
+    (pure-run-getfx #/getfx-is-eq-by-dex
+      (dex-sink-innate-main-tag-entry)
+      main-tag
+      s-main-tag)
     #t
     (nothing)
   #/expect
@@ -220,6 +257,23 @@
 
 (struct-easy (sink-fault maybe-continuation-marks)
   #:other #:methods gen:sink [])
+
+; Innate main tag entries contain authorization conditions for the
+; people who can define the function implementation and the people who
+; can create construction and deconstruction expressions.
+(struct-easy (sink-you-must-be-this-lang-impl)
+  #:other #:methods gen:sink [])
+(struct-easy (sink-you-must-be-someone)
+  #:other #:methods gen:sink [])
+(struct-easy (sink-i-am-this-lang-impl)
+  #:other #:methods gen:sink [])
+(struct-easy (sink-i-am-someone)
+  #:other #:methods gen:sink [])
+(struct-easy
+  (sink-innate-main-tag-entry
+    main-tag-name author-must-be user-must-be)
+  #:other #:methods gen:sink [])
+
 (struct-easy (sink-directive directive)
   #:other #:methods gen:sink [])
 (struct-easy (sink-dex dex)
@@ -520,24 +574,6 @@
       (sink-name-of-racket-string "init-package-pubsub")
       lang-impl-qualify-root)))
 
-; TODO: Once we have the ability to import names, we should make sure
-; this produces an authorized name whose name is importable from a
-; UUID-identified import. Modules identified by UUID can only be
-; implemented by the language implementation. And since that's the
-; case, there should be no way for Cene code to obtain these
-; authorized names; just the unauthorized equivalents.
-;
-(define/contract
-  (cenegetfx-sink-name-qualify-for-lang-impl unqualified-name)
-  (-> sink-name? #/cenegetfx/c sink-authorized-name?)
-  (cenegetfx-bind (cenegetfx-read-lang-impl-qualify-root)
-  #/fn lang-impl-qualify-root
-  #/cenegetfx-done
-    (sink-authorized-name-subname unqualified-name
-    #/sink-authorized-name-subname
-      (sink-name-of-racket-string "qualify")
-      lang-impl-qualify-root)))
-
 (define/contract (sink-getfx-run-cenegetfx effects)
   (-> cenegetfx? sink-getfx?)
   (sink-getfx effects))
@@ -619,7 +655,7 @@
       #/cenegetfx-done result))
   ])
 
-(struct-easy (cexpr-construct main-tag-name projs)
+(struct-easy (cexpr-construct main-tag-entry projs)
   
   #:other
   
@@ -629,13 +665,13 @@
     (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
-      (expect this (cexpr-construct main-tag-name projs)
+      (expect this (cexpr-construct main-tag-entry projs)
         (error "Expected this to be a cexpr-construct")
       #/list-any projs #/dissectfn (list proj-name proj-cexpr)
         (-has-free-vars? proj-cexpr env)))
     
     (define (cenegetfx-cexpr-eval-in-env fault this env)
-      (expect this (cexpr-construct main-tag-name projs)
+      (expect this (cexpr-construct main-tag-entry projs)
         (error "Expected this to be a cexpr-construct")
       #/cenegetfx-bind
         (cenegetfx-list-map #/list-map projs
@@ -643,7 +679,7 @@
           (-eval-in-env fault proj-cexpr env))
       #/fn vals
       #/cenegetfx-done #/make-sink-struct
-        (cons main-tag-name
+        (cons main-tag-entry
         #/list-map projs #/dissectfn (list proj-name proj-cexpr)
           proj-name)
         vals))
@@ -946,15 +982,17 @@
   (names-have-duplicate?
   #/list-map names #/dissectfn (sink-name name) name))
 
-(define/contract (sink-cexpr-construct main-tag-name projs)
-  (-> sink-name? (listof #/list/c sink-name? sink-cexpr?) sink-cexpr?)
-  (dissect main-tag-name (sink-name main-tag-name)
-  #/if
+(define/contract (sink-cexpr-construct main-tag-entry projs)
+  (->
+    sink-innate-main-tag-entry?
+    (listof #/list/c sink-name? sink-cexpr?)
+    sink-cexpr?)
+  (if
     (sink-names-have-duplicate?
       (list-map projs #/dissectfn (list proj-name proj-cexpr)
         proj-name))
     (error "Encountered a duplicate projection name")
-  #/sink-cexpr #/cexpr-construct main-tag-name #/list-map projs
+  #/sink-cexpr #/cexpr-construct main-tag-entry #/list-map projs
   #/dissectfn (list (sink-name proj-name) (sink-cexpr proj-cexpr))
     (list proj-name proj-cexpr)))
 
@@ -963,11 +1001,14 @@
 ; convenient construction of built-in struct tags within this Cene
 ; implementation.
 (define/contract (make-sink-cexpr-construct tags proj-cexprs)
-  (-> (and/c pair? #/listof name?) (listof sink-cexpr?) sink-cexpr?)
-  (dissect tags (cons main-tag-name proj-names)
+  (->
+    (cons/c sink-innate-main-tag-entry? #/listof name?)
+    (listof sink-cexpr?)
+    sink-cexpr?)
+  (dissect tags (cons main-tag-entry proj-names)
   #/expect (= (length proj-names) (length proj-cexprs)) #t
     (error "Expected tags to have one more entry than proj-cexprs")
-  #/sink-cexpr-construct (sink-name main-tag-name)
+  #/sink-cexpr-construct main-tag-entry
   #/list-zip-map proj-names proj-cexprs #/fn proj-name proj-cexpr
     (list (sink-name proj-name) proj-cexpr)))
 
@@ -1014,63 +1055,11 @@
     body))
 
 (define/contract
-  (cenegetfx-sink-name-for-function-implementation
-    result-tag main-tag-name proj-tag-names)
-  (-> immutable-string? sink-name? sink-table?
-    (cenegetfx/c sink-name?))
-  (dissect proj-tag-names (sink-table proj-tag-names)
-  #/cenegetfx-bind (cenegetfx-read-lang-impl-qualify-root)
-  #/fn lang-impl-qualify-root
-  #/cenegetfx-done
-    (sink-authorized-name-get-name
-    #/sink-authorized-name-subname
-      (sink-name-of-racket-string result-tag)
-    #/sink-authorized-name-subname
-      (sink-name #/just-value #/pure-run-getfx #/getfx-name-of
-        (dex-table #/dex-trivial)
-        proj-tag-names)
-    #/sink-authorized-name-subname main-tag-name
-    #/sink-authorized-name-subname
-      (sink-name-of-racket-string "function-implementation")
-      lang-impl-qualify-root)))
-
-(define/contract
-  (cenegetfx-sink-name-for-function-implementation-code
-    main-tag-name proj-tag-names)
-  (-> sink-name? sink-table? #/cenegetfx/c sink-name?)
-  (cenegetfx-sink-name-for-function-implementation
-    "code" main-tag-name proj-tag-names))
-
-(define/contract
-  (cenegetfx-sink-name-for-function-implementation-value
-    main-tag-name proj-tag-names)
-  (-> sink-name? sink-table? #/cenegetfx/c sink-name?)
-  (cenegetfx-sink-name-for-function-implementation
-    "value" main-tag-name proj-tag-names))
-
-(define/contract
-  (sink-proj-tag-authorized-names->trivial proj-tag-names)
-  (-> sink-table? sink-table?)
-  (dissect proj-tag-names (sink-table proj-tag-names)
-  #/sink-table #/table-kv-map proj-tag-names #/fn k v
-    (expect v (sink-authorized-name authorized-name)
-      (error "Expected each value of proj-tag-names to be an authorized name")
-    #/expect
-      (pure-run-getfx #/getfx-is-eq-by-dex (dex-name)
-        k
-        (authorized-name-get-name authorized-name))
-      #t
-      (error "Expected each value of proj-tag-names to be an authorized name where the name authorized is the same as the name it's filed under")
-    #/trivial)))
-
-(define/contract
   (cenegetfx-sink-authorized-name-for-function-implementation
-    result-tag main-tag-name proj-tag-names)
-  (-> immutable-string? sink-authorized-name? sink-table?
+    result-tag main-tag-entry proj-tag-names)
+  (-> immutable-string? sink-innate-main-tag-entry? table?
     (cenegetfx/c sink-authorized-name?))
-  (dissect (sink-proj-tag-authorized-names->trivial proj-tag-names)
-    (sink-table proj-tag-names)
-  #/cenegetfx-bind (cenegetfx-read-lang-impl-qualify-root)
+  (cenegetfx-bind (cenegetfx-read-lang-impl-qualify-root)
   #/fn lang-impl-qualify-root
   #/cenegetfx-done
     (sink-authorized-name-subname
@@ -1080,26 +1069,28 @@
         (dex-table #/dex-trivial)
         proj-tag-names)
     #/sink-authorized-name-subname
-      (sink-authorized-name-get-name main-tag-name)
+      (sink-name #/just-value #/pure-run-getfx #/getfx-name-of
+        (dex-sink-innate-main-tag-entry)
+        main-tag-entry)
     #/sink-authorized-name-subname
       (sink-name-of-racket-string "function-implementation")
       lang-impl-qualify-root)))
 
 (define/contract
   (cenegetfx-sink-authorized-name-for-function-implementation-code
-    main-tag-name proj-tag-names)
-  (-> sink-authorized-name? sink-table?
+    main-tag-entry proj-tag-names)
+  (-> sink-innate-main-tag-entry? table?
     (cenegetfx/c sink-authorized-name?))
   (cenegetfx-sink-authorized-name-for-function-implementation
-    "code" main-tag-name proj-tag-names))
+    "code" main-tag-entry proj-tag-names))
 
 (define/contract
   (cenegetfx-sink-authorized-name-for-function-implementation-value
-    main-tag-name proj-tag-names)
-  (-> sink-authorized-name? sink-table?
+    main-tag-entry proj-tag-names)
+  (-> sink-innate-main-tag-entry? table?
     (cenegetfx/c sink-authorized-name?))
   (cenegetfx-sink-authorized-name-for-function-implementation
-    "value" main-tag-name proj-tag-names))
+    "value" main-tag-entry proj-tag-names))
 
 (define/contract (sink-fn-curried-fault n-args racket-func)
   (-> exact-positive-integer? procedure? sink?)
@@ -1176,25 +1167,20 @@
     #/cenegetfx-run-getfx
       (racket-func #/list explicit-fault rinfo arg))
   #/mat func (sink-struct tags projs)
-    (dissect (list-map tags #/fn tag #/sink-name tag)
-      (cons main-tag proj-tags)
+    (dissect tags (cons main-tag-entry proj-tags)
     
     ; TODO: This lookup might be expensive. See if we should memoize
     ; it.
     #/cenegetfx-bind
       (cenegetfx-bind
-        ; TODO: See if there's a way we can either stop depending on
-        ; `cssm-trivial` here or move this code after the place where
-        ; `cssm-trivial` is defined.
-        (cenegetfx-tag cssm-trivial #/fn csst-trivial
-        #/cenegetfx-sink-name-for-function-implementation-value
-          main-tag
-          (list-foldr proj-tags (sink-table #/table-empty)
+        (cenegetfx-sink-authorized-name-for-function-implementation-value
+          main-tag-entry
+          (list-foldr proj-tags (table-empty)
           #/fn proj-tag rest
-            (sink-table-put-maybe rest proj-tag
-            #/just #/make-sink-struct csst-trivial #/list)))
-      #/fn name-for-impl
-      #/cenegetfx-run-sink-getfx #/sink-getfx-get name-for-impl)
+            (table-shadow proj-tag (just #/trivial) rest)))
+      #/fn authorized-name-for-impl
+      #/cenegetfx-run-sink-getfx #/sink-getfx-get
+        (sink-authorized-name-get-name authorized-name-for-impl))
     #/fn impl
     
     #/cenegetfx-bind
@@ -1292,19 +1278,6 @@
 (define/contract (sink-name-for-nameless-bounded-cexpr-op)
   (-> sink-name?)
   (sink-name #/unsafe:name #/list 'name:nameless-bounded-cexpr-op))
-
-(define/contract (sink-name-for-struct-main-tag inner-name)
-  (-> sink-name? sink-name?)
-  (sink-name-rep-map inner-name #/fn n
-    (list 'name:struct-main-tag n)))
-
-(define/contract
-  (sink-name-for-struct-proj qualified-main-tag-name proj-name)
-  (-> sink-name? sink-name? sink-name?)
-  (dissect qualified-main-tag-name
-    (sink-name #/unsafe:name qualified-main-tag-name)
-  #/sink-name-rep-map proj-name #/fn n
-    (list 'name:struct-proj qualified-main-tag-name n)))
 
 (define/contract
   (sink-extfx-sink-cexpr-sequence-output-stream-spend
@@ -1920,8 +1893,6 @@
 ; NOTE: The prefix `cssm-...` stands for "core sink struct metadata."
 ; The prefix `csst-...` stands for "core sink struct tag."
 
-(define cssm-trivial (core-sink-struct "trivial" #/list))
-
 (define cssm-nil (core-sink-struct "nil" #/list))
 (define cssm-cons (core-sink-struct "cons" #/list "first" "rest"))
 
@@ -1930,15 +1901,14 @@
 
 (define minimal-tags
   (list
-    cssm-trivial
-    
     cssm-nil
     cssm-cons
     
     cssm-clamor-err))
 
 (define (cenegetfx-tag-direct metadata)
-  (-> core-sink-struct-metadata? #/and/c pair? #/listof name?)
+  (-> core-sink-struct-metadata?
+    (cons/c sink-innate-main-tag-entry? #/listof name?))
   (dissect metadata
     (core-sink-struct-metadata
       tag-cache-key main-tag-string proj-strings)
@@ -1949,7 +1919,8 @@
 (define (cenegetfx-tag metadata then)
   (->
     core-sink-struct-metadata?
-    (-> (and/c pair? #/listof name?) cenegetfx?)
+    (-> (cons/c sink-innate-main-tag-entry? #/listof name?)
+      cenegetfx?)
     cenegetfx?)
   (cenegetfx-bind (cenegetfx-tag-direct metadata) #/fn tag
   #/then tag))
@@ -1957,7 +1928,8 @@
 (define (sink-extfx-tag metadata then)
   (->
     core-sink-struct-metadata?
-    (-> (and/c pair? #/listof name?) sink-extfx?)
+    (-> (cons/c sink-innate-main-tag-entry? #/listof name?)
+      sink-extfx?)
     sink-extfx?)
   (sink-extfx-run-cenegetfx (cenegetfx-tag-direct metadata) #/fn tag
   #/then tag))
@@ -1965,32 +1937,26 @@
 (define (make-cene-root-info ds lang-impl-qualify-root tags)
   (-> dspace? authorized-name? (listof core-sink-struct-metadata?)
     (cene-root-info/c))
-  (w- temp-rinfo (cene-root-info ds lang-impl-qualify-root (hash))
-  #/cene-root-info
+  (cene-root-info
     ds
     lang-impl-qualify-root
+    ; TODO: Now that this doesn't actually depend on `ds` or
+    ; `lang-impl-qualify-root`, see if we should just compute this
+    ; when we construct the `core-sink-struct-metadata`.
     (list-foldl (hasheq) tags #/fn tag-cache metadata
       (dissect metadata
         (core-sink-struct-metadata
           tag-cache-key main-tag-string proj-strings)
       #/hash-set tag-cache tag-cache-key
-        (w- main-tag-authorized-name
-          (pure-run-getfx #/getfx-run-cenegetfx temp-rinfo
-            (cenegetfx-sink-name-qualify-for-lang-impl
-            #/sink-name-for-struct-main-tag
-            #/sink-name-for-string #/sink-string main-tag-string))
-        #/w- main-tag-name
-          (sink-authorized-name-get-name main-tag-authorized-name)
-        #/list-map
-          (cons main-tag-name
-          #/list-map proj-strings #/fn proj-string
-            (sink-authorized-name-get-name
-            #/pure-run-getfx #/getfx-run-cenegetfx temp-rinfo
-              (cenegetfx-sink-name-qualify-for-lang-impl
-              #/sink-name-for-struct-proj main-tag-name
-              #/sink-name-for-string #/sink-string proj-string)))
-        #/dissectfn (sink-name name)
-          name)))))
+        (cons
+          (sink-innate-main-tag-entry
+            (sink-name-for-string #/sink-string main-tag-string)
+            (sink-you-must-be-this-lang-impl)
+            (sink-you-must-be-someone))
+          (list-map proj-strings #/fn proj-string
+            (dissect (sink-name-for-string #/sink-string proj-string)
+              (sink-name name)
+              name)))))))
 
 (define/contract (sink-list->cenegetfx-maybe-racket sink-list)
   (-> sink? #/cenegetfx/c #/maybe/c #/listof sink?)
