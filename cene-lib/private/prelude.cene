@@ -40,6 +40,12 @@
   (fn-blame bl-arg arg
     (c-blame bl-arg (c-blame bl-f f f) arg)))
 
+(prelude-to-everyone-def-func-blame
+  just-value bl m
+  (cast m just s
+    [errb bl /str-prim:Expected m to be a just]
+    s))
+
 \= TODO: See if we'll use this.
 \= TODO: See if this should verify its output is a maybe as well.
 (prelude-to-everyone-def-func-blame
@@ -185,13 +191,13 @@
     (cast (nat-to-maybe n) just n (c-blame bl then names)
     /let first
       (authorized-name-subname
-        (pure-run-getfx/getfx-name-of
+        (just-value/pure-run-getfx/getfx-name-of
           (dex-prelude-to-prelude-struct unique-name-for-split-first)
           (prelude-to-prelude-construct unique-name-for-split-first))
         next-name)
     /let rest
       (authorized-name-subname
-        (pure-run-getfx/getfx-name-of
+        (just-value/pure-run-getfx/getfx-name-of
           (dex-prelude-to-prelude-struct unique-name-for-split-rest)
           (prelude-to-prelude-construct unique-name-for-split-rest))
         next-name)
