@@ -2716,7 +2716,7 @@
     #/cenegetfx-done projections))
   
   (define/contract
-    (sink-extfx-expand-struct-op
+    (sink-extfx-expand-metadata-based-struct-op
       fault unique-name qualify text-input-stream then)
     (->
       sink-fault?
@@ -2743,6 +2743,66 @@
     #/then unique-name qualify text-input-stream main-tag-entry
       (map list proj-names proj-exprs)))
   
+  (define/contract
+    (sink-extfx-expand-interleaved-struct-op
+      fault unique-name qualify text-input-stream author-must-be
+      user-must-be then)
+    (->
+      sink-fault?
+      sink-authorized-name? sink? sink-text-input-stream?
+      sink-must-be?
+      sink-must-be?
+      (->
+        sink-authorized-name? sink? sink-text-input-stream?
+        sink-innate-main-tag-entry?
+        (listof #/list/c name? cexpr?)
+        sink-extfx?)
+      sink-extfx?)
+    ; TODO: See if we can avoid computing the qualified names since
+    ; we don't use them.
+    (sink-extfx-read-bounded-ids-and-exprs
+      fault unique-name qualify text-input-stream
+      sink-name-for-local-variable
+    #/fn unique-name qualify text-input-stream args
+    #/expect args (cons main-tag-id-or-expr-id args)
+      ; TODO FAULT: Make this `fault` more specific.
+      (sink-extfx-cene-err fault "Expected an interleaved struct form to have a main tag name")
+    #/expect main-tag-id-or-expr-id
+      (id-or-expr-id
+        main-tag-name-located-string
+        main-tag-name-qualified-name)
+      ; TODO FAULT: Make this `fault` more specific.
+      (sink-extfx-cene-err fault "Expected the main tag name of an interleaved struct form to be an identifier")
+    #/w- main-tag-name
+      (sink-name-for-string
+        (sink-string-from-located-string
+          main-tag-name-located-string))
+    #/w- main-tag-entry
+      (sink-innate-main-tag-entry
+        main-tag-name author-must-be user-must-be)
+    #/sink-extfx-run-cenegetfx
+      (w-loop next args args rev-projs (list)
+        (mat args (list) (cenegetfx-done #/reverse rev-projs)
+        #/expect args (list* proj-id-or-expr-id proj-expr args)
+          ; TODO FAULT: Make this `fault` more specific.
+          (cenegetfx-cene-err fault "Expected an interleaved struct form to have a projection expression for every projection name")
+        #/expect proj-id-or-expr-id
+          (id-or-expr-id
+            proj-name-located-string
+            proj-name-qualified-name)
+          ; TODO FAULT: Make this `fault` more specific.
+          (cenegetfx-cene-err fault "Expected each projection name of an interleaved struct form to be an identifier")
+        #/dissect
+          (sink-name-for-string
+            (sink-string-from-located-string
+              proj-name-located-string))
+          (sink-name proj-name)
+        #/dissect (id-or-expr->cexpr proj-expr) (sink-cexpr proj-expr)
+        #/next args (cons (list proj-name proj-expr) rev-projs)))
+    #/fn projs
+    #/then
+      unique-name qualify text-input-stream main-tag-entry projs))
+  
   ; NOTE: The JavaScript version of Cene makes this functionality
   ; possible using a combination of `cexpr-cline-struct`,
   ; `cline-by-dex`, and `dex-by-cline`. We will probably be offering
@@ -2763,7 +2823,7 @@
   (def-macro! "dex-struct" #/fn
     fault unique-name qualify text-input-stream then
     
-    (sink-extfx-expand-struct-op
+    (sink-extfx-expand-metadata-based-struct-op
       fault unique-name qualify text-input-stream
     #/fn
       unique-name qualify text-input-stream main-tag-entry projections
@@ -2785,7 +2845,7 @@
   (def-macro! "cline-struct" #/fn
     fault unique-name qualify text-input-stream then
     
-    (sink-extfx-expand-struct-op
+    (sink-extfx-expand-metadata-based-struct-op
       fault unique-name qualify text-input-stream
     #/fn
       unique-name qualify text-input-stream main-tag-entry projections
@@ -2807,7 +2867,7 @@
   (def-macro! "merge-struct" #/fn
     fault unique-name qualify text-input-stream then
     
-    (sink-extfx-expand-struct-op
+    (sink-extfx-expand-metadata-based-struct-op
       fault unique-name qualify text-input-stream
     #/fn
       unique-name qualify text-input-stream main-tag-entry projections
@@ -2829,7 +2889,7 @@
   (def-macro! "fuse-struct" #/fn
     fault unique-name qualify text-input-stream then
     
-    (sink-extfx-expand-struct-op
+    (sink-extfx-expand-metadata-based-struct-op
       fault unique-name qualify text-input-stream
     #/fn
       unique-name qualify text-input-stream main-tag-entry projections
@@ -2879,7 +2939,7 @@
   (def-macro! "construct" #/fn
     fault unique-name qualify text-input-stream then
     
-    (sink-extfx-expand-struct-op
+    (sink-extfx-expand-metadata-based-struct-op
       fault unique-name qualify text-input-stream
     #/fn
       unique-name qualify text-input-stream main-tag-entry projections
@@ -4410,52 +4470,43 @@
   (def-macro-verbose! sink-extfx-def-value-for-prelude
     "prelude-to-everyone-construct"
     (fn fault unique-name qualify text-input-stream then
-      ; TODO: See if we can avoid computing the qualified names since
-      ; we don't use them.
-      (sink-extfx-read-bounded-ids-and-exprs
+      (sink-extfx-expand-interleaved-struct-op
         fault unique-name qualify text-input-stream
-        sink-name-for-local-variable
-      #/fn unique-name qualify text-input-stream args
-      #/expect args (cons main-tag-id-or-expr-id args)
-        ; TODO FAULT: Make this `fault` more specific.
-        (sink-extfx-cene-err fault "Expected a prelude-to-everyone-construct form to have a main tag name")
-      #/expect main-tag-id-or-expr-id
-        (id-or-expr-id
-          main-tag-name-located-string
-          main-tag-name-qualified-name)
-        ; TODO FAULT: Make this `fault` more specific.
-        (sink-extfx-cene-err fault "Expected the main tag name of a prelude-to-everyone-construct form to be an identifier")
-      #/w- main-tag-name
-        (sink-name-for-string
-          (sink-string-from-located-string
-            main-tag-name-located-string))
-      #/w- main-tag-entry
-        (sink-innate-main-tag-entry
-          main-tag-name
-          (sink-you-must-be-this-lang-impl)
-          (sink-you-must-be-someone))
-      #/sink-extfx-run-cenegetfx
-        (w-loop next args args rev-projs (list)
-          (mat args (list) (cenegetfx-done #/reverse rev-projs)
-          #/expect args (list* proj-id-or-expr-id proj-expr args)
-            (cenegetfx-cene-err fault "Expected a prelude-to-everyone-construct form to have a projection expression for every projection name")
-          #/expect proj-id-or-expr-id
-            (id-or-expr-id
-              proj-name-located-string
-              proj-name-qualified-name)
-            ; TODO FAULT: Make this `fault` more specific.
-            (cenegetfx-cene-err fault "Expected each projection name of a prelude-to-everyone-construct form to be an identifier")
-          #/next args
-            (cons
-              (list
-                (sink-name-for-string
-                  (sink-string-from-located-string
-                    proj-name-located-string))
-                (id-or-expr->cexpr proj-expr))
-              rev-projs)))
-      #/fn projs
+        (sink-you-must-be-this-lang-impl)
+        (sink-you-must-be-someone)
+      #/fn
+        unique-name qualify text-input-stream main-tag-entry
+        projections
       #/then unique-name qualify text-input-stream
-        (sink-cexpr-construct main-tag-entry projs))))
+        (sink-cexpr #/cexpr-construct main-tag-entry projections))))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-macro-verbose! sink-extfx-def-value-for-prelude
+    "prelude-to-prelude-construct"
+    (fn fault unique-name qualify text-input-stream then
+      (sink-extfx-expand-interleaved-struct-op
+        fault unique-name qualify text-input-stream
+        (sink-you-must-be-this-lang-impl)
+        (sink-you-must-be-this-lang-impl)
+      #/fn
+        unique-name qualify text-input-stream main-tag-entry
+        projections
+      #/then unique-name qualify text-input-stream
+        (sink-cexpr #/cexpr-construct main-tag-entry projections))))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-macro-verbose! sink-extfx-def-value-for-prelude
+    "dex-prelude-to-prelude-struct"
+    (fn fault unique-name qualify text-input-stream then
+      (sink-extfx-expand-interleaved-struct-op
+        fault unique-name qualify text-input-stream
+        (sink-you-must-be-this-lang-impl)
+        (sink-you-must-be-this-lang-impl)
+      #/fn
+        unique-name qualify text-input-stream main-tag-entry
+        projections
+      #/then unique-name qualify text-input-stream
+        (sink-cexpr #/cexpr-dex-struct main-tag-entry projections))))
   
   
   ; Define the other built-ins where the prelude code can see them.

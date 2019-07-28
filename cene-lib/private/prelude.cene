@@ -178,40 +178,38 @@
   (c-blame bl (prelude-to-everyone-construct give3) s1 s2 s3
     (c-blame bl (prelude-to-everyone-construct fix) body)))
 
+(prelude-to-everyone-def-func-blame
+  extfx-claim-and-split bl unique-name n then
+  (cast (is-authorized-name unique-name) yep -
+    [errb bl /str-prim:Expected unique-name to be an authorized name]
+  /cast (is-nat n) yep -
+    [errb bl /str-prim:Expected n to be a natural number]
+  /extfx-claim unique-name /fn -
+  /loop3 n unique-name (nil) /fn next n next-name names
+    (cast (nat-to-maybe n) just n (c-blame bl then names)
+    /let first
+      (authorized-name-subname
+        (pure-run-getfx/getfx-name-of
+          (dex-prelude-to-prelude-struct unique-name-for-split-first)
+          (prelude-to-prelude-construct unique-name-for-split-first))
+        next-name)
+    /let rest
+      (authorized-name-subname
+        (pure-run-getfx/getfx-name-of
+          (dex-prelude-to-prelude-struct unique-name-for-split-rest)
+          (prelude-to-prelude-construct unique-name-for-split-rest))
+        next-name)
+    /c next n rest /cons first names)))
+
 (directive /fn root-unique-name root-qualify
   (let err
     (fn-blame bl str
       (follow-heart/clamor-err bl str))
-  /let unique-name-for-split-first
-    (authorized-name-get-name/authorized-name-subname
-      [name-of-string/str-prim:first]
-      root-unique-name)
-  /let unique-name-for-split-rest
-    (authorized-name-get-name/authorized-name-subname
-      [name-of-string/str-prim:rest]
-      root-unique-name)
-  /let extfx-claim-and-split
-    (fn-blame bl unique-name n then
-      (cast (is-authorized-name unique-name) yep -
-        [c-blame bl err /str-prim:Expected unique-name to be an authorized name]
-      /cast (is-nat n) yep -
-        [c-blame bl err /str-prim:Expected n to be a natural number]
-      /extfx-claim unique-name /fn -
-      /loop3 n unique-name (nil) /fn next n next-name names
-        (cast (nat-to-maybe n) just n (c-blame bl then names)
-        /let first
-          (authorized-name-subname unique-name-for-split-first
-            next-name)
-        /let rest
-          (authorized-name-subname unique-name-for-split-rest
-            next-name)
-        /c next n rest /cons first names)))
   /let extfx-claim-freshen
     (fn-blame bl unique-name then
       (cast (is-authorized-name unique-name) yep -
         [c-blame bl err /str-prim:Expected unique-name to be an authorized name]
-      /c extfx-claim-and-split unique-name (int-one)
-      /fn unique-names
+      /extfx-claim-and-split unique-name (int-one) /fn unique-names
       /cast unique-names cons unique-name -
         [c err /str-prim:Internal error: Expected the list resulting from extfx-claim-and-split to be a list of the requested length]
       /c-blame bl then unique-name))
