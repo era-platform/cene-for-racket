@@ -98,11 +98,17 @@ All right, this seems like enough to work with to begin to design a specific sui
 
 ## Designs for the top-level definition forms
 
-(TODO: Design something that can perform imports corresponding to exports of other files.)
+(TODO: Design something that can perform imports corresponding to exports of other files. The file imported from this way will be macroexpanded if it hasn't been already.)
+
+(TODO: Design something that can include other files as though they're directly part of the current lexical unit, including seeing the same macros this one does, and treating their exports as being part of the current lexical unit's exports. This doesn't have to play nicely with the idea of compiling files to modules, and the file will have to be expanded each time it's imported. This will tend to come in handy for programs which use some sort of global-looking framework which has various possible implementations.)
+
+(TODO: Design something that can start a lexical unit inside this one which can see all the things visible in this one, but which doesn't interfere with this one's exports. The outer lexical unit only sees things it imports from the inner lexical unit. A common pattern will be to use one of these blocks to include a file that has exports but whose exports we don't want to export ourselves.)
 
 (TODO: Design things that can specify a struct tag's export conditions (i.e. whether to obscure its main tag name, who can author it, and who can use it).)
 
-(TODO: Design things that can perform imports of struct tags and functions from specific modules. This might just be a combinatin of specifying a struct tag's export conditions and defining a struct metadata operation and a bounded expression operation for local convenience.)
+(TODO: Design something that can locally override the default export conditions of a struct that has no explicit export conditions.)
+
+(TODO: Design things that can perform imports of struct tags and functions from specific modules. This might just be a combination of specifying a struct tag's export conditions and defining a struct metadata operation and a bounded expression operation for local convenience.)
 
 (TODO: Eventually consider designing things like Racket's `all-defined-out`, `except-in`, etc. Maybe we'll at least want a way to define an export metadata operation that combines multiple existing export metadata operations.)
 
@@ -119,7 +125,11 @@ All right, this seems like enough to work with to begin to design a specific sui
 (export export-metadata-op ...)
 ```
 
-(TODO: Design this. It should look up the given export operations and export all the things each one of them specifies.)
+(In short: It looks up the given export operations and exports all the things each one of them specifies.)
+
+Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and does the rest of its work concurrently with that.
+
+Spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it exports each of the things listed by each of the given export metadata operations.
 
 
 ---
@@ -130,9 +140,21 @@ All right, this seems like enough to work with to begin to design a specific sui
   proj-tag ...)
 ```
 
-(TODO: Design this. It should define a struct using inferred export conditions, and it should define that struct's function implementation so that it causes an error when called.)
+(In short: Defines a struct using inferred export conditions, and defines its function implementation so that it causes an error when called.)
 
-(TODO: Take debug printouts into account in this design. Once we have this one figured out, we may need to revise the design of `defn` to do the same thing and to revise the design of `def-bounded-expr-op` so it declares any existing debug printout cases to be shadowed and hence out of the running.)
+Spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it defines an export metadata operation, a struct metadata operation, and a bounded expression operation, each with its name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`. For the sake of assisting with debug printouts, the declarations that this defines a struct metadata operation and a bounded expression operation each come with metadata to express that the operations are capable of being used for constructing structs.
+
+Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and does the rest of its work concurrently with that.
+
+Expands to a `directive` expression that defines four things. The first three have names based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
+
+* An export metadata operation that exports all three of these defined operations.
+
+* A struct metadata operation with automatically determined struct export conditions, with a main tag name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`, and with projection names based on the given `proj-tag` identifiers.
+
+* A bounded expression operation. The definition of this operation reads a number of expressions equal to the number of `proj-tag` identifiers. It expands to an expression that constructs a struct with the tag specified above, using the given expressions to populate each field of the struct.
+
+* A function implementation for the tag specified above. To convert the struct to an opaque function, it returns an opaque function that causes an error when called.
 
 
 ---
@@ -145,21 +167,25 @@ All right, this seems like enough to work with to begin to design a specific sui
   body)
 ```
 
-(In short: Defines a function using inferred export conditions. The `body` may refer to local variables in the lexical scope surrunding this lexical unit.)
+(In short: Defines a function using inferred export conditions. The `body` may refer to local variables in the lexical scope surrounding this lexical unit.)
 
-Pre-reads its lexical extent to find matching brackets, expands a modified copy of its input stream where the stream ends after the closing paren, and concurrently expands the portion of the stream that follows the closing paren.
+Pre-reads its lexical extent to find matching brackets.
 
-Spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it defines an export metadata operation, a struct metadata operation, and a bounded expression operation, each with its name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`.
+Spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it defines an export metadata operation, a struct metadata operation, and a bounded expression operation, each with its name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`. For the sake of assisting with debug printouts, the declaration that this defines a struct metadata operation comes with metadata to express that the operation is capable of being used for constructing structs.
+
+Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and concurrently does the rest of its work by expanding a modified copy of its input stream where the stream ends after the closing paren.
 
 Reads `body` as an expression with identifier expression operations for each of the `...-arg` identifiers that associate them with local variables. Wraps the result in a blamed lambda expression which binds `blame-arg` as its blame argument and the last `positional-arg` as its primary argument. Wraps this again in function expressions that bind the other arguments. The expression that results from all this wrapping may have free variables, and each of those free variables must have metadata associating it with a distinct innate projection name and an expression that makes sense (but which we don't necessarily verify to make sense) in the lexical scope surrounding this lexical unit.
 
-Expands to a `directive` expression that defines three things with names based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
+Expands to a `directive` expression that defines four things. The first three have names based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
 
 * An export metadata operation that exports all three of these defined operations.
 
 * A struct metadata operation with automatically determined struct export conditions, with a main tag name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`, and with projection names based on the metadata of the free variables of the wrapped `body` expression.
 
 * A bounded expression operation. The definition of this operation reads a number of expressions equal to the number of `positional-arg` identifiers. It expands to an expression that constructs a struct with the tag specified above, then calls it with each of the given expressions in turn. The construction expression uses the metadata of the free variables of the wrapped `body` expression to determine what expressions to use to populate each field of the struct. These expressions will usually refer to local variables bound in the lexical scope surrounding this lexical unit, referring to them by obscure alternative names that can't be shadowed by any of the usual variable-binding forms.
+
+* A function implementation for the tag specified above. To convert the struct to an opaque function, it deconstructs the struct to bind the appropriate local variables, and it executes the wrapped `body` expression.
 
 
 ---
@@ -179,9 +205,11 @@ Expands to a `directive` expression that defines three things with names based o
 
 (In short: Defines a macro, or more specifically a bounded expression operation.)
 
-Pre-reads its lexical extent to find matching brackets, expands a modified copy of its input stream where the stream ends after the closing paren, and concurrently expands the portion of the stream that follows the closing paren.
+Pre-reads its lexical extent to find matching brackets.
 
 Spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it defines an export metadata operation and a bounded expression operation, each with its name based on `export-metadata-op-and-bounded-expr-op`.
+
+Returns control to the macroexpander to continue expanding the portino of the stream that follows the closing paren, and concurrently does the rest of its work by expanding a modified copy of its input stream where the stream ends after the closing paren.
 
 Reads `body` as an expression with identifier expression operations for each of the `...-arg` identifiers that associate them with local variables. Wraps the result in a blamed lambda expression which binds `blame-arg` as its blame argument and `expression-sequence-output-stream-arg` as its primary argument. Wraps this again in function expressions that bind the other arguments. Verifies that the expression that results from all this wrapping has no free variables.
 
