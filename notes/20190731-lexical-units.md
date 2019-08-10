@@ -77,6 +77,9 @@ There are three kinds of things usually defined in a Cene program:
 
 * Macros. The definitions of struct tags and functions also tend to define corresponding macros to make them easier to use.
 
+
+### Struct tag export conditions
+
 Struct tags are a bit of a surprising case to consider here because we've just recently changed them to *stop* using the `qualify` function for their innate main tag name and their innate projection names. The reason we did this is because most struct tags defined by the prelude are exported for use by all Cene users, and an exported struct tag will typically need a name a potential user can easily write an import for.
 
 It's quite likely we'll want exported struct tags and exported functions to use easy-to-access names for their innate main tag names but for non-exported ones to use... maybe not qualified names... maybe unique names. (Whether we use easy-to-access names for the projections probably doesn't matter.) A unique name used for this purpose should be derived from the unique name provided to a `directive` body rather than one obtained from the macroexpander; that way the name doesn't have to be reified when compiling a file to a file-like module.
@@ -87,9 +90,26 @@ Let's assume that "is this struct tag supposed to be exported or not?" is a ques
 
 Export status is a detailed thing. A struct type can be defined for some author and some user. A non-exported struct tag's author and user will usually be the codebase's author, but a codebase may compile to multiple modules, and each module may have a different combination of authors, so it may be unclear which one the struct tag should be associated with. This means we'll likely want to set up a "default author-user for non-exported struct types" variable in the lexical scope which may be bound explicitly when necessary.
 
+
+### Using run time local variables from local function definitions
+
 Oh, another challenge has to do with allowing a local definition block to refer to run-time values bound to variables in the surrounding code. One of the most compelling uses of local definitions tends to be the easy creation of mutually recursive local functions which make use of local bindings, so it would be good to make sure this is possible. A macro or `directive` expression, as opposed to a function, should not be able to refer to a run-time value.
 
-Let's do this like so: First we introduce a concept of "identifier expression operation," a kind of macro where the call sites look like variable references. Let's have all variable bindings actually bind these operations, let's have the actual variables in the expression AST be unique names which these operations refer to, and let's have the free variables of an expression be associated with certain metadata. Then when we compile a function definition, let's make it so a free variable in the function body actually causes the function's struct tag to have another projection on it (named according to the metadata), specifically to hold the value of that variable. The function's bounded expression operation (macro) still expands to a call to the structs, but the subexpression that constructs that struct supplies projection values based on the metadata. Note that with this design, top-level function definitions still behave like always.
+Let's do this like so: First we introduce a concept of "unceremonious expression operation," a kind of macro where the call sites look like variable references. Let's have all variable bindings actually bind these operations; let's have the actual variables in the expression AST be unique names which these operations refer to; and let's have the free variables of an expression be associated with certain metadata. Then when we compile a function definition, let's make it so a free variable in the function body actually causes the function's struct tag to have another projection on it (named according to the metadata), specifically to hold the value of that variable. The function's bounded expression operation (i.e. macro) still expands to a call to a newly constructed struct instance, but the subexpression that constructs that instance supplies projection values as expressions obtained from the metadata. Thanks to the use of unique names for local variables, these expressions can access the variables even in situations where they would otherwise appear to be shadowed. Note that with this design, top-level function definitions still behave like always since they have no free variables.
+
+
+### "Inner" and "outer" scopes of a declaration operation
+
+If we treat top-level declarations the same way as expressions, there's a design problem. How can the macroexpander begin even one top-level expression's macro call if it still doesn't know if that macro will be rebound by one of the definitions?
+
+Here's what we'll do: Forget that the top-level declarations are expressions. They're now "declarations," and their macro calls use "bounded declaration operations" instead of "bounded expression operations." These operations have a slightly different interface, taking in a  "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket from the macroexpander.
+
+The way this helps is that we can have the declaration operations take in two qualify functions instead of one. One qualify function (the "outer" one) can be used for reading subforms where the lexical unit's definitions aren't in scope, and the other (the "inner" one) can be used for reading subforms where they are. The top-level declarations themselves will be expanded using the outer qualify function, so we don't have to worry about whether those macros will be locally shadowed. Most of the declarations' subexpressions will be expanded in the inner scope, so they can be mutually recursive.
+
+If someone does need to define a definition form and then use it right away, they'll need to use it from within a lexical unit where the outer scope includes the definition form. Just for this purpose, we'll design a top-level declaration that processes a local block of declarations within an outer scope where part of the original outer scope is shadowed. (TODO USE-DEF-RIGHT-AWAY: Do this.)
+
+
+---
 
 All right, this seems like enough to work with to begin to design a specific suite of operations.
 
@@ -98,11 +118,15 @@ All right, this seems like enough to work with to begin to design a specific sui
 
 ## Designs for the top-level definition forms
 
+(TODO: We should probably also use this space to design a bounded expression operation that has a local definition block and a subexpression that depends on it. After all, the very potential of having this operation is a source of many of the design choices we're making for the rest of the operations here.)
+
 (TODO: Design something that can perform imports corresponding to exports of other files. The file imported from this way will be macroexpanded if it hasn't been already.)
 
 (TODO: Design something that can include other files as though they're directly part of the current lexical unit, including seeing the same macros this one does, and treating their exports as being part of the current lexical unit's exports. This doesn't have to play nicely with the idea of compiling files to modules, and the file will have to be expanded each time it's imported. This will tend to come in handy for programs which use some sort of global-looking framework which has various possible implementations.)
 
-(TODO: Design something that can start a lexical unit inside this one which can see all the things visible in this one, but which doesn't interfere with this one's exports. The outer lexical unit only sees things it imports from the inner lexical unit. A common pattern will be to use one of these blocks to include a file that has exports but whose exports we don't want to export ourselves.)
+(TODO USE-DEF-RIGHT-AWAY: Design something that can start a lexical unit inside this one which has part of its outer scope shadowed according to an import. Definitions and exports in the block will also count as definitions and exports of the surrounding lexical unit. The idea is that this provides a well-behaved way for someone to define a definition form (in the surrounding lexical unit) and use it right away (inside the block).)
+
+(TODO: Design something that can start a lexical unit inside this one which can see all the things visible in this one, but which doesn't interfere with this one's definitions and exports. The outer lexical unit only sees things it imports from the inner lexical unit. A user can use one these blocks to include a file that has exports but whose exports they don't want to export themselves.)
 
 (TODO: Design things that can specify a struct tag's export conditions (i.e. whether to obscure its main tag name, who can author it, and who can use it).)
 
@@ -125,11 +149,13 @@ All right, this seems like enough to work with to begin to design a specific sui
 (export export-metadata-op ...)
 ```
 
-(In short: It looks up the given export operations and exports all the things each one of them specifies.)
+A bounded declaration operation.
+
+(In short: Looks up the given export operations and exports all the things each one of them specifies.)
 
 Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and does the rest of its work concurrently with that.
 
-Spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it exports each of the things listed by each of the given export metadata operations.
+Spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it exports each of the things listed by each of the given export metadata operations. The export metadata operations are looked up in the lexical unit's inner scope.
 
 
 ---
@@ -140,15 +166,21 @@ Spends its "what does this lexical unit define, what does it export, and what st
   proj-tag ...)
 ```
 
+A bounded declaration operation.
+
 (In short: Defines a struct using inferred export conditions, and defines its function implementation so that it causes an error when called.)
 
 Spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it defines an export metadata operation, a struct metadata operation, and a bounded expression operation, each with its name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`. For the sake of assisting with debug printouts, the declarations that this defines a struct metadata operation and a bounded expression operation each come with metadata to express that the operations are capable of being used for constructing structs.
 
 Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and does the rest of its work concurrently with that.
 
-Expands to a `directive` expression that defines four things. The first three have names based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
+Writes a first `directive` expression that defines something with a name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
 
-* An export metadata operation that exports all three of these defined operations.
+* An export metadata operation that exports this export metadata operation as well as the struct metadata operation and the bounded expression operation defined below.
+
+Determines the export conditions of the struct tag. These may depend on declarations in this lexical unit.
+
+Writes a second `directive` expression that defines three more things, the first two of which have names based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
 
 * A struct metadata operation with automatically determined struct export conditions, with a main tag name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`, and with projection names based on the given `proj-tag` identifiers.
 
@@ -167,6 +199,8 @@ Expands to a `directive` expression that defines four things. The first three ha
   body)
 ```
 
+A bounded declaration operation.
+
 (In short: Defines a function using inferred export conditions. The `body` may refer to local variables in the lexical scope surrounding this lexical unit.)
 
 Pre-reads its lexical extent to find matching brackets.
@@ -175,13 +209,19 @@ Spends its "what does this lexical unit define, what does it export, and what st
 
 Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and concurrently does the rest of its work by expanding a modified copy of its input stream where the stream ends after the closing paren.
 
-Reads `body` as an expression with identifier expression operations for each of the `...-arg` identifiers that associate them with local variables. Wraps the result in a blamed lambda expression which binds `blame-arg` as its blame argument and the last `positional-arg` as its primary argument. Wraps this again in function expressions that bind the other arguments. The expression that results from all this wrapping may have free variables, and each of those free variables must have metadata associating it with a distinct innate projection name and an expression that makes sense (but which we don't necessarily verify to make sense) in the lexical scope surrounding this lexical unit.
+Writes a first `directive` expression that defines something with a name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
 
-Expands to a `directive` expression that defines four things. The first three have names based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
+* An export metadata operation that exports this export metadata operation as well as the struct metadata operation and the bounded expression operation defined below.
 
-* An export metadata operation that exports all three of these defined operations.
+Determines the export conditions of the struct tag. These may depend on declarations in this lexical unit.
+
+Writes a second `directive` expression that defines one more thing with a name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
 
 * A struct metadata operation with automatically determined struct export conditions, with a main tag name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`, and with projection names based on the metadata of the free variables of the wrapped `body` expression.
+
+Reads `body` as an expression in the lexical unit's inner scope, but while augmenting that scope with unceremonious expression operations for each of the `...-arg` identifiers that associate them with local variables. Wraps the result in a blamed lambda expression which binds `blame-arg` as its blame argument and the last `positional-arg` as its primary argument. Wraps this again in function expressions that bind the other arguments. The expression that results from all this wrapping may have free variables, and each of those free variables must have metadata associating it with a distinct innate projection name and an expression that makes sense (but which we don't necessarily verify to make sense) in the lexical scope surrounding this lexical unit.
+
+Writes a third `directive` expression that defines two more things. The first has a name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
 
 * A bounded expression operation. The definition of this operation reads a number of expressions equal to the number of `positional-arg` identifiers. It expands to an expression that constructs a struct with the tag specified above, then calls it with each of the given expressions in turn. The construction expression uses the metadata of the free variables of the wrapped `body` expression to determine what expressions to use to populate each field of the struct. These expressions will usually refer to local variables bound in the lexical scope surrounding this lexical unit, referring to them by obscure alternative names that can't be shadowed by any of the usual variable-binding forms.
 
@@ -203,18 +243,134 @@ Expands to a `directive` expression that defines four things. The first three ha
   body)
 ```
 
+A bounded declaration operation.
+
 (In short: Defines a macro, or more specifically a bounded expression operation.)
 
 Pre-reads its lexical extent to find matching brackets.
 
 Spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it defines an export metadata operation and a bounded expression operation, each with its name based on `export-metadata-op-and-bounded-expr-op`.
 
-Returns control to the macroexpander to continue expanding the portino of the stream that follows the closing paren, and concurrently does the rest of its work by expanding a modified copy of its input stream where the stream ends after the closing paren.
+Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and concurrently does the rest of its work by expanding a modified copy of its input stream where the stream ends after the closing paren.
 
-Reads `body` as an expression with identifier expression operations for each of the `...-arg` identifiers that associate them with local variables. Wraps the result in a blamed lambda expression which binds `blame-arg` as its blame argument and `expression-sequence-output-stream-arg` as its primary argument. Wraps this again in function expressions that bind the other arguments. Verifies that the expression that results from all this wrapping has no free variables.
+Writes a first `directive` expression that defines something with a name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
 
-Expands to a `directive` expression that defines two things with names based on `export-metadata-op-and-bounded-expr-op`:
+* An export metadata operation that exports this defined operation as well as a bounded expression operation defined below.
 
-* An export metadata operation that exports both of these defined operations.
+Reads `body` as an expression in the lexical unit's inner scope, but while augmenting that scope with unceremonious expression operations for each of the `...-arg` identifiers that associate them with local variables. Wraps the result in a blamed lambda expression which binds `blame-arg` as its blame argument and `expression-sequence-output-stream-arg` as its primary argument. Wraps this again in function expressions that bind the other arguments. Verifies that the expression that results from all this wrapping has no free variables.
+
+Writes a second `directive` expression that defines another thing with a name based on `export-metadata-op-and-bounded-expr-op`:
 
 * A bounded expression operation. The definition of this operation incorporates the wrapped function expression, passing its result some specific values for `definition-site-unique-name-arg` and `definition-site-qualify-arg` based on the `directive`'s unique name and qualify function and otherwise passing it the same arguments the operation receives from the macroexpander.
+
+
+---
+
+```
+(def-freestanding-expr-op
+  export-metadata-op-and-freestanding-expr-op
+  blame-arg
+  definition-site-unique-name-arg
+  definition-site-qualify-arg
+  call-site-unique-name-arg
+  call-site-qualify-arg
+  text-input-stream-arg
+  expression-sequence-output-stream-arg
+  body)
+```
+
+A bounded declaration operation.
+
+Defines a freestanding expression operation, which is a kind of macro. This works just like `def-bounded-expr-op` except for the kind of macro it defines. Unlike a bounded expression operation, which is typically called with syntax like `(foo ...)`, a freestanding expression operation is typically called with syntax like `\foo ...`.
+
+
+---
+
+```
+(def-unceremonious-expr-op
+  export-metadata-op-and-unceremonious-expr-op
+  blame-arg
+  definition-site-unique-name-arg
+  definition-site-qualify-arg
+  call-site-unique-name-arg
+  call-site-qualify-arg
+  expression-sequence-output-stream-arg
+  body)
+```
+
+A bounded declaration operation.
+
+Defines an unceremonious expression operation, which is a kind of macro. This works just like `def-bounded-expr-op` except for the kind of macro it defines and the fact that this kind of macro receives no `text-input-stream-arg`. Unlike a bounded expression operation, which is typically called with syntax like `(foo ...)`, an unceremonious expression operation is typically called with syntax like `foo` -- which is to say, just an identifier by itself.
+
+
+---
+
+```
+(def-bounded-decl-op
+  export-metadata-op-and-bounded-decl-op
+  blame-arg
+  definition-site-unique-name-arg
+  definition-site-qualify-arg
+  call-site-unique-name-arg
+  call-site-outer-qualify-arg
+  call-site-inner-qualify-arg
+  lexical-unit-familiarity-ticket
+  text-input-stream-arg
+  expression-sequence-output-stream-arg
+  body)
+```
+
+A bounded declaration operation.
+
+Defines a bounded declaration operation, which is a kind of macro. This works just like `def-bounded-expr-op` except for the kind of macro it defines and the fact that this kind of macro receives slightly different arguments:
+
+* It receives both a `call-site-outer-qualify-arg` and a `call-site-inner-qualify-arg`, rather than only a single `call-site-qualify-arg`. The outer one looks up things in the scope surrounding the lexical unit this operation's call occurs in, and the inner one looks up things in the more local scope where the lexical unit's definitions are in force. Calls to the local qualify function will tend to block until all this lexical unit's declarations' familiarity tickets have been spent.
+
+* It receives a `lexical-unit-familiarity-ticket`, a familiarity ticket which it can spend to contribute information about what this lexical unit defines, what it exports, and what struct tag export circumstances it determines.
+
+The expressions this macro writes to the `expression-sequence-output-stream-arg` will be evaluated to obtain `directive` values, which will be used to perform the actual definitions promised when the the familiarity ticket was spent.
+
+Like a bounded expression operation, this kind of macro is typically called with syntax like `(foo ...)`.
+
+
+---
+
+```
+(def-freestanding-decl-op
+  export-metadata-op-and-freestanding-decl-op
+  blame-arg
+  definition-site-unique-name-arg
+  definition-site-qualify-arg
+  call-site-unique-name-arg
+  call-site-outer-qualify-arg
+  call-site-inner-qualify-arg
+  lexical-unit-familiarity-ticket
+  text-input-stream-arg
+  expression-sequence-output-stream-arg
+  body)
+```
+
+A bounded declaration operation.
+
+Defines a freestanding declaration operation, which is a kind of macro. This works just like `def-bounded-decl-op` except for the kind of macro it defines. Unlike a bounded declaration operation, which is typically called with syntax like `(foo ...)`, a freestanding declaration operation is typically called with syntax like `\foo ...`.
+
+
+---
+
+```
+(def-unceremonious-decl-op
+  export-metadata-op-and-unceremonious-decl-op
+  blame-arg
+  definition-site-unique-name-arg
+  definition-site-qualify-arg
+  call-site-unique-name-arg
+  call-site-outer-qualify-arg
+  call-site-inner-qualify-arg
+  lexical-unit-familiarity-ticket
+  expression-sequence-output-stream-arg
+  body)
+```
+
+A bounded declaration operation.
+
+Defines an unceremonious declaration operation, which is a kind of macro. This works just like `def-bounded-decl-op` except for the kind of macro it defines and the fact that this kind of macro receives no `text-input-stream-arg`. Unlike a bounded declaration operation, which is typically called with syntax like `(foo ...)`, an unceremonious declaration operation is typically called with syntax like `foo` -- which is to say, just an identifier by itself.
