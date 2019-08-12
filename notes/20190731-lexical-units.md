@@ -124,8 +124,6 @@ All right, this seems like enough to work with to begin to design a specific sui
 
 (TODO: Design something that can include other files as though they're directly part of the current lexical unit, including seeing the same macros this one does, and treating their exports as being part of the current lexical unit's exports. This doesn't have to play nicely with the idea of compiling files to modules, and the file will have to be expanded each time it's imported. This will tend to come in handy for programs which use some sort of global-looking framework which has various possible implementations.)
 
-(TODO: Design something that can start a lexical unit inside this one which can see all the things visible in this one, but which doesn't interfere with this one's definitions and exports. The outer lexical unit only sees things it imports from the inner lexical unit. A user can use one these blocks to include a file that has exports but whose exports they don't want to export themselves.)
-
 (TODO: Design things that can specify a struct tag's export conditions (i.e. whether to obscure its main tag name, who can author it, and who can use it).)
 
 (TODO: Design something that can locally override the default export conditions of a struct that has no explicit export conditions.)
@@ -148,6 +146,7 @@ Table of contents:
 * `declare`
 * `declare-matched-brackets-section-separately`
 * `importing-local-as-nonlocal`
+* `import-from-declaration-local`
 * `export-local`
 * `def-struct`
 * `defn`
@@ -182,9 +181,7 @@ A bounded declaration operation.
 
 (In short: Declares all the things the given declarations declare, but allows the macroexpander to work on the code after the closing paren at the same time.)
 
-Pre-reads its lexical extent to find matching brackets.
-
-Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and concurrently does the rest of its work by expanding a modified copy of its input stream where the stream ends after the closing paren.
+Pre-reads its lexical extent to find matching brackets. Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and concurrently does the rest of its work by expanding a modified copy of its input stream where the stream ends after the closing paren.
 
 Declares all the things the given declarations declare.
 
@@ -202,6 +199,27 @@ Looks up the given export metadata operation in the current lexical unit's inner
 This can be good for situations where a lexical unit contains a definition of a declaration operation that needs to be used right away. Usually that declaration operation can't be used from the same part of the code since it only exists in the inner scope, not the outer scope where the declaration operations are looked up. However, it can be used inside one of these regions with the appropriate bindings imported.
 
 Note that this doesn't pre-read its lexical extent. The macroexpander won't proceed to process the remainder of the stream after the closing bracket until the last declaration before the closing bracket has been processed. If more concurrency is desired, use `declare-matched-brackets-section-separately`.
+
+
+---
+
+```
+(import-from-declaration-local decl export-metadata-op ...)
+```
+
+A bounded declaration operation.
+
+(In short: Starts a lexical unit inside this one which can see all the things visible in this one, but which doesn't interfere with this one's definitions and exports. The outer lexical unit only sees things it imports from the inner lexical unit. This can be useful when a user wants to make verbatim use of an existing piece of code that has exports (such as a file or code example obtained from someone else) but doesn't want their own code to export those exports.)
+
+Pre-reads its lexical extent to find matching brackets. Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and concurrently does the rest of its work by expanding a modified copy of its input stream where the stream ends after the closing paren.
+
+Processes the given declaration (which may perform multiple declarations using `declare`) as its own lexical unit, using the same outer scope as the current lexical unit's outer scope.
+
+Looks up the given export metadata operations in that lexical unit's inner scope, and spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it defines each of the things listed by each of those export metadata operations.
+
+Concurrently looks up each of the things it promised to define and defines it.
+
+Note that there may be interdependencies between the declaration and the surrounding lexical unit, so there may be a nontrivial chain of logical dependency in between spending the familiarity ticket to say what definitions will be imported and finally propagating those definitions.
 
 
 ---
@@ -264,11 +282,9 @@ A bounded declaration operation.
 
 (In short: Defines a function using inferred export conditions. The `body` may refer to local variables in the lexical scope surrounding this lexical unit.)
 
-Pre-reads its lexical extent to find matching brackets.
+Pre-reads its lexical extent to find matching brackets. Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and concurrently does the rest of its work by expanding a modified copy of its input stream where the stream ends after the closing paren.
 
 Spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it defines an export metadata operation, a struct metadata operation, and a bounded expression operation, each with its name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`. For the sake of assisting with debug printouts, the declaration that this defines a struct metadata operation comes with metadata to express that the operation is capable of being used for constructing structs.
-
-Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and concurrently does the rest of its work by expanding a modified copy of its input stream where the stream ends after the closing paren.
 
 Writes a first `directive` expression that defines something with a name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
 
@@ -309,11 +325,9 @@ A bounded declaration operation.
 
 (In short: Defines a macro, or more specifically a bounded expression operation.)
 
-Pre-reads its lexical extent to find matching brackets.
+Pre-reads its lexical extent to find matching brackets. Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and concurrently does the rest of its work by expanding a modified copy of its input stream where the stream ends after the closing paren.
 
 Spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it defines an export metadata operation and a bounded expression operation, each with its name based on `export-metadata-op-and-bounded-expr-op`.
-
-Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and concurrently does the rest of its work by expanding a modified copy of its input stream where the stream ends after the closing paren.
 
 Writes a first `directive` expression that defines something with a name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
 
