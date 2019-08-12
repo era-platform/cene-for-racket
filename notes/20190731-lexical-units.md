@@ -106,7 +106,7 @@ Here's what we'll do: Forget that the top-level declarations are expressions. Th
 
 The way this helps is that we can have the declaration operations take in two qualify functions instead of one. One qualify function (the "outer" one) can be used for reading subforms where the lexical unit's definitions aren't in scope, and the other (the "inner" one) can be used for reading subforms where they are. The top-level declarations themselves will be expanded using the outer qualify function, so we don't have to worry about whether those macros will be locally shadowed. Most of the declarations' subexpressions will be expanded in the inner scope, so they can be mutually recursive.
 
-If someone does need to define a definition form and then use it right away, they'll need to use it from within a lexical unit where the outer scope includes the definition form. Just for this purpose, we'll design a top-level declaration that processes a local block of declarations within an outer scope where part of the original outer scope is shadowed. (TODO USE-DEF-RIGHT-AWAY: Do this.)
+If someone does need to define a definition form and then use it right away, they'll need to use it from within a lexical unit where the outer scope includes the definition form. Just for this purpose, we'll design a top-level declaration named `importing-local-as-nonlocal` that processes a local block of declarations within an outer scope where part of the original outer scope is shadowed.
 
 
 ---
@@ -123,8 +123,6 @@ All right, this seems like enough to work with to begin to design a specific sui
 (TODO: Design something that can perform imports corresponding to exports of other files. The file imported from this way will be macroexpanded if it hasn't been already.)
 
 (TODO: Design something that can include other files as though they're directly part of the current lexical unit, including seeing the same macros this one does, and treating their exports as being part of the current lexical unit's exports. This doesn't have to play nicely with the idea of compiling files to modules, and the file will have to be expanded each time it's imported. This will tend to come in handy for programs which use some sort of global-looking framework which has various possible implementations.)
-
-(TODO USE-DEF-RIGHT-AWAY: Design something that can start a lexical unit inside this one which has part of its outer scope shadowed according to an import. Definitions and exports in the block will also count as definitions and exports of the surrounding lexical unit. The idea is that this provides a well-behaved way for someone to define a definition form (in the surrounding lexical unit) and use it right away (inside the block).)
 
 (TODO: Design something that can start a lexical unit inside this one which can see all the things visible in this one, but which doesn't interfere with this one's definitions and exports. The outer lexical unit only sees things it imports from the inner lexical unit. A user can use one these blocks to include a file that has exports but whose exports they don't want to export themselves.)
 
@@ -147,7 +145,10 @@ All right, this seems like enough to work with to begin to design a specific sui
 
 Table of contents:
 
-* `export`
+* `declare`
+* `declare-matched-brackets-section-separately`
+* `importing-local-as-nonlocal`
+* `export-local`
 * `def-struct`
 * `defn`
 * `def-bounded-expr-op`
@@ -161,12 +162,57 @@ Table of contents:
 ---
 
 ```
-(export export-metadata-op ...)
+(declare decl ...)
 ```
 
 A bounded declaration operation.
 
-(In short: Looks up the given export operations and exports all the things each one of them specifies.)
+Declares all the things the given declarations declare. This can be good for situations where only one declaration is expected syntactically.
+
+Note that this doesn't pre-read its lexical extent. The macroexpander won't proceed to process the remainder of the stream after the closing bracket until the last declaration before the closing bracket has been processed. If more concurrency is desired, use `declare-matched-brackets-section-separately`.
+
+
+---
+
+```
+(declare-matched-brackets-section-separately decl ...)
+```
+
+A bounded declaration operation.
+
+(In short: Declares all the things the given declarations declare, but allows the macroexpander to work on the code after the closing paren at the same time.)
+
+Pre-reads its lexical extent to find matching brackets.
+
+Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and concurrently does the rest of its work by expanding a modified copy of its input stream where the stream ends after the closing paren.
+
+Declares all the things the given declarations declare.
+
+
+---
+
+```
+(importing-local-as-nonlocal export-metadata-op decl ...)
+```
+
+A bounded declaration operation.
+
+Looks up the given export metadata operation in the current lexical unit's inner scope. Processes the given declarations with the same inner scope, but with part of the outer scope shadowed according to the export metadata.
+
+This can be good for situations where a lexical unit contains a definition of a declaration operation that needs to be used right away. Usually that declaration operation can't be used from the same part of the code since it only exists in the inner scope, not the outer scope where the declaration operations are looked up. However, it can be used inside one of these regions with the appropriate bindings imported.
+
+Note that this doesn't pre-read its lexical extent. The macroexpander won't proceed to process the remainder of the stream after the closing bracket until the last declaration before the closing bracket has been processed. If more concurrency is desired, use `declare-matched-brackets-section-separately`.
+
+
+---
+
+```
+(export-local export-metadata-op ...)
+```
+
+A bounded declaration operation.
+
+(In short: Looks up the given export operations using the lexical unit's inner scope and exports all the things each one of them specifies.)
 
 Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and does the rest of its work concurrently with that.
 
