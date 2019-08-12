@@ -240,6 +240,7 @@ Writes a third `directive` expression that defines two more things. The first ha
   call-site-qualify-arg
   text-input-stream-arg
   expression-sequence-output-stream-arg
+  extfx-then-arg
   body)
 ```
 
@@ -276,6 +277,7 @@ Writes a second `directive` expression that defines another thing with a name ba
   call-site-qualify-arg
   text-input-stream-arg
   expression-sequence-output-stream-arg
+  extfx-then-arg
   body)
 ```
 
@@ -295,6 +297,7 @@ Defines a freestanding expression operation, which is a kind of macro. This work
   call-site-unique-name-arg
   call-site-qualify-arg
   expression-sequence-output-stream-arg
+  extfx-then-arg
   body)
 ```
 
@@ -317,6 +320,7 @@ Defines an unceremonious expression operation, which is a kind of macro. This wo
   lexical-unit-familiarity-ticket
   text-input-stream-arg
   expression-sequence-output-stream-arg
+  extfx-then-arg
   body)
 (def-freestanding-decl-op
   export-metadata-op-and-freestanding-decl-op
@@ -329,6 +333,7 @@ Defines an unceremonious expression operation, which is a kind of macro. This wo
   lexical-unit-familiarity-ticket
   text-input-stream-arg
   expression-sequence-output-stream-arg
+  extfx-then-arg
   body)
 (def-unceremonious-decl-op
   export-metadata-op-and-unceremonious-decl-op
@@ -340,6 +345,7 @@ Defines an unceremonious expression operation, which is a kind of macro. This wo
   call-site-inner-qualify-arg
   lexical-unit-familiarity-ticket
   expression-sequence-output-stream-arg
+  extfx-then-arg
   body)
 ```
 
@@ -348,6 +354,8 @@ Bounded declaration operations.
 These work just like `def-bounded-expr-op`, `def-freestanding-expr-op`, and `def-unceremonious-expr-op`, except that instead of defining bounded expression operations, freestanding expression operations, and unceremonious expression operations, they define bounded declaration operations, freestanding declaration operations, and unceremonious declaration operations. Each kind of declaration operation is similar to the corresponding kind of expression operation except that it receives slightly different arguments:
 
 * It receives both a `call-site-outer-qualify-arg` and a `call-site-inner-qualify-arg`, rather than only a single `call-site-qualify-arg`. The outer one looks up things in the scope surrounding the lexical unit this operation's call occurs in, and the inner one looks up things in the more local scope where the lexical unit's definitions are in force. Calls to the local qualify function will tend to block until all this lexical unit's declarations' familiarity tickets have been spent.
+
+* Likewise, its `extfx-then-arg` callback expects to be passed both an outer and an inner qualify function.
 
 * It receives a `lexical-unit-familiarity-ticket`, a familiarity ticket which it can spend to contribute information about what this lexical unit defines, what it exports, and what struct tag export circumstances it determines.
 
