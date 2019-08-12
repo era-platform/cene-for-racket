@@ -116,9 +116,9 @@ All right, this seems like enough to work with to begin to design a specific sui
 
 ---
 
-## Designs for the top-level definition forms
+## Designs for forms that relate to lexical units
 
-(TODO: We should probably also use this space to design a bounded expression operation that has a local definition block and a subexpression that depends on it. After all, the very potential of having this operation is a source of many of the design choices we're making for the rest of the operations here.)
+(TODO: Design a bounded expression operation that has a local definition block and a subexpression that depends on it.)
 
 (TODO: Design something that can perform imports corresponding to exports of other files. The file imported from this way will be macroexpanded if it hasn't been already.)
 
@@ -141,6 +141,21 @@ All right, this seems like enough to work with to begin to design a specific sui
 (TODO: Eventually consider whether there's a good design for a way to define local-variable-capturing function definitions so that they have better control over the projections they use to capture variables and what order those projections appear in in their struct metadata entries.)
 
 (TODO: Eventually consider splitting up some of the things each of the operations defines into their own definition forms to provide better control.)
+
+
+---
+
+Table of contents:
+
+* `export`
+* `def-struct`
+* `defn`
+* `def-bounded-expr-op`
+* `def-freestanding-expr-op`
+* `def-unceremonious-expr-op`
+* `def-bounded-decl-op`
+* `def-freestanding-decl-op`
+* `def-unceremonious-decl-op`
 
 
 ---
