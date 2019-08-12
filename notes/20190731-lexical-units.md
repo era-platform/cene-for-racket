@@ -318,24 +318,6 @@ Defines an unceremonious expression operation, which is a kind of macro. This wo
   text-input-stream-arg
   expression-sequence-output-stream-arg
   body)
-```
-
-A bounded declaration operation.
-
-Defines a bounded declaration operation, which is a kind of macro. This works just like `def-bounded-expr-op` except for the kind of macro it defines and the fact that this kind of macro receives slightly different arguments:
-
-* It receives both a `call-site-outer-qualify-arg` and a `call-site-inner-qualify-arg`, rather than only a single `call-site-qualify-arg`. The outer one looks up things in the scope surrounding the lexical unit this operation's call occurs in, and the inner one looks up things in the more local scope where the lexical unit's definitions are in force. Calls to the local qualify function will tend to block until all this lexical unit's declarations' familiarity tickets have been spent.
-
-* It receives a `lexical-unit-familiarity-ticket`, a familiarity ticket which it can spend to contribute information about what this lexical unit defines, what it exports, and what struct tag export circumstances it determines.
-
-The expressions this macro writes to the `expression-sequence-output-stream-arg` will be evaluated to obtain `directive` values, which will be used to perform the actual definitions promised when the the familiarity ticket was spent.
-
-Like a bounded expression operation, this kind of macro is typically called with syntax like `(foo ...)`.
-
-
----
-
-```
 (def-freestanding-decl-op
   export-metadata-op-and-freestanding-decl-op
   blame-arg
@@ -348,16 +330,6 @@ Like a bounded expression operation, this kind of macro is typically called with
   text-input-stream-arg
   expression-sequence-output-stream-arg
   body)
-```
-
-A bounded declaration operation.
-
-Defines a freestanding declaration operation, which is a kind of macro. This works just like `def-bounded-decl-op` except for the kind of macro it defines. Unlike a bounded declaration operation, which is typically called with syntax like `(foo ...)`, a freestanding declaration operation is typically called with syntax like `\foo ...`.
-
-
----
-
-```
 (def-unceremonious-decl-op
   export-metadata-op-and-unceremonious-decl-op
   blame-arg
@@ -371,6 +343,12 @@ Defines a freestanding declaration operation, which is a kind of macro. This wor
   body)
 ```
 
-A bounded declaration operation.
+Bounded declaration operations.
 
-Defines an unceremonious declaration operation, which is a kind of macro. This works just like `def-bounded-decl-op` except for the kind of macro it defines and the fact that this kind of macro receives no `text-input-stream-arg`. Unlike a bounded declaration operation, which is typically called with syntax like `(foo ...)`, an unceremonious declaration operation is typically called with syntax like `foo` -- which is to say, just an identifier by itself.
+These work just like `def-bounded-expr-op`, `def-freestanding-expr-op`, and `def-unceremonious-expr-op`, except that instead of defining bounded expression operations, freestanding expression operations, and unceremonious expression operations, they define bounded declaration operations, freestanding declaration operations, and unceremonious declaration operations. Each kind of declaration operation is similar to the corresponding kind of expression operation except that it receives slightly different arguments:
+
+* It receives both a `call-site-outer-qualify-arg` and a `call-site-inner-qualify-arg`, rather than only a single `call-site-qualify-arg`. The outer one looks up things in the scope surrounding the lexical unit this operation's call occurs in, and the inner one looks up things in the more local scope where the lexical unit's definitions are in force. Calls to the local qualify function will tend to block until all this lexical unit's declarations' familiarity tickets have been spent.
+
+* It receives a `lexical-unit-familiarity-ticket`, a familiarity ticket which it can spend to contribute information about what this lexical unit defines, what it exports, and what struct tag export circumstances it determines.
+
+The expressions a declaration operation writes to the `expression-sequence-output-stream-arg` will be evaluated to obtain `directive` values, which will be used to perform the actual definitions promised when the the familiarity ticket was spent.
