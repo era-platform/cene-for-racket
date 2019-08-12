@@ -64,7 +64,7 @@ In a markup context, end of file accumulates no text, then ends.
 In a markup context, a span of typical characters (whitespace and non-whitespace) accumulates corresponding text, then proceeds as usual.
 
 
-In an expression context, this invokes the freestanding expression reader macro of `op` (while remembering the literal text that started this macro call), then proceeds as usual.
+In a markup context, this invokes the freestanding markup reader macro of `op` (while remembering the literal text that started this macro call), then proceeds as usual.
 
   \<op>...
 
@@ -127,7 +127,7 @@ Reader macro behavior:
 
 When a reader macro is defined, the definition runs an expression to determine its implementation function. This expression has a local variable which is bound to a first-class scope value representing the place where it was defined.
 
-For an expression reader macro, the implementation function receives a scope representing the call site; a text input stream; a sequence-of-expressions output stream; and a callback to call with the rest of the input stream and output stream once the macro's computation is finished. The implementation function and its function are process constructors, each returning a value that represents a side effect. The side effects ("extfx," for "extension effects") do things like reading and writing to the streams, orchestrating concurrent computations, and reading and writing from a global definition space.
+For an expression reader macro, the implementation function receives a scope representing the call site; a text input stream; a sequence-of-expressions output stream; and a callback to call with the rest of the input stream and output stream once the macro's computation is finished. The implementation function and its callback function are process constructors, each returning a value that represents a side effect. The side effects ("extfx," for "extension effects") do things like reading and writing to the streams, orchestrating concurrent computations, and reading from and writing to a global definition space.
 
 For a markup reader macro, the implementation function is similar, but it receives a markup output stream instead of a sequence-of-expressions output stream. The markup output stream can be written to with text, with interpolated expressions, or with spans of raw whitespace (whitespace which is eligible for being normalized).
 
