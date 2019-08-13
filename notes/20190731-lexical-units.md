@@ -324,15 +324,13 @@ Writes a first `directive` expression that defines something with a name based o
 
 * An unceremonious export metadata operation that exports this unceremonious export metadata operation as well as the struct metadata operation and the bounded expression operation defined below.
 
-Determines the export conditions of the struct tag. These may depend on declarations in this lexical unit.
-
-Writes a second `directive` expression that defines one more thing with a name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
-
-* A struct metadata operation with automatically determined struct export conditions, with a main tag name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`, and with projection names based on the metadata of the free variables of the wrapped `body` expression.
-
 Reads `body` as an expression in the lexical unit's inner scope, but while augmenting that scope with unceremonious expression operations for each of the `...-arg` identifiers that associate them with local variables. Wraps the result in a blamed lambda expression which binds `blame-arg` as its blame argument and the last `positional-arg` as its primary argument. Wraps this again in function expressions that bind the other arguments. The expression that results from all this wrapping may have free variables, and each of those free variables must have metadata associating it with a distinct innate projection name and an expression that makes sense (but which we don't necessarily verify to make sense) in the lexical scope surrounding this lexical unit.
 
-Writes a third `directive` expression that defines two more things. The first has a name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
+Determines the export conditions of the struct tag. These may depend on declarations in this lexical unit.
+
+Writes a second `directive` expression that defines three more things, the first two of which have names based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
+
+* A struct metadata operation with automatically determined struct export conditions, with a main tag name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`, and with projection names based on the metadata of the free variables of the wrapped `body` expression.
 
 * A bounded expression operation. The definition of this operation reads a number of expressions equal to the number of `positional-arg` identifiers. It expands to an expression that constructs a struct with the tag specified above, then calls it with each of the given expressions in turn. The construction expression uses the metadata of the free variables of the wrapped `body` expression to determine what expressions to use to populate each field of the struct. These expressions will usually refer to local variables bound in the lexical scope surrounding this lexical unit, referring to them by obscure alternative names that can't be shadowed by any of the usual variable-binding forms.
 
