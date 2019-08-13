@@ -4194,10 +4194,8 @@
       (cenegetfx-cene-err fault "Expected name to be a name")
     #/cenegetfx-done #/sink-name-for-bounded-cexpr-op name))
   
-  (def-func-fault! "name-for-nameless-bounded-expr-op" fault name
-    (expect (sink-name? name) #t
-      (cenegetfx-cene-err fault "Expected name to be a name")
-    #/cenegetfx-done #/sink-name-for-nameless-bounded-cexpr-op name))
+  (def-nullary-func! "name-for-nameless-bounded-expr-op"
+    (sink-name-for-nameless-bounded-cexpr-op))
   
   (def-func-fault! "name-for-local-variable" fault name
     (expect (sink-name? name) #t
