@@ -157,12 +157,12 @@ Table of contents:
   * `defn`
   * Macro definition forms for expression operations:
     * `def-bounded-expr-op`
-    * `def-nameless-bounded-expr-op`
+    * `def-unexportable-nameless-bounded-expr-op`
     * `def-freestanding-expr-op`
     * `def-unceremonious-expr-op`
   * Macro definition forms for declaration operations:
     * `def-bounded-decl-op`
-    * `def-nameless-bounded-decl-op`
+    * `def-unexportable-nameless-bounded-decl-op`
     * `def-freestanding-decl-op`
     * `def-unceremonious-decl-op`
   * `def-unexportable-unceremonious-export-metadata-op-as-constant`
@@ -377,7 +377,7 @@ Writes a second `directive` expression that defines another thing with a name ba
 ---
 
 ```
-(def-only-nameless-bounded-expr-op
+(def-unexportable-nameless-bounded-expr-op
   blame-arg
   definition-site-unique-name-arg
   definition-site-qualify-arg
@@ -452,7 +452,7 @@ Defines an unceremonious expression operation, which is a kind of macro. This wo
   expression-sequence-output-stream-arg
   extfx-then-arg
   body)
-(def-nameless-bounded-decl-op
+(def-unexportable-nameless-bounded-decl-op
   blame-arg
   definition-site-unique-name-arg
   definition-site-qualify-arg
