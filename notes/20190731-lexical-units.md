@@ -157,10 +157,12 @@ Table of contents:
   * `defn`
   * Macro definition forms for expression operations:
     * `def-bounded-expr-op`
+    * `def-nameless-bounded-expr-op`
     * `def-freestanding-expr-op`
     * `def-unceremonious-expr-op`
   * Macro definition forms for declaration operations:
     * `def-bounded-decl-op`
+    * `def-nameless-bounded-decl-op`
     * `def-freestanding-decl-op`
     * `def-unceremonious-decl-op`
   * `def-unexportable-unceremonious-export-metadata-op-as-constant`
@@ -171,14 +173,17 @@ Table of contents:
     * `exports-for-struct-metadata-op`
     * Export metadata perations for expression operations:
       * `exports-for-bounded-expr-op`
+      * `exports-for-nameless-bounded-expr-op`
       * `exports-for-freestanding-expr-op`
       * `exports-for-unceremonious-expr-op`
     * Export metadata perations for declaration operations:
       * `exports-for-bounded-decl-op`
+      * `exports-for-nameless-bounded-decl-op`
       * `exports-for-freestanding-decl-op`
       * `exports-for-unceremonious-decl-op`
     * Export metadata perations for export metadata operations:
       * `exports-for-bounded-export-metadata-op`
+      * `exports-for-nameless-bounded-export-metadata-op`
       * `exports-for-freestanding-export-metadata-op`
       * `exports-for-unceremonious-export-metadata-op`
 * Bounded expression operations:
@@ -372,6 +377,28 @@ Writes a second `directive` expression that defines another thing with a name ba
 ---
 
 ```
+(def-only-nameless-bounded-expr-op
+  blame-arg
+  definition-site-unique-name-arg
+  definition-site-qualify-arg
+  call-site-unique-name-arg
+  call-site-qualify-arg
+  text-input-stream-arg
+  expression-sequence-output-stream-arg
+  extfx-then-arg
+  body)
+```
+
+A bounded declaration operation.
+
+Defines a nameless bounded expression operation. This works just like `def-bounded-expr-op` except for the fact that it doesn't take a name for the defined operation and it doesn't define a corresponding unceremonious export metadata operation for convenience with exporting this definition.
+
+A named bounded expression operation `foo` is typically called with the syntax `(foo ...)` or `(.foo ...)`. The former is really a call to a nameless bounded expression operation, the default binding of which proceeds to read and process the `foo` identifier and to call the result as a macro. When the nameless bounded expression operation may be bound to something else, the alternate syntax `(.foo ...)` is a more reliable way to call named operations `foo`.
+
+
+---
+
+```
 (def-freestanding-expr-op
   export-metadata-op-and-freestanding-expr-op
   blame-arg
@@ -425,6 +452,17 @@ Defines an unceremonious expression operation, which is a kind of macro. This wo
   expression-sequence-output-stream-arg
   extfx-then-arg
   body)
+(def-nameless-bounded-decl-op
+  blame-arg
+  definition-site-unique-name-arg
+  definition-site-qualify-arg
+  call-site-unique-name-arg
+  call-site-qualify-arg
+  lexical-unit-familiarity-ticket
+  text-input-stream-arg
+  expression-sequence-output-stream-arg
+  extfx-then-arg
+  body)
 (def-freestanding-decl-op
   export-metadata-op-and-freestanding-decl-op
   blame-arg
@@ -452,7 +490,7 @@ Defines an unceremonious expression operation, which is a kind of macro. This wo
 
 Bounded declaration operations.
 
-These work just like `def-bounded-expr-op`, `def-freestanding-expr-op`, and `def-unceremonious-expr-op`, except that instead of defining bounded expression operations, freestanding expression operations, and unceremonious expression operations, they define bounded declaration operations, freestanding declaration operations, and unceremonious declaration operations. Each kind of declaration operation is similar to the corresponding kind of expression operation except that it receives an additional argument:
+These work just like `def-bounded-expr-op`, `def-nameless-bounded-expr-op`, `def-freestanding-expr-op`, and `def-unceremonious-expr-op`, except that instead of defining expression operations, they define declaration operations. Each kind of declaration operation is similar to the corresponding kind of expression operation except that it receives an additional argument:
 
 * The operation receives a `lexical-unit-familiarity-ticket`, a familiarity ticket which it can spend to contribute information about what this lexical unit defines, what it exports, and what struct tag export circumstances it determines.
 
@@ -516,19 +554,26 @@ Reads the given export metadata terms using the current lexical unit's inner sco
 ```
 (exports-for-struct-metadata-op op ...)
 (exports-for-bounded-expr-op op ...)
+(exports-for-nameless-bounded-expr-op)
 (exports-for-freestanding-expr-op op ...)
 (exports-for-unceremonious-expr-op op ...)
 (exports-for-bounded-decl-op op ...)
+(exports-for-nameless-bounded-decl-op)
 (exports-for-freestanding-decl-op op ...)
 (exports-for-unceremonious-decl-op op ...)
 (exports-for-bounded-export-metadata-op op ...)
+(exports-for-nameless-bounded-export-metadata-op)
 (exports-for-freestanding-export-metadata-op op ...)
 (exports-for-unceremonious-export-metadata-op op ...)
 ```
 
 Bounded export metadata operations.
 
-Each of these operations reads each `op` as an identifier and expands to export metadata that specifies to export the particular kind of export indicated (struct metadata operation, bounded expression operation, etc.). This doesn't depend on actually looking up the operations given.
+Each of these operations expands to export metadata that specifies to export the operations indicated (struct metadata operation, bounded expression operation, etc.). This doesn't depend on actually looking up the operations given.
+
+For nameless operations, this operation doesn't take any arguments, and it just expands to the export metadata entry for the appropriate nameless operation.
+
+For named operations, this operation takes any number of identifiers, and it expands to a single export metadata entry that exports operations by every one of those names.
 
 
 ---
