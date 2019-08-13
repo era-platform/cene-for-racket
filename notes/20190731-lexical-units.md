@@ -130,7 +130,7 @@ All right, this seems like enough to work with to begin to design a specific sui
 
 (TODO: Design things that can perform imports of struct tags and functions from specific modules. This might just be a combination of specifying a struct tag's export conditions and defining a struct metadata operation and a bounded expression operation for local convenience.)
 
-(TODO: Eventually consider designing things like Racket's `all-defined-out`, `except-in`, etc. Maybe we'll at least want a way to define an unceremonious export metadata operation that combines multiple existing unceremonious export metadata operations.)
+(TODO: Eventually consider whether we need more bounded export metadata operations such as Racket's `except-in`.)
 
 (TODO: Eventually consider designing a way to define callable structs with one or more projections.)
 
@@ -138,26 +138,53 @@ All right, this seems like enough to work with to begin to design a specific sui
 
 (TODO: Eventually consider splitting up some of the things each of the operations defines into their own definition forms to provide better control.)
 
+(TODO: Eventually see if we should have `def-struct-metadata-op`.)
+
+(TODO: Eventually see if we should have `def-{,unexportable-}{bounded,freestanding,unceremonious}-export-metadata-op`. Once we work on implementing the operations we have defined, an appropriate abstraction for users to define their own will probably reveal itself.)
+
 
 ---
 
 Table of contents:
 
-* `declare`
-* `declare-matched-brackets-section-separately`
-* `importing-as-nonlocal`
-* `import-from-declaration`
-* `export`
-* `def-struct`
-* `defn`
-* `def-bounded-expr-op`
-* `def-freestanding-expr-op`
-* `def-unceremonious-expr-op`
-* `def-bounded-decl-op`
-* `def-freestanding-decl-op`
-* `def-unceremonious-decl-op`
-* `let-declared`
-* `name-for-local-qualify`
+* Bounded declaration operations:
+  * `declare`
+  * `declare-matched-brackets-section-separately`
+  * `importing-as-nonlocal`
+  * `import-from-declaration`
+  * `export`
+  * `def-struct`
+  * `defn`
+  * Macro definition forms for expression operations:
+    * `def-bounded-expr-op`
+    * `def-freestanding-expr-op`
+    * `def-unceremonious-expr-op`
+  * Macro definition forms for declaration operations:
+    * `def-bounded-decl-op`
+    * `def-freestanding-decl-op`
+    * `def-unceremonious-decl-op`
+  * `def-unexportable-unceremonious-export-metadata-op-as-constant`
+* Bounded export metadata operations:
+  * `exports`
+  * `local`
+  * Export metadata operations for specific kinds of operations:
+    * `exports-for-struct-metadata-op`
+    * Export metadata perations for expression operations:
+      * `exports-for-bounded-expr-op`
+      * `exports-for-freestanding-expr-op`
+      * `exports-for-unceremonious-expr-op`
+    * Export metadata perations for declaration operations:
+      * `exports-for-bounded-decl-op`
+      * `exports-for-freestanding-decl-op`
+      * `exports-for-unceremonious-decl-op`
+    * Export metadata perations for export metadata operations:
+      * `exports-for-bounded-export-metadata-op`
+      * `exports-for-freestanding-export-metadata-op`
+      * `exports-for-unceremonious-export-metadata-op`
+* Bounded expression operations:
+  * `let-declared`
+* Functions:
+  * `name-for-local-qualify`
 
 
 ---
@@ -434,6 +461,74 @@ The operation's `call-site-qualify-arg` is specifically the qualify function for
 Likewise, the `extfx-then-arg` callback is specifically to be passed an *outer* qualify function; the inner qualify function will be passed along by nature of the fact that the outer one carries it.
 
 The expressions a declaration operation writes to the `expression-sequence-output-stream-arg` will be evaluated to obtain `directive` values, which will be used to perform the actual definitions promised when the the familiarity ticket was spent.
+
+
+---
+
+```
+(def-unexportable-unceremonious-export-metadata-op-as-constant
+  unceremonious-export-metadata-op original-export-metadata)
+```
+
+A bounded declaration operation.
+
+(In short: Defines an export metadata entry that can be referred to with syntax like `foo` -- which is to say, just an identifier by itself. The definition is expanded immediately rather than expanded every time this name is used. Exporting using this name only exports the exports it refers to, not the export operation itself.)
+
+Pre-reads its lexical extent to find matching brackets. Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and concurrently does the rest of its work by expanding a modified copy of its input stream where the stream ends after the closing paren.
+
+Spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it defines an unceremonious export metadata operation with a name based on `unceremonious-export-metadata-op`.
+
+Reads `original-export-metadata` as an export metadata term in the lexical unit's outer scope to obtain an export metadata entry.
+
+Writes a `directive` expression that defines something with a name based on `unceremonious-export-metadata-op`:
+
+* An unceremonious export metadata operation that expands to the export metadata entry that was obtained from `original-export-metadata`.
+
+
+---
+
+```
+(exports export-metadata ...)
+```
+
+A bounded export metadata operation.
+
+(In short: Combines export metadata.)
+
+Reads the given export metadata terms using the current scope. Expands to export metadata that specifies to export each of the things that each of those metadata entries specifies to export. If the metadata entries conflict, this causes an error instead.
+
+
+---
+
+```
+(local export-metadata ...)
+```
+
+A bounded export metadata operation.
+
+(In short: Reads export metadata using the current lexical unit's inner scope instead of its outer scope. Most exports will need to use this.)
+
+Reads the given export metadata terms using the current lexical unit's inner scope. Expands to export metadata that specifies to export each of the things that each of those metadata entries specifies to export. If the metadata entries conflict, this causes an error instead.
+
+
+---
+
+```
+(exports-for-struct-metadata-op op ...)
+(exports-for-bounded-expr-op op ...)
+(exports-for-freestanding-expr-op op ...)
+(exports-for-unceremonious-expr-op op ...)
+(exports-for-bounded-decl-op op ...)
+(exports-for-freestanding-decl-op op ...)
+(exports-for-unceremonious-decl-op op ...)
+(exports-for-bounded-export-metadata-op op ...)
+(exports-for-freestanding-export-metadata-op op ...)
+(exports-for-unceremonious-export-metadata-op op ...)
+```
+
+Bounded export metadata operations.
+
+Each of these operations reads each `op` as an identifier and expands to export metadata that specifies to export the particular kind of export indicated (struct metadata operation, bounded expression operation, etc.). This doesn't depend on actually looking up the operations given.
 
 
 ---
