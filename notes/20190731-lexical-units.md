@@ -118,8 +118,6 @@ All right, this seems like enough to work with to begin to design a specific sui
 
 ## Designs for forms that relate to lexical units
 
-(TODO: Design a bounded expression operation that has a local definition block and a subexpression that depends on it.)
-
 (TODO: Design something that can perform imports corresponding to exports of other files. The file imported from this way will be macroexpanded if it hasn't been already.)
 
 (TODO: Design something that can include other files as though they're directly part of the current lexical unit, including seeing the same macros this one does, and treating their exports as being part of the current lexical unit's exports. This doesn't have to play nicely with the idea of compiling files to modules, and the file will have to be expanded each time it's imported. This will tend to come in handy for programs which use some sort of global-looking framework which has various possible implementations.)
@@ -156,6 +154,7 @@ Table of contents:
 * `def-bounded-decl-op`
 * `def-freestanding-decl-op`
 * `def-unceremonious-decl-op`
+* `let-declared`
 
 
 ---
@@ -435,3 +434,14 @@ These work just like `def-bounded-expr-op`, `def-freestanding-expr-op`, and `def
 * It receives a `lexical-unit-familiarity-ticket`, a familiarity ticket which it can spend to contribute information about what this lexical unit defines, what it exports, and what struct tag export circumstances it determines.
 
 The expressions a declaration operation writes to the `expression-sequence-output-stream-arg` will be evaluated to obtain `directive` values, which will be used to perform the actual definitions promised when the the familiarity ticket was spent.
+
+
+---
+
+```
+(let-declared decl body)
+```
+
+A bounded expression operation.
+
+At compile time, this processes the given declaration (which may perform multiple declarations using `declare`) as its own lexical unit, using the same outer scope as the current expression's scope. If the declaration has any exports, this causes an error. Either way, this proceeds by compiling the given `body` expression in that lexical unit's inner scope.
