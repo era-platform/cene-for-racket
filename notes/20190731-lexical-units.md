@@ -106,7 +106,7 @@ Here's what we'll do: Forget that the top-level declarations are expressions. Th
 
 The way this helps is that we can have the declaration operations take in two qualify functions instead of one. One qualify function (the "outer" one) can be used for reading subforms where the lexical unit's definitions aren't in scope, and the other (the "inner" one) can be used for reading subforms where they are. The top-level declarations themselves will be expanded using the outer qualify function, so we don't have to worry about whether those macros will be locally shadowed. Most of the declarations' subexpressions will be expanded in the inner scope, so they can be mutually recursive.
 
-If someone does need to define a definition form and then use it right away, they'll need to use it from within a lexical unit where the outer scope includes the definition form. Just for this purpose, we'll design a top-level declaration named `importing-local-as-nonlocal` that processes a local block of declarations within an outer scope where part of the original outer scope is shadowed.
+If someone does need to define a definition form and then use it right away, they'll need to use it from within a lexical unit where the outer scope includes the definition form. Just for this purpose, we'll design a top-level declaration named `importing-as-nonlocal` that processes a local block of declarations within an outer scope where part of the original outer scope is shadowed.
 
 
 ---
@@ -128,7 +128,7 @@ All right, this seems like enough to work with to begin to design a specific sui
 
 (TODO: Design things that can perform imports of struct tags and functions from specific modules. This might just be a combination of specifying a struct tag's export conditions and defining a struct metadata operation and a bounded expression operation for local convenience.)
 
-(TODO: Eventually consider designing things like Racket's `all-defined-out`, `except-in`, etc. Maybe we'll at least want a way to define an export metadata operation that combines multiple existing export metadata operations.)
+(TODO: Eventually consider designing things like Racket's `all-defined-out`, `except-in`, etc. Maybe we'll at least want a way to define an unceremonious export metadata operation that combines multiple existing unceremonious export metadata operations.)
 
 (TODO: Eventually consider designing a way to define callable structs with one or more projections.)
 
@@ -143,9 +143,9 @@ Table of contents:
 
 * `declare`
 * `declare-matched-brackets-section-separately`
-* `importing-local-as-nonlocal`
-* `import-from-declaration-local`
-* `export-local`
+* `importing-as-nonlocal`
+* `import-from-declaration`
+* `export`
 * `def-struct`
 * `defn`
 * `def-bounded-expr-op`
@@ -188,12 +188,12 @@ Declares all the things the given declarations declare.
 ---
 
 ```
-(importing-local-as-nonlocal export-metadata-op decl ...)
+(importing-as-nonlocal export-metadata decl ...)
 ```
 
 A bounded declaration operation.
 
-Looks up the given export metadata operation in the current lexical unit's inner scope. Processes the given declarations with the same inner scope, but with part of the outer scope shadowed according to the export metadata.
+Reads the given export metadata term using the current lexical unit's outer scope. Processes the given declarations with the same inner scope as the current lexical unit, but with part of the outer scope shadowed according to the export metadata.
 
 This can be good for situations where a lexical unit contains a definition of a declaration operation that needs to be used right away. Usually that declaration operation can't be used from the same part of the code since it only exists in the inner scope, not the outer scope where the declaration operations are looked up. However, it can be used inside one of these regions with the appropriate bindings imported.
 
@@ -203,7 +203,7 @@ Note that this doesn't pre-read its lexical extent. The macroexpander won't proc
 ---
 
 ```
-(import-from-declaration-local decl export-metadata-op ...)
+(import-from-declaration decl export-metadata ...)
 ```
 
 A bounded declaration operation.
@@ -214,7 +214,7 @@ Pre-reads its lexical extent to find matching brackets. Returns control to the m
 
 Processes the given declaration (which may perform multiple declarations using `declare`) as its own lexical unit, using the same outer scope as the current lexical unit's outer scope.
 
-Looks up the given export metadata operations in that lexical unit's inner scope, and spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it defines each of the things listed by each of those export metadata operations.
+Reads the given export metadata terms using that lexical unit's outer scope, and spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it defines each of the things listed by each of those export metadata operations.
 
 Concurrently looks up each of the things it promised to define and defines it.
 
@@ -224,16 +224,16 @@ Note that there may be interdependencies between the declaration and the surroun
 ---
 
 ```
-(export-local export-metadata-op ...)
+(export export-metadata ...)
 ```
 
 A bounded declaration operation.
 
-(In short: Looks up the given export operations using the lexical unit's inner scope and exports all the things each one of them specifies.)
+(In short: Reads the given export metadata terms using the current lexical unit's outer scope and exports all the things each one of them specifies.)
 
 Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and does the rest of its work concurrently with that.
 
-Spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it exports each of the things listed by each of the given export metadata operations. The export metadata operations are looked up in the lexical unit's inner scope.
+Spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it exports each of the things listed by each of the given export metadata entries. The export metadata terms are read using the current lexical unit's outer scope.
 
 
 ---
@@ -248,13 +248,13 @@ A bounded declaration operation.
 
 (In short: Defines a struct using inferred export conditions, and defines its function implementation so that it causes an error when called.)
 
-Spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it defines an export metadata operation, a struct metadata operation, and a bounded expression operation, each with its name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`. For the sake of assisting with debug printouts, the declarations that this defines a struct metadata operation and a bounded expression operation each come with metadata to express that the operations are capable of being used for constructing structs.
+Spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it defines an unceremonious export metadata operation, a struct metadata operation, and a bounded expression operation, each with its name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`. For the sake of assisting with debug printouts, the declarations that this defines a struct metadata operation and a bounded expression operation each come with metadata to express that the operations are capable of being used for constructing structs.
 
 Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and does the rest of its work concurrently with that.
 
 Writes a first `directive` expression that defines something with a name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
 
-* An export metadata operation that exports this export metadata operation as well as the struct metadata operation and the bounded expression operation defined below.
+* An unceremonious export metadata operation that exports this unceremonious export metadata operation as well as the struct metadata operation and the bounded expression operation defined below.
 
 Determines the export conditions of the struct tag. These may depend on declarations in this lexical unit.
 
@@ -283,11 +283,11 @@ A bounded declaration operation.
 
 Pre-reads its lexical extent to find matching brackets. Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and concurrently does the rest of its work by expanding a modified copy of its input stream where the stream ends after the closing paren.
 
-Spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it defines an export metadata operation, a struct metadata operation, and a bounded expression operation, each with its name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`. For the sake of assisting with debug printouts, the declaration that this defines a struct metadata operation comes with metadata to express that the operation is capable of being used for constructing structs.
+Spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it defines an unceremonious export metadata operation, a struct metadata operation, and a bounded expression operation, each with its name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`. For the sake of assisting with debug printouts, the declaration that this defines a struct metadata operation comes with metadata to express that the operation is capable of being used for constructing structs.
 
 Writes a first `directive` expression that defines something with a name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
 
-* An export metadata operation that exports this export metadata operation as well as the struct metadata operation and the bounded expression operation defined below.
+* An unceremonious export metadata operation that exports this unceremonious export metadata operation as well as the struct metadata operation and the bounded expression operation defined below.
 
 Determines the export conditions of the struct tag. These may depend on declarations in this lexical unit.
 
@@ -326,11 +326,11 @@ A bounded declaration operation.
 
 Pre-reads its lexical extent to find matching brackets. Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and concurrently does the rest of its work by expanding a modified copy of its input stream where the stream ends after the closing paren.
 
-Spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it defines an export metadata operation and a bounded expression operation, each with its name based on `export-metadata-op-and-bounded-expr-op`.
+Spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it defines an unceremonious export metadata operation and a bounded expression operation, each with its name based on `export-metadata-op-and-bounded-expr-op`.
 
 Writes a first `directive` expression that defines something with a name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
 
-* An export metadata operation that exports this defined operation as well as a bounded expression operation defined below.
+* An unceremonious export metadata operation that exports this defined operation as well as a bounded expression operation defined below.
 
 Reads `body` as an expression in the lexical unit's inner scope, but while augmenting that scope with unceremonious expression operations for each of the `...-arg` identifiers that associate them with local variables. Wraps the result in a blamed lambda expression which binds `blame-arg` as its blame argument and `expression-sequence-output-stream-arg` as its primary argument. Wraps this again in function expressions that bind the other arguments. Verifies that the expression that results from all this wrapping has no free variables.
 
