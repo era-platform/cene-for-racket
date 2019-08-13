@@ -136,7 +136,19 @@ All right, this seems like enough to work with to begin to design a specific sui
 
 (TODO: Eventually consider whether there's a good design for a way to define local-variable-capturing function definitions so that they have better control over the projections they use to capture variables and what order those projections appear in in their struct metadata entries.)
 
-(TODO: Eventually consider splitting up some of the things each of the operations defines into their own definition forms to provide better control.)
+(TODO: Eventually consider splitting up some of the things each of the operations defines into their own definition forms to provide better control. We'd need the following operations:
+
+* Defines a struct metadata operation with automatically determined struct export conditions, with a main tag name and projection names based on the given identifiers, and with some of the projection names being positional while some are (orderless) captures of given expressions. Also defines a corresponding unceremonious export metadata operation so that the struct's export conditions can be declared.
+
+* Given struct metadata, defines a bounded expression operation that constructs a struct based on that metadata and using positional arguments provided at the call site.
+
+* Given struct metadata and an arity N, defines a bounded expression operation that constructs a struct based on that metadata using no positional arguments, then calls the result with the call site's N given arguments in a curried style. If N is zero, it calls the result with `(nil)` instead.
+
+* Given struct metadata, defines a function implementation. To convert the struct to an opaque function, it returns an opaque function that causes an error when called.
+
+* Given struct metadata, defines a function implementation. To convert the struct to an opaque function, it runs the given code.
+
+* A variant of `case` (and we'll likely also want `cast`, `construct`, and `{dex,cline,merge,fuse}-struct`) that matches based on surface-syntax projection strings rather than based on position.)
 
 (TODO: Eventually see if we should have `def-struct-metadata-op`.)
 
