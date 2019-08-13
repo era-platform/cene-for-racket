@@ -106,7 +106,9 @@ Here's what we'll do: Forget that the top-level declarations are expressions. Th
 
 The way this helps is that we can have the declaration operations take in two qualify functions instead of one. One qualify function (the "outer" one) can be used for reading subforms where the lexical unit's definitions aren't in scope, and the other (the "inner" one) can be used for reading subforms where they are. The top-level declarations themselves will be expanded using the outer qualify function, so we don't have to worry about whether those macros will be locally shadowed. Most of the declarations' subexpressions will be expanded in the inner scope, so they can be mutually recursive.
 
-If someone does need to define a definition form and then use it right away, they'll need to use it from within a lexical unit where the outer scope includes the definition form. Just for this purpose, we'll design a top-level declaration named `importing-as-nonlocal` that processes a local block of declarations within an outer scope where part of the original outer scope is shadowed.
+We'll do something a little different than actually passing in the two functions separately: We'll set up a binding (named by `name-for-local-qualify`) in the outer qualify function that maps via `extfx-get` to a maybe containing the inner qualify function. Most other qualify functions will be set up to bind this to `(nothing)`.
+
+If someone needs to define a definition form and then use it right away, this approach makes that nontrivial to do. They'll need to use it from within a lexical unit where the outer scope includes the definition form. Just for this purpose, we'll design a top-level declaration named `importing-as-nonlocal` that processes a local block of declarations within an outer scope where part of the original outer scope is shadowed.
 
 
 ---
@@ -155,6 +157,7 @@ Table of contents:
 * `def-freestanding-decl-op`
 * `def-unceremonious-decl-op`
 * `let-declared`
+* `name-for-local-qualify`
 
 
 ---
@@ -212,9 +215,9 @@ A bounded declaration operation.
 
 Pre-reads its lexical extent to find matching brackets. Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and concurrently does the rest of its work by expanding a modified copy of its input stream where the stream ends after the closing paren.
 
-Processes the given declaration (which may perform multiple declarations using `declare`) as its own lexical unit, using the same outer scope as the current lexical unit's outer scope.
+Processes the given declaration (which may perform multiple declarations using `declare`) as its own lexical unit, using nearly the same outer scope as the current lexical unit's outer scope, but with the inner scope binding changed so as to refer to this inner lexical unit's definitions.
 
-Reads the given export metadata terms using that lexical unit's outer scope, and spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it defines each of the things listed by each of those export metadata operations.
+Reads the given export metadata terms using the inner lexical unit's outer scope, and spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it defines each of the things listed by each of those export metadata operations.
 
 Concurrently looks up each of the things it promised to define and defines it.
 
@@ -389,8 +392,7 @@ Defines an unceremonious expression operation, which is a kind of macro. This wo
   definition-site-unique-name-arg
   definition-site-qualify-arg
   call-site-unique-name-arg
-  call-site-outer-qualify-arg
-  call-site-inner-qualify-arg
+  call-site-qualify-arg
   lexical-unit-familiarity-ticket
   text-input-stream-arg
   expression-sequence-output-stream-arg
@@ -402,8 +404,7 @@ Defines an unceremonious expression operation, which is a kind of macro. This wo
   definition-site-unique-name-arg
   definition-site-qualify-arg
   call-site-unique-name-arg
-  call-site-outer-qualify-arg
-  call-site-inner-qualify-arg
+  call-site-qualify-arg
   lexical-unit-familiarity-ticket
   text-input-stream-arg
   expression-sequence-output-stream-arg
@@ -415,8 +416,7 @@ Defines an unceremonious expression operation, which is a kind of macro. This wo
   definition-site-unique-name-arg
   definition-site-qualify-arg
   call-site-unique-name-arg
-  call-site-outer-qualify-arg
-  call-site-inner-qualify-arg
+  call-site-qualify-arg
   lexical-unit-familiarity-ticket
   expression-sequence-output-stream-arg
   extfx-then-arg
@@ -425,13 +425,13 @@ Defines an unceremonious expression operation, which is a kind of macro. This wo
 
 Bounded declaration operations.
 
-These work just like `def-bounded-expr-op`, `def-freestanding-expr-op`, and `def-unceremonious-expr-op`, except that instead of defining bounded expression operations, freestanding expression operations, and unceremonious expression operations, they define bounded declaration operations, freestanding declaration operations, and unceremonious declaration operations. Each kind of declaration operation is similar to the corresponding kind of expression operation except that it receives slightly different arguments:
+These work just like `def-bounded-expr-op`, `def-freestanding-expr-op`, and `def-unceremonious-expr-op`, except that instead of defining bounded expression operations, freestanding expression operations, and unceremonious expression operations, they define bounded declaration operations, freestanding declaration operations, and unceremonious declaration operations. Each kind of declaration operation is similar to the corresponding kind of expression operation except that it receives an additional argument:
 
-* It receives both a `call-site-outer-qualify-arg` and a `call-site-inner-qualify-arg`, rather than only a single `call-site-qualify-arg`. The outer one looks up things in the scope surrounding the lexical unit this operation's call occurs in, and the inner one looks up things in the more local scope where the lexical unit's definitions are in force. Calls to the local qualify function will tend to block until all this lexical unit's declarations' familiarity tickets have been spent.
+* The operation receives a `lexical-unit-familiarity-ticket`, a familiarity ticket which it can spend to contribute information about what this lexical unit defines, what it exports, and what struct tag export circumstances it determines.
 
-* Likewise, its `extfx-then-arg` callback expects to be passed both an outer and an inner qualify function.
+The operation's `call-site-qualify-arg` is specifically the qualify function for the *outer scope* of the lexical unit, which is for looking things up in the scope surrounding the lexical unit this operation's call occurs in. The inner qualify function, which is for the scope where the lexical unit's definitions are visible, can be obtained from this one using `name-for-local-qualify`. and the value of that binding will usually be a maybe of a function that represents the inner scope where the lexical unit's definitions are in force. Calls made to the inner/local qualify function will tend to block until all the lexical unit's declarations' familiarity tickets have been spent.
 
-* It receives a `lexical-unit-familiarity-ticket`, a familiarity ticket which it can spend to contribute information about what this lexical unit defines, what it exports, and what struct tag export circumstances it determines.
+Likewise, the `extfx-then-arg` callback is specifically to be passed an *outer* qualify function; the inner qualify function will be passed along by nature of the fact that the outer one carries it.
 
 The expressions a declaration operation writes to the `expression-sequence-output-stream-arg` will be evaluated to obtain `directive` values, which will be used to perform the actual definitions promised when the the familiarity ticket was spent.
 
@@ -444,4 +444,17 @@ The expressions a declaration operation writes to the `expression-sequence-outpu
 
 A bounded expression operation.
 
-At compile time, this processes the given declaration (which may perform multiple declarations using `declare`) as its own lexical unit, using the same outer scope as the current expression's scope. If the declaration has any exports, this causes an error. Either way, this proceeds by compiling the given `body` expression in that lexical unit's inner scope.
+At compile time, this processes the given declaration (which may perform multiple declarations using `declare`) as its own lexical unit, using nearly the same outer scope as the current expression's scope, but with the inner scope binding changed so as to refer to this lexical unit's definitions. If the lexical unit has any exports, this causes an error. Either way, this proceeds by compiling the given `body` expression in that lexical unit's inner scope.
+
+
+---
+
+```
+(name-for-local-qualify)
+```
+
+A function.
+
+Returns a name which can typically be qualified and then looked up using `extfx-get` to obtain a maybe of a qualify function.
+
+If the name is qualified using the outer qualify function of a lexical unit (the qualify function representing the bindings that are visible in the area surrounding that lexical unit), then the qualify function obtained this way represents the same lexical unit's inner qualify function (the one representing the bindings that are visible once that lexical unit's definitions are taken into account).
