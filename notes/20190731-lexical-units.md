@@ -120,10 +120,6 @@ All right, this seems like enough to work with to begin to design a specific sui
 
 ## Designs for forms that relate to lexical units
 
-(TODO: Design something that can perform imports corresponding to exports of other files. The file imported from this way will be macroexpanded if it hasn't been already.)
-
-(TODO: Design something that can include other files as though they're directly part of the current lexical unit, including seeing the same macros this one does, and treating their exports as being part of the current lexical unit's exports. This doesn't have to play nicely with the idea of compiling files to modules, and the file will have to be expanded each time it's imported. This will tend to come in handy for programs which use some sort of global-looking framework which has various possible implementations.)
-
 (TODO: Design things that can specify a struct tag's export conditions (i.e. whether to obscure its main tag name, who can author it, and who can use it).)
 
 (TODO: Design something that can locally override the default export conditions of a struct that has no explicit export conditions.)
@@ -154,6 +150,10 @@ All right, this seems like enough to work with to begin to design a specific sui
 
 (TODO: Eventually see if we should have `def-{,unexportable-}{bounded,freestanding,unceremonious}-export-metadata-op`. Once we work on implementing the operations we have defined, an appropriate abstraction for users to define their own will probably reveal itself.)
 
+(TODO: Eventually see if we should have more operations for working with located input file handles, such as replacing their file registry and replacing their authentication registry. If nothing else, we may at least want a way to "chroot" into a context where only a subtree of the original file registry is available.)
+
+(TODO: Eventually see if we should have ways to replace the current self-referential file handle.)
+
 
 ---
 
@@ -162,8 +162,10 @@ Table of contents:
 * Bounded declaration operations:
   * `declare`
   * `declare-matched-brackets-section-separately`
+  * `include-file`
   * `importing-as-nonlocal`
   * `import-from-declaration`
+  * `import-from-file`
   * `export`
   * `def-struct`
   * `defn`
@@ -202,6 +204,15 @@ Table of contents:
   * `let-declared`
 * Functions:
   * `name-for-local-qualify`
+  * `name-for-self-referential-file-handle`
+  * `is-input-file`
+* Bounded expression operations:
+  * `this-input-file`
+* Functions:
+  * `input-file-base-maybe`
+  * `input-file-base`
+  * `input-file-root`
+  * `input-file-elem`
 
 
 ---
@@ -230,6 +241,23 @@ A bounded declaration operation.
 Pre-reads its lexical extent to find matching brackets. Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and concurrently does the rest of its work by expanding a modified copy of its input stream where the stream ends after the closing paren.
 
 Declares all the things the given declarations declare.
+
+
+---
+
+```
+(include-file input-file)
+```
+
+A bounded declaration operation.
+
+(In short: Performs all the declarations that appear in another file. The other file can use all the same macros the current lexical unit can, and when the file has export declarations, those specify exports from the current lexical unit. This will tend to come in handy for programs which use some sort of global-looking framework but which make use of multiple implementations of that framework.)
+
+Reads an expression (`input-file`) using the current lexical unit's outer scope. Evaluates that expression, which must have no free variables, to obtain a located input file handle. Obtains and processes the file's located input stream as a series of declarations which use nearly the same outer scope as the current lexical unit's outer scope, but with the self-referential file handle binding changed so as to refer to the handle being processed.
+
+Note that this doesn't pre-read its lexical extent. The macroexpander won't proceed to process the remainder of the stream after the closing bracket until the last declaration of the file has been processed. If more concurrency is desired, use `declare-matched-brackets-section-separately` around this operation.
+
+Note that unlike `import-from-file`, using this operation more than once can cause a file to be processed more than once, potentially with different outer scopes. Since the reader macros that parse the file may differ depending on what's in scope at the place the file is included, typically this kind of file won't be possible to compile to a more compile-time-efficient equivalent. It's recommended to use `import-from-file` instead wherever possible.
 
 
 ---
@@ -264,6 +292,29 @@ Processes the given declaration (which may perform multiple declarations using `
 Reads the given export metadata terms using the inner lexical unit's outer scope, and spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it defines each of the things listed by each of those export metadata operations.
 
 Concurrently looks up each of the things it promised to define and defines it.
+
+Note that there may be interdependencies between the declaration and the surrounding lexical unit, so there may be a nontrivial chain of logical dependency in between spending the familiarity ticket to say what definitions will be imported and finally propagating those definitions.
+
+
+---
+
+```
+(import-from-file input-file export-metadata ...)
+```
+
+A bounded declaration operation.
+
+(In short: Performs imports corresponding to exports of another file. The file referred to this way will be macroexpanded if it hasn't been already.)
+
+Pre-reads its lexical extent to find matching brackets. Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and concurrently does the rest of its work by expanding a modified copy of its input stream where the stream ends after the closing paren.
+
+Reads an expression (`input-file`) using the current lexical unit's outer scope. Evaluates that expression, which must have no free variables, to obtain a located input file handle.
+
+Causes that located input file handle to be instantiated if it hasn't been instantiated yet. To instantiate it, first we create an outer scope that's nearly the same as that handle's file registry's outer scope, but with the inner scope binding changed so as to refer to the file's own definitions and with the self-referential file handle binding changed so as to refer to the handle being instantiated. We write that outer scope to the handle's file registry, and we obtain and process the file's located input stream as its own lexical unit which may consist of multiple declarations which use the derived outer scope.
+
+Concurrently, this operation reads the given export metadata terms using the derived outer scope, and it spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it defines each of the things listed by each of those export metadata operations.
+
+Concurrently, it looks up each of the things it promised to define and defines it.
 
 Note that there may be interdependencies between the declaration and the surrounding lexical unit, so there may be a nontrivial chain of logical dependency in between spending the familiarity ticket to say what definitions will be imported and finally propagating those definitions.
 
@@ -608,3 +659,84 @@ A function.
 Returns a name which can typically be qualified and then looked up using `extfx-get` to obtain a maybe of a qualify function.
 
 If the name is qualified using the outer qualify function of a lexical unit (the qualify function representing the bindings that are visible in the area surrounding that lexical unit), then the qualify function obtained this way represents the same lexical unit's inner qualify function (the one representing the bindings that are visible once that lexical unit's definitions are taken into account).
+
+
+---
+
+```
+(name-for-self-referential-file-handle)
+```
+
+A function.
+
+Returns a name which can typically be qualified and then looked up using `extfx-get` to obtain a located input file handle.
+
+If the name is qualified using the outer qualify function of a lexical unit, then the file handle usually refers to the file that lexical unit appears in. In the context of that lexical unit, we call this the current self-referential file handle.
+
+
+---
+
+```
+(is-input-file v)
+```
+
+A function.
+
+Returns `(yep/trivial)` if `v` is a located input file handle. Otherwise, returns `(nope/trivial)`.
+
+
+---
+
+```
+(this-input-file)
+```
+
+A bounded expression macro.
+
+Expands to an expression that returns the current self-referential file handle, which is a located input file handle.
+
+This expression will not typically be permitted in Cene subprograms that are compiled to other platforms. Most subprogram compilers will reject it with an error. This is because a located input file handle carries information about the build process's filesystem locations, an entire directory tree full of file contents, and a mapping between friendly names and authentication keys.
+
+
+---
+
+```
+(input-file-base-maybe file)
+```
+
+A function.
+
+Given a located input file handle, if that handle's path has a parent directory, returns a `just` of another located input file handle which is nearly the same except that the path refers to that parent directory instead. Otherwise, returns a `nothing`.
+
+
+---
+
+```
+(input-file-base file)
+```
+
+A function.
+
+Given a located input file handle whose path has a parent directory, returns another located input file handle which is nearly the same except that the path refers to that parent directory instead.
+
+
+---
+
+```
+(input-file-root file)
+```
+
+A function.
+
+Given a located input file handle, returns another located input file handle which is nearly the same except that the path refers to the root ancestor of that handle's path.
+
+
+---
+
+```
+(input-file-elem key file)
+```
+
+A function.
+
+Given a string and a located input file handle, returns another located input file handle which is nearly the same except that the path refers to a subdirectry or file named by that string under the original file path. This only builds a path; it doesn't check that a file or subdirectory with that string name actually exists.
