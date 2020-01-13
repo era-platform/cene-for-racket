@@ -27,7 +27,7 @@ Nevertheless, if we do want to be more ambitious, we may be able to make use of 
 
 This is something we will be taking into account in the design of definition forms for lexical units.
 
-([A different approach was considered at one point.](https://gist.github.com/rocketnia/7fddafee7433a8a0c63f732babc6c489). In that approach, the local definition block would have contained explicit declarations of which names were and were not bound by the block. Since those explicit declarations would be just about as verbose as the forward declarations needed by the `let-syntax`-style approach, we're exploring another option here.)
+([A different approach was considered at one point.](https://gist.github.com/rocketnia/7fddafee7433a8a0c63f732babc6c489) In that approach, the local definition block would have contained explicit declarations of which names were and were not bound by the block. Since those explicit declarations would be just about as verbose as the forward declarations needed by the `let-syntax`-style approach, we're exploring another option here.)
 
 
 ## Background context on the role of files in Cene codebases
@@ -185,17 +185,17 @@ Table of contents:
   * `local`
   * Export metadata operations for specific kinds of operations:
     * `exports-for-struct-metadata-op`
-    * Export metadata perations for expression operations:
+    * Export metadata operations for expression operations:
       * `exports-for-bounded-expr-op`
       * `exports-for-nameless-bounded-expr-op`
       * `exports-for-freestanding-expr-op`
       * `exports-for-unceremonious-expr-op`
-    * Export metadata perations for declaration operations:
+    * Export metadata operations for declaration operations:
       * `exports-for-bounded-decl-op`
       * `exports-for-nameless-bounded-decl-op`
       * `exports-for-freestanding-decl-op`
       * `exports-for-unceremonious-decl-op`
-    * Export metadata perations for export metadata operations:
+    * Export metadata operations for export metadata operations:
       * `exports-for-bounded-export-metadata-op`
       * `exports-for-nameless-bounded-export-metadata-op`
       * `exports-for-freestanding-export-metadata-op`
@@ -739,4 +739,4 @@ Given a located input file handle, returns another located input file handle whi
 
 A function.
 
-Given a string and a located input file handle, returns another located input file handle which is nearly the same except that the path refers to a subdirectry or file named by that string under the original file path. This only builds a path; it doesn't check that a file or subdirectory with that string name actually exists.
+Given a string and a located input file handle, returns another located input file handle which is nearly the same except that the path refers to a subdirectory or file named by that string under the original file path. This only builds a path; it doesn't check that a file or subdirectory with that string name actually exists.
