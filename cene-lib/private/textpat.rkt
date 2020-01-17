@@ -7,7 +7,7 @@
 ; either a failure, a success (with a stop position), or a report that
 ; the end of the input was reached before a result was determined.
 
-;   Copyright 2018 The Era Authors
+;   Copyright 2018, 2019 The Era Authors
 ;
 ;   Licensed under the Apache License, Version 2.0 (the "License");
 ;   you may not use this file except in compliance with the License.
