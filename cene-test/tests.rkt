@@ -4,7 +4,7 @@
 ;
 ; Unit tests.
 
-;   Copyright 2018 The Era Authors
+;   Copyright 2018-2020 The Era Authors
 ;
 ;   Licensed under the Apache License, Version 2.0 (the "License");
 ;   you may not use this file except in compliance with the License.
@@ -27,10 +27,10 @@
 (require #/only-in lathe-comforts/maybe just nothing)
 (require #/only-in lathe-comforts/trivial trivial)
 
-(require #/only-in effection/extensibility/base
+(require #/only-in interconfection/extensibility/base
   authorized-name-subname error-definer-from-message
   extfx-ct-continue)
-(require #/only-in effection/extensibility/unsafe
+(require #/only-in interconfection/extensibility/unsafe
   run-extfx! run-extfx-result-failure run-extfx-result-success?)
 
 (require cene)
@@ -105,9 +105,9 @@
   "Running an unmatched closing paren causes a Cene error, not a Racket error")
 
 ; TODO: See if we can stop relying on the `write` behavior of the
-; internal structure type `sink-struct` and the Effection internal
-; structure types `run-extfx-errors`, `error-definer-from-message`,
-; and `name` here.
+; internal structure type `sink-struct` and the Interconfection
+; internal structure types `run-extfx-errors`,
+; `error-definer-from-message`, and `name` here.
 (check-equal?
   (dissect (cene-run-string-sample "(follow-heart/trivial)")
     (run-extfx-result-failure errors)
@@ -116,7 +116,7 @@
   "Calling this Cene implementation's `follow-heart` causes a Cene error with a message based on the given value")
 
 ; TODO: See if we can stop relying on the `write` behavior of the
-; Effection internal structure types `run-extfx-errors` and
+; Interconfection internal structure types `run-extfx-errors` and
 ; `error-definer-from-message` here.
 (check-equal?
   (dissect

@@ -5,7 +5,7 @@
 ; A Racket library with entrypoints to the Cene programming language
 ; (implementation details).
 
-;   Copyright 2018 The Era Authors
+;   Copyright 2018-2020 The Era Authors
 ;
 ;   Licensed under the Apache License, Version 2.0 (the "License");
 ;   you may not use this file except in compliance with the License.
@@ -50,7 +50,7 @@
 (require #/only-in lathe-comforts/struct struct-easy)
 (require #/only-in lathe-comforts/trivial trivial)
 
-(require #/only-in effection/extensibility/base
+(require #/only-in interconfection/extensibility/base
   authorized-name? authorized-name-get-name authorized-name-subname
   dex-authorized-name dex-dspace dspace? error-definer?
   error-definer-from-exn error-definer-from-message
@@ -60,16 +60,16 @@
   getfx-bind getfx/c getfx-done getfx-err getfx-get make-pub make-sub
   optionally-dexed-dexed optionally-dexed-once pure-run-getfx
   success-or-error-definer)
-(require #/only-in effection/order
+(require #/only-in interconfection/order
   assocs->table-if-mutually-unique dex-immutable-string dex-trivial
   getfx-is-eq-by-dex ordering-eq)
-(require #/only-in effection/order/base
+(require #/only-in interconfection/order/base
   dex? dex-default dexed-first-order/c dex-give-up dex-name dex-struct
   dex-table fuse-by-merge getfx-call-fuse getfx-dexed-of
   getfx-is-in-dex getfx-name-of getfx-table-map-fuse merge-by-dex
   merge-table name? ordering-eq? table? table-empty? table-empty
   table-get table-shadow)
-(require #/prefix-in unsafe: #/only-in effection/order/unsafe
+(require #/prefix-in unsafe: #/only-in interconfection/order/unsafe
   dex dexed gen:dex-internals name)
 
 (require #/only-in cene/private/textpat
@@ -84,8 +84,8 @@
 
 
 
-; TODO: We used this in `effection/order/base`, and we're using it
-; again here. See if it should be an export of Effection.
+; TODO: We used this in `interconfection/order/base`, and we're using
+; it again here. See if it should be an export of Interconfection.
 (define/contract (getmaybefx-bind effects then)
   (-> (getfx/c maybe?) (-> any/c #/getfx/c maybe?) #/getfx/c maybe?)
   (getfx-bind effects #/fn maybe-intermediate
@@ -93,15 +93,15 @@
     (getfx-done #/nothing)
   #/then intermediate))
 
-; TODO: We used this in `effection/order/base`, and we're using it
-; again here. See if it should be an export of Effection.
+; TODO: We used this in `interconfection/order/base`, and we're using
+; it again here. See if it should be an export of Interconfection.
 (define/contract (getmaybefx-map effects func)
   (-> (getfx/c maybe?) (-> any/c any/c) #/getfx/c maybe?)
   (getmaybefx-bind effects #/fn intermediate
   #/getfx-done #/just #/func intermediate))
 
-; TODO: Put this into the `effection/order` module or something (maybe
-; even `effection/order/base`).
+; TODO: Put this into the `interconfection/order` module or something
+; (maybe even `interconfection/order/base`).
 (define/contract (table-kv-map table kv-to-v)
   (-> table? (-> name? any/c any/c) table?)
   (mat
@@ -115,13 +115,13 @@
     result
   #/table-empty))
 
-; TODO: Put this into the `effection/order` module or something (maybe
-; even `effection/order/base`).
+; TODO: Put this into the `interconfection/order` module or something
+; (maybe even `interconfection/order/base`).
 (define/contract (table-v-map table v-to-v)
   (-> table? (-> any/c any/c) table?)
   (table-kv-map table #/fn k v #/v-to-v v))
 
-; TODO: See if we should add this to `effection/extensibility`.
+; TODO: See if we should add this to `interconfection/extensibility`.
 (define/contract (extfx-err on-execute)
   (-> error-definer? extfx?)
   (extfx-run-getfx (getfx-err on-execute) #/fn impossible-result
@@ -155,18 +155,18 @@
 
 ; NOTE: Although it is not very strictly enforced, there is an
 ; intended format to the data here: The value of `tags` should be a
-; nonempty list of Effection name values, beginning with the main tag
-; name of the struct and then listing the names of the projections.
-; The projections' names should have no duplicates. The value of
-; `projs` should be a list of Cene values which are the values of the
-; projections.
+; nonempty list of Interconfection name values, beginning with the
+; main tag name of the struct and then listing the names of the
+; projections. The projections' names should have no duplicates. The
+; value of `projs` should be a list of Cene values which are the
+; values of the projections.
 (struct-easy (sink-struct tags projs)
   #:other #:methods gen:sink [])
 
 (define/contract (make-sink-struct tags projs)
   (-> pair? (or/c (list) pair?) sink-struct?)
   ; NOTE: For efficiency, we don't do any checking here. The value of
-  ; `tags` should be a nonempty list of Effection name values,
+  ; `tags` should be a nonempty list of Interconfection name values,
   ; beginning with the main tag name of the struct and then listing
   ; the names of the projections. The projections' names should have
   ; no duplicates. The value of `projs` should be a list of Cene
@@ -848,20 +848,20 @@
       #/-eval-in-env fault body))
   ])
 
-; TODO: Put this in Effection.
+; TODO: Put this in Interconfection.
 (define/contract (extfx-fuse-binary a b)
   (-> extfx? extfx? extfx?)
   (dissect (pure-run-getfx #/getfx-call-fuse (fuse-extfx) a b)
     (just result)
     result))
 
-; TODO: Put this in Effection.
+; TODO: Put this in Interconfection.
 (define/contract (extfx-fuse-list lst)
   (-> (listof extfx?) extfx?)
   (list-foldl (extfx-noop) lst #/fn a b
     (extfx-fuse-binary a b)))
 
-; TODO: Put this in Effection.
+; TODO: Put this in Interconfection.
 (define/contract (extfx-fuse . lst)
   (->* () #:rest (listof extfx?) extfx?)
   (extfx-fuse-list lst))
@@ -970,7 +970,7 @@
   (-> sink? sink-cexpr?)
   (sink-cexpr #/cexpr-reified result))
 
-; TODO: See if this should be an export of Effection.
+; TODO: See if this should be an export of Interconfection.
 (define/contract (names-have-duplicate? names)
   (-> (listof name?) boolean?)
   (nothing?
@@ -1249,8 +1249,10 @@
 
 (define/contract (sink-authorized-name-get-name name)
   (-> sink-authorized-name? sink-name?)
-  (dissect name (sink-authorized-name effection-authorized-name)
-  #/sink-name #/authorized-name-get-name effection-authorized-name))
+  (dissect name
+    (sink-authorized-name interconfection-authorized-name)
+  #/sink-name
+    (authorized-name-get-name interconfection-authorized-name)))
 
 (define/contract (sink-name-subname index-name inner-name)
   (-> sink-name? sink-name? sink-name?)

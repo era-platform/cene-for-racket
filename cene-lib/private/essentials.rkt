@@ -5,7 +5,7 @@
 ; A sufficient set of essential built-in operations for the Cene
 ; programming language (implementation details).
 
-;   Copyright 2018 The Era Authors
+;   Copyright 2018-2020 The Era Authors
 ;
 ;   Licensed under the Apache License, Version 2.0 (the "License");
 ;   you may not use this file except in compliance with the License.
@@ -45,14 +45,14 @@
 (require #/only-in lathe-comforts/struct struct-easy)
 (require #/only-in lathe-comforts/trivial trivial)
 
-(require #/only-in effection/extensibility/base
+(require #/only-in interconfection/extensibility/base
   authorized-name-get-name getfx? getfx-bind getfx/c getfx-done
   pure-run-getfx)
-(require #/only-in effection/order
+(require #/only-in interconfection/order
   assocs->table-if-mutually-unique cline-exact-rational
   dex-exact-rational dex-immutable-string fuse-exact-rational-by-plus
   fuse-exact-rational-by-times)
-(require #/only-in effection/order/base
+(require #/only-in interconfection/order/base
   cline-by-dex cline-default cline-fix cline-give-up cline-opaque
   cline-result? cline-struct dex? dex-cline dex-default dex-dex dexed?
   dexed-get-dex dexed-get-name dexed-get-value dex-fix dex-fuse
@@ -65,7 +65,7 @@
   merge-opaque merge-struct merge-table name? ordering-eq ordering-gt
   ordering-lt ordering-private table? table-empty table-get
   table-shadow)
-(require #/prefix-in unsafe: #/only-in effection/order/unsafe
+(require #/prefix-in unsafe: #/only-in interconfection/order/unsafe
   autoname-cline autoname-dex autoname-fuse autoname-merge cline
   cline-by-own-method-thorough
   cline-by-own-method::getfx-err-different-methods
@@ -196,22 +196,22 @@
   (expect maybe-value (just value) #t
   #/check-value? value))
 
-; TODO: We used this in `effection/order/base`, and we're using it
-; again here. See if it should be an export of Effection.
+; TODO: We used this in `interconfection/order/base`, and we're using
+; it again here. See if it should be an export of Interconfection.
 (define-simple-macro (maybe-ordering-or first:expr second:expr)
   (w- result first
   #/expect result (just #/ordering-eq) result
     second))
 
-; TODO: We used this in `effection/order/base`, and we're using it
-; again here. See if it should be an export of Effection.
+; TODO: We used this in `interconfection/order/base`, and we're using
+; it again here. See if it should be an export of Interconfection.
 (define (maybe-compare-aligned-lists as bs maybe-compare-elems)
   (expect (list as bs) (list (cons a as) (cons b bs))
     (just #/ordering-eq)
   #/maybe-ordering-or (maybe-compare-elems a b)
   #/maybe-compare-aligned-lists as bs maybe-compare-elems))
 
-; TODO: See if we should put something like this in Effection.
+; TODO: See if we should put something like this in Interconfection.
 (define-syntax (dexed-struct stx)
   (syntax-parse stx #/ (_ tag:id dexed-field ...)
     
@@ -2806,7 +2806,7 @@
   ; NOTE: The JavaScript version of Cene makes this functionality
   ; possible using a combination of `cexpr-cline-struct`,
   ; `cline-by-dex`, and `dex-by-cline`. We will probably be offering
-  ; `get-dex-from-cline` (as provided by Effection) instead of
+  ; `get-dex-from-cline` (as provided by Interconfection) instead of
   ; `dex-by-cline`, but the same circuitous combination would work.
   ; Nevertheless, we provide this operation directly.
   ;
