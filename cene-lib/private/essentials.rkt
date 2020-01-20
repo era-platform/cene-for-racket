@@ -51,8 +51,8 @@
 (require #/only-in lathe-comforts/trivial trivial)
 
 (require #/only-in interconfection/extensibility/base
-  authorized-name-get-name getfx? getfx-bind getfx/c getfx-done
-  pure-run-getfx)
+  authorized-name-get-name fuse-extfx getfx? getfx-bind getfx/c
+  getfx-done pure-run-getfx)
 (require #/only-in interconfection/order
   assocs->table-if-mutually-unique cline-exact-rational
   dex-exact-rational dex-immutable-string fuse-exact-rational-by-plus
@@ -62,14 +62,14 @@
   cline-result? cline-tuple dex? dex-cline dex-default dex-dex dexed?
   dexed-get-dex dexed-get-name dexed-get-value dex-fix dex-fuse
   dex-give-up dex-merge dex-name dex-opaque dex-table dex-tuple
-  fusable-function? fuse-by-merge fuse-fix fuse-opaque fuse-table
-  fuse-tuple get-dex-from-cline getfx-call-fuse getfx-call-merge
-  getfx-compare-by-cline getfx-compare-by-dex getfx-dexed-of
-  getfx-is-in-cline getfx-is-in-dex getfx-name-of getfx-table-map-fuse
-  getfx-table-sort make-fusable-function merge-by-dex merge-fix
-  merge-opaque merge-table merge-tuple name? ordering-eq ordering-gt
-  ordering-lt ordering-private table? table-empty table-get
-  table-shadow)
+  fusable-function? fuse-by-merge fuse-fix fuse-fusable-function
+  fuse-opaque fuse-table fuse-tuple get-dex-from-cline getfx-call-fuse
+  getfx-call-merge getfx-compare-by-cline getfx-compare-by-dex
+  getfx-dexed-of getfx-is-in-cline getfx-is-in-dex getfx-name-of
+  getfx-table-map-fuse getfx-table-sort make-fusable-function
+  merge-by-dex merge-fix merge-opaque merge-table merge-tuple name?
+  ordering-eq ordering-gt ordering-lt ordering-private table?
+  table-empty table-get table-shadow)
 (require #/prefix-in unsafe: #/only-in interconfection/order/unsafe
   autoname-cline autoname-dex autoname-fuse autoname-merge cline
   cline-by-own-method-thorough
@@ -1300,27 +1300,18 @@
   (-> dex?)
   (unsafe:dex #/dex-internals-sink-fault))
 
-(struct-easy (fuse-internals-extfx)
-  #:other
-  
-  #:methods unsafe:gen:furge-internals
-  [
-    
-    (define (furge-internals-tag this)
-      'tag:fuse-extfx)
-    
-    (define (furge-internals-autoname this)
-      'tag:fuse-extfx)
-    
-    (define (furge-internals-autodex this other)
-      (just #/ordering-eq))
-    
-    (define (getfx-furge-internals-call this a b)
-      (getfx-done
-        (expect (sink-extfx? a) #t (nothing)
-        #/expect (sink-extfx? b) #t (nothing)
-        #/just #/sink-extfx-fuse a b)))
-  ])
+(define-syntax-and-value-imitation-simple-struct
+  (method-for-sink-fuse-extfx?)
+  method-for-sink-fuse-extfx
+  method-for-sink-fuse-extfx/t
+  'method-for-sink-fuse-extfx (current-inspector) (auto-write)
+  (#:prop prop:procedure #/fn this rinfo
+    (getfx-done #/fuse-extfx)))
+
+(define/contract (sink-fuse-extfx)
+  (-> sink-fuse?)
+  (sink-fuse #/fuse-tuple sink-extfx/t #/fuse-fusable-function
+    (dexed-tuple method-for-sink-fuse-extfx/t)))
 
 
 (struct-easy (cexpr-case subject-expr tags vars then-expr else-expr)
@@ -1602,24 +1593,59 @@
   "Expected the result of a fuse-by-own-method body to be a maybe of a fuse")
 
 (define-syntax-and-value-imitation-simple-struct
+  (sink-fuse-getfx-unthorough?
+    sink-fuse-getfx-unthorough-fault
+    sink-fuse-getfx-unthorough-rinfo
+    sink-fuse-getfx-unthorough-method)
+  sink-fuse-getfx-unthorough
+  sink-fuse-getfx-unthorough/t
+  'sink-fuse-getfx-unthorough (current-inspector) (auto-write)
+  (#:prop prop:procedure #/fn this command
+    (dissect this (sink-fuse-getfx-unthorough fault rinfo method)
+    #/getfx-run-cenegetfx rinfo
+    #/sink-extfx-tag cssm-trivial #/fn csst-trivial
+    #/mat command
+      (unsafe:fuse-fusable-function::getfx-err-cannot-combine-results
+        method a b a-result b-result)
+      (cenegetfx-cene-err fault "Could not combine the result values")
+    #/dissect command
+      (unsafe:fuse-fusable-function::getfx-arg-to-method rinfo-arg)
+    #/dissect (cene-root-info? rinfo-arg) #t
+    #/cenegetfx-bind
+      (cenegetfx-sink-call fault method
+        (make-sink-struct csst-trivial #/list))
+    #/fn sink-getfx-method
+    #/expect (sink-getfx? sink-getfx-method) #t
+      (cenegetfx-cene-err fault "Expected the pure result of a fuse-getfx body to be a getfx effectful computation")
+    #/cenegetfx-bind (cenegetfx-run-sink-getfx sink-getfx-method)
+    #/fn method
+    #/expect method (sink-fuse method)
+      (cenegetfx-cene-err fault "Expected the result of a fuse-getfx body to be a fuse")
+    #/cenegetfx-done method)))
+
+(define-syntax-and-value-imitation-simple-struct
   (sink-fuse-fusable-fn-unthorough?
     sink-fuse-fusable-fn-unthorough-fault
     sink-fuse-fusable-fn-unthorough-rinfo
-    sink-fuse-fusable-fn-unthorough-arg-to-method)
+    sink-fuse-fusable-fn-unthorough-fault-and-arg-to-method)
   sink-fuse-fusable-fn-unthorough
   sink-fuse-fusable-fn-unthorough/t
   'sink-fuse-fusable-fn-unthorough (current-inspector) (auto-write)
   (#:prop prop:procedure #/fn this command
     (dissect this
-      (sink-fuse-fusable-fn-unthorough fault rinfo arg-to-method)
+      (sink-fuse-fusable-fn-unthorough
+        fault rinfo fault-and-arg-to-method)
     #/getfx-run-cenegetfx rinfo
     #/mat command
       (unsafe:fuse-fusable-function::getfx-err-cannot-combine-results
         method a b a-result b-result)
       (cenegetfx-cene-err fault "Could not combine the result values")
     #/dissect command
-      (unsafe:fuse-fusable-function::getfx-arg-to-method arg)
-    #/cenegetfx-bind (cenegetfx-sink-call fault arg-to-method arg)
+      (unsafe:fuse-fusable-function::getfx-arg-to-method
+        fault-and-arg)
+    #/cenegetfx-bind
+      (cenegetfx-sink-call
+        fault fault-and-arg-to-method fault-and-arg)
     #/fn sink-getfx-method
     #/expect (sink-getfx? sink-getfx-method) #t
       (cenegetfx-cene-err fault "Expected the pure result of a fuse-fusable-fn body to be a getfx effectful computation")
@@ -2294,6 +2320,19 @@
       (sink-getfx-bind effects #/fn intermediate
       #/verify-callback-getfx! fault #/cenegetfx-sink-call fault then
         intermediate)))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func-fault! "fuse-getfx" fault dexed-method
+    (expect dexed-method (sink-dexed dexed-method)
+      (cenegetfx-cene-err fault "Expected dexed-method to be a dexed value")
+    #/cenegetfx-bind (cenegetfx-read-dexed-root-info) #/fn dexed-rinfo
+    #/cenegetfx-done #/sink-fuse #/fuse-tuple sink-getfx/t
+      (unsafe:fuse-fusable-function-thorough
+        (dexed-tuple sink-fuse-getfx-unthorough/t
+          (just-value #/pure-run-getfx
+            (getfx-dexed-of (dex-sink-fault) fault))
+          dexed-rinfo
+          dexed-method))))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "pure-run-getfx" fault effects
@@ -3489,8 +3528,7 @@
   ;
   (def-nullary-func! "extfx-noop" (sink-extfx-noop))
   
-  (def-nullary-func! "fuse-extfx"
-    (sink-fuse #/unsafe:fuse #/fuse-internals-extfx))
+  (def-nullary-func! "fuse-extfx" (sink-fuse-extfx))
   
   ; NOTE BUILTINS: The following built-ins from the JavaScript version
   ; of Cene seem like they're not relevant to the approach we've taken

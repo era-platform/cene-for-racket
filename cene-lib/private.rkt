@@ -71,9 +71,9 @@
 (require #/only-in interconfection/order/base
   dex? dex-default dexed-first-order/c dex-give-up dex-name dex-table
   dex-tuple fuse-by-merge getfx-call-fuse getfx-dexed-of
-  getfx-is-in-dex getfx-name-of getfx-table-map-fuse merge-by-dex
-  merge-table name? ordering-eq? table? table-empty? table-empty
-  table-get table-shadow)
+  getfx-is-in-dex getfx-name-of getfx-table-map-fuse
+  make-fusable-function merge-by-dex merge-table name? ordering-eq?
+  table? table-empty? table-empty table-get table-shadow)
 (require #/prefix-in unsafe: #/only-in interconfection/order/unsafe
   dex dexed gen:dex-internals name)
 
@@ -324,13 +324,15 @@
   sink-authorized-name/t
   'sink-authorized-name (current-inspector) (auto-write)
   (#:gen gen:sink))
-(define-imitation-simple-struct
+(define-syntax-and-value-imitation-simple-struct
   (sink-getfx? sink-getfx-cenegetfx-go)
   sink-getfx
+  sink-getfx/t
   'sink-getfx (current-inspector) (auto-write) (#:gen gen:sink))
-(define-imitation-simple-struct
+(define-syntax-and-value-imitation-simple-struct
   (sink-extfx? sink-extfx-cenegetfx-go)
   sink-extfx
+  sink-extfx/t
   'sink-extfx (current-inspector) (auto-write) (#:gen gen:sink))
 (define-imitation-simple-struct
   (sink-pub? sink-pub-pub)
@@ -454,7 +456,7 @@
 ; NOTE: We treat every two tag caches as `ordering-eq`. Cene
 ; programmers don't directly manipulate these values, and they're
 ; derived from the other fields of the `cene-root-info` that carries
-; them, so we simply treat them as `ordering-eq` withouot bothering to
+; them, so we simply treat them as `ordering-eq` without bothering to
 ; compare them. We do this by defining a `dex-non-cene-value` dex to
 ; use for the appropriate field of `(dex-tuple cene-root-info/t ...)`.
 
@@ -520,7 +522,7 @@
 
 (define/contract (cenegetfx-run-getfx getfx)
   (-> getfx? cenegetfx?)
-  (cenegetfx #/fn rinfo getfx))
+  (cenegetfx #/make-fusable-function #/fn rinfo getfx))
 
 (define/contract (getfx-run-cenegetfx rinfo effects)
   (-> (cene-root-info/c) cenegetfx? getfx?)
@@ -533,7 +535,7 @@
 
 (define/contract (cenegetfx-bind effects then)
   (-> cenegetfx? (-> any/c cenegetfx?) cenegetfx?)
-  (cenegetfx #/fn rinfo
+  (cenegetfx #/make-fusable-function #/fn rinfo
     (getfx-bind (getfx-run-cenegetfx rinfo effects) #/fn intermediate
     #/getfx-run-cenegetfx rinfo #/then intermediate)))
 
@@ -543,7 +545,7 @@
 (define/contract (cenegetfx-bind effects then)
   (-> cenegetfx? (-> any/c any/c) cenegetfx?)
   (w- marks (current-continuation-marks)
-  #/cenegetfx #/fn rinfo
+  #/cenegetfx #/make-fusable-function #/fn rinfo
     (getfx-bind (getfx-run-cenegetfx rinfo effects) #/fn intermediate
     #/getfx-run-cenegetfx rinfo
       (w- thenresult (then intermediate)
@@ -610,11 +612,11 @@
 
 (define/contract (cenegetfx-read-root-info)
   (-> #/cenegetfx/c #/cene-root-info/c)
-  (cenegetfx #/fn rinfo #/getfx-done rinfo))
+  (cenegetfx #/make-fusable-function #/fn rinfo #/getfx-done rinfo))
 
 (define/contract (cenegetfx-read-dexed-root-info)
   (-> #/cenegetfx/c #/dexed-first-order/c #/cene-root-info/c)
-  (cenegetfx #/fn rinfo
+  (cenegetfx #/make-fusable-function #/fn rinfo
     (getfx-done #/just-value #/pure-run-getfx #/getfx-dexed-of
       (dex-cene-root-info)
       rinfo)))
