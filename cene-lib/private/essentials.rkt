@@ -24,9 +24,11 @@
 (require #/for-syntax #/only-in syntax/parse
   expr expr/c id nat syntax-parse)
 
+(require #/for-syntax #/only-in lathe-comforts w-)
+
 
 (require #/only-in racket/contract/base
-  -> ->* ->i and/c any/c cons/c list/c listof)
+  -> ->* ->i and/c any/c =/c cons/c list/c listof)
 (require #/only-in racket/contract/region define/contract)
 (require #/only-in racket/generic define/generic)
 (require #/only-in racket/match match-define)
@@ -42,7 +44,10 @@
 (require #/only-in lathe-comforts/maybe
   just just-value maybe? maybe-bind maybe/c maybe-map nothing)
 (require #/only-in lathe-comforts/string immutable-string?)
-(require #/only-in lathe-comforts/struct struct-easy)
+(require #/only-in lathe-comforts/struct
+  auto-write define-imitation-simple-struct
+  define-syntax-and-value-imitation-simple-struct struct-easy tupler/c
+  tupler-make-fn)
 (require #/only-in lathe-comforts/trivial trivial)
 
 (require #/only-in interconfection/extensibility/base
@@ -54,15 +59,15 @@
   fuse-exact-rational-by-times)
 (require #/only-in interconfection/order/base
   cline-by-dex cline-default cline-fix cline-give-up cline-opaque
-  cline-result? cline-struct dex? dex-cline dex-default dex-dex dexed?
+  cline-result? cline-tuple dex? dex-cline dex-default dex-dex dexed?
   dexed-get-dex dexed-get-name dexed-get-value dex-fix dex-fuse
-  dex-give-up dex-merge dex-name dex-opaque dex-struct dex-table
-  fusable-function? fuse-by-merge fuse-fix fuse-opaque fuse-struct
-  fuse-table get-dex-from-cline getfx-call-fuse getfx-call-merge
+  dex-give-up dex-merge dex-name dex-opaque dex-table dex-tuple
+  fusable-function? fuse-by-merge fuse-fix fuse-opaque fuse-table
+  fuse-tuple get-dex-from-cline getfx-call-fuse getfx-call-merge
   getfx-compare-by-cline getfx-compare-by-dex getfx-dexed-of
   getfx-is-in-cline getfx-is-in-dex getfx-name-of getfx-table-map-fuse
   getfx-table-sort make-fusable-function merge-by-dex merge-fix
-  merge-opaque merge-struct merge-table name? ordering-eq ordering-gt
+  merge-opaque merge-table merge-tuple name? ordering-eq ordering-gt
   ordering-lt ordering-private table? table-empty table-get
   table-shadow)
 (require #/prefix-in unsafe: #/only-in interconfection/order/unsafe
@@ -211,19 +216,34 @@
   #/maybe-ordering-or (maybe-compare-elems a b)
   #/maybe-compare-aligned-lists as bs maybe-compare-elems))
 
-; TODO: See if we should put something like this in Interconfection.
-(define-syntax (dexed-struct stx)
-  (syntax-parse stx #/ (_ tag:id dexed-field ...)
+; TODO: We use this in Interconfection, too. See if we should export
+; it from there.
+(define-syntax (dexed-tuple stx)
+  (syntax-parse stx #/ (_ _ field-to-count ...)
+  #/w- n (length #/syntax->list #'(field-to-count ...))
+  #/syntax-parse stx #/ (_ tupler dexed-field ...)
+    
+    #:declare tupler
+    (expr/c #`(tupler/c #/=/c #,n) #:name "tupler argument")
     
     #:declare dexed-field (expr/c #'dexed? #:name "a field")
     
     #:with (dexed-field-result ...)
     (generate-temporaries #'(dexed-field ...))
     
-    #'(let ([dexed-field-result dexed-field.c] ...)
+    #'(let
+        (
+          [tupler-result tupler.c]
+          [dexed-field-result dexed-field.c]
+          ...)
         (just-value #/pure-run-getfx #/getfx-dexed-of
-          (dex-struct tag (dexed-get-dex dexed-field-result) ...)
-          (tag (dexed-get-value dexed-field-result) ...)))))
+          (dex-tuple tupler-result
+            (dexed-get-dex dexed-field-result)
+            ...)
+          (
+            (tupler-make-fn tupler-result)
+            (dexed-get-value dexed-field-result)
+            ...)))))
 
 (define/contract (racket-boolean->cenegetfx-sink racket-boolean)
   (-> boolean? #/cenegetfx/c sink?)
@@ -260,26 +280,51 @@
       (make-sink-struct csst-nothing #/list))))
 
 
-(struct-easy (sink-dexed dexed)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-cline cline)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-merge merge)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-fuse fuse)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-perffx getfx)
-  #:other #:methods gen:sink [])
-(struct-easy
-  (sink-mobile
-    value perffx-expr-perffx cenegetfx-mobile-perffx-mobile)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-int racket-int)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-textpat racket-textpat)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-optimized-textpat racket-optimized-textpat)
-  #:other #:methods gen:sink [])
+(define-imitation-simple-struct
+  (sink-dexed? dexed)
+  sink-dexed
+  'sink-dexed (current-inspector) (auto-write) (#:gen gen:sink))
+(define-syntax-and-value-imitation-simple-struct
+  (sink-cline? sink-cline-cline)
+  sink-cline
+  sink-cline/t
+  'sink-cline (current-inspector) (auto-write) (#:gen gen:sink))
+(define-syntax-and-value-imitation-simple-struct
+  (sink-merge? sink-merge-merge)
+  sink-merge
+  sink-merge/t
+  'sink-merge (current-inspector) (auto-write) (#:gen gen:sink))
+(define-syntax-and-value-imitation-simple-struct
+  (sink-fuse? sink-fuse-fuse)
+  sink-fuse
+  sink-fuse/t
+  'sink-fuse (current-inspector) (auto-write) (#:gen gen:sink))
+(define-imitation-simple-struct
+  (sink-perffx? sink-perffx-getfx)
+  sink-perffx
+  'sink-perffx (current-inspector) (auto-write) (#:gen gen:sink))
+(define-imitation-simple-struct
+  (sink-mobile?
+    sink-mobile-value
+    sink-mobile-perffx-expr-perffx
+    sink-mobile-cenegetfx-mobile-perffx-mobile)
+  sink-mobile
+  'sink-mobile (current-inspector) (auto-write) (#:gen gen:sink))
+(define-syntax-and-value-imitation-simple-struct
+  (sink-int? sink-int-racket-int)
+  sink-int
+  sink-int/t
+  'sink-int (current-inspector) (auto-write) (#:gen gen:sink))
+(define-imitation-simple-struct
+  (sink-textpat? sink-textpat-racket-textpat)
+  sink-textpat
+  'sink-textpat (current-inspector) (auto-write) (#:gen gen:sink))
+(define-imitation-simple-struct
+  (sink-optimized-textpat?
+    sink-optimized-textpat-racket-optimized-textpat)
+  sink-optimized-textpat
+  'sink-optimized-textpat (current-inspector) (auto-write)
+  (#:gen gen:sink))
 
 
 (define/contract (sink-perffx-run-sink-getfx effects)
@@ -1329,11 +1374,14 @@
   #/sink-cexpr
   #/cexpr-case subject-expr tags vars then-expr else-expr))
 
-(struct-easy (fix-for-sink-dex-list rinfo dex-elem)
-  #:other
-  
-  #:property prop:procedure
-  (fn this dex
+(define-syntax-and-value-imitation-simple-struct
+  (fix-for-sink-dex-list?
+    fix-for-sink-dex-list-rinfo
+    fix-for-sink-dex-list-dex-elem)
+  fix-for-sink-dex-list
+  fix-for-sink-dex-list/t
+  'fix-for-sink-dex-list (current-inspector) (auto-write)
+  (#:prop prop:procedure #/fn this dex
     (dissect this (fix-for-sink-dex-list rinfo dex-elem)
     #/getfx-run-cenegetfx rinfo
       (cenegetfx-tag cssm-nil #/fn csst-nil
@@ -1347,7 +1395,7 @@
   (dissect dex-elem (sink-dex dex-elem)
   #/cenegetfx-bind (cenegetfx-read-dexed-root-info) #/fn dexed-rinfo
   #/cenegetfx-done
-    (sink-dex #/dex-fix #/dexed-struct fix-for-sink-dex-list
+    (sink-dex #/dex-fix #/dexed-tuple fix-for-sink-dex-list/t
       dexed-rinfo
       (just-value #/pure-run-getfx #/getfx-dexed-of (dex-dex)
         dex-elem))))
@@ -1364,26 +1412,31 @@
 
 (define/contract (sink-dex-name)
   (-> sink-dex?)
-  (sink-dex #/dex-struct sink-name #/dex-name))
+  (sink-dex #/dex-tuple sink-name/t #/dex-name))
 
 (define/contract (sink-dex-string)
   (-> sink-dex?)
-  (sink-dex #/dex-struct sink-string #/dex-immutable-string))
+  (sink-dex
+    (dex-tuple unguarded-sink-string/t #/dex-immutable-string)))
 
 (define/contract (sink-dex-table dex-val)
   (-> sink-dex? sink-dex?)
   (dissect dex-val (sink-dex dex-val)
-  #/sink-dex #/dex-struct sink-table #/dex-table dex-val))
+  #/sink-dex #/dex-tuple sink-table/t #/dex-table dex-val))
 
 
 (define-syntax-rule
   (define-fix-converter
-    converter-for-type-fix sink-type expected-getfx expected-method)
-  (struct-easy (converter-for-type-fix fault rinfo unwrap)
-    #:other
-    
-    #:property prop:procedure
-    (fn this x
+    converter-for-type-fix/t sink-type expected-getfx expected-method)
+  (define-syntax-and-value-imitation-simple-struct
+    (converter-for-type-fix?
+      converter-for-type-fix-fault
+      converter-for-type-fix-rinfo
+      converter-for-type-fix-unwrap)
+    converter-for-type-fix
+    converter-for-type-fix/t
+    'converter-for-type-fix (current-inspector) (auto-write)
+    (#:prop prop:procedure #/fn this x
       (dissect this (converter-for-type-fix fault rinfo unwrap)
       #/getfx-run-cenegetfx rinfo
       #/cenegetfx-bind (cenegetfx-sink-call fault unwrap x)
@@ -1396,35 +1449,39 @@
         (cenegetfx-cene-err fault expected-method)
       #/cenegetfx-done result))))
 
-(define-fix-converter converter-for-dex-fix sink-dex
+(define-fix-converter converter-for-dex-fix/t sink-dex
   "Expected the pure result of a dex-fix body to be a getfx effectful computation"
   "Expected the result of a dex-fix body to be a dex")
-(define-fix-converter converter-for-cline-fix sink-cline
+(define-fix-converter converter-for-cline-fix/t sink-cline
   "Expected the pure result of a cline-fix body to be a getfx effectful computation"
   "Expected the result of a cline-fix body to be a cline")
-(define-fix-converter converter-for-merge-fix sink-merge
+(define-fix-converter converter-for-merge-fix/t sink-merge
   "Expected the pure result of a merge-fix body to be a getfx effectful computation"
   "Expected the result of a merge-fix body to be a merge")
-(define-fix-converter converter-for-fuse-fix sink-fuse
+(define-fix-converter converter-for-fuse-fix/t sink-fuse
   "Expected the pure result of a fuse-fix body to be a getfx effectful computation"
   "Expected the result of a fuse-fix body to be a fuse")
 
 
 (define-syntax-rule
   (define-cmp-by-own-method-converter
-    sink-cmp-by-own-method-unthorough
+    sink-cmp-by-own-method-unthorough/t
     sink-cmp
     unsafe:cmp-by-own-method::getfx-err-different-methods
     unsafe:cmp-by-own-method::getfx-get-method
     expected-getfx
     expected-maybe
     expected-method)
-  (struct-easy
-    (sink-cmp-by-own-method-unthorough fault rinfo getfx-get-method)
-    #:other
-    
-    #:property prop:procedure
-    (fn this command
+  (define-syntax-and-value-imitation-simple-struct
+    (sink-cmp-by-own-method-unthorough?
+      sink-cmp-by-own-method-unthorough-fault
+      sink-cmp-by-own-method-unthorough-rinfo
+      sink-cmp-by-own-method-unthorough-get-method)
+    sink-cmp-by-own-method-unthorough
+    sink-cmp-by-own-method-unthorough/t
+    'sink-cmp-by-own-method-unthorough (current-inspector)
+    (auto-write)
+    (#:prop prop:procedure #/fn this command
       (dissect this
         (sink-cmp-by-own-method-unthorough
           fault rinfo getfx-get-method)
@@ -1454,7 +1511,7 @@
 
 (define-syntax-rule
   (define-furge-by-own-method-converter
-    sink-furge-by-own-method-unthorough
+    sink-furge-by-own-method-unthorough/t
     sink-furge
     unsafe:furge-by-own-method::getfx-err-different-input-methods
     unsafe:furge-by-own-method::getfx-err-cannot-get-output-method
@@ -1463,12 +1520,16 @@
     expected-getfx
     expected-maybe
     expected-method)
-  (struct-easy
-    (sink-furge-by-own-method-unthorough fault rinfo getfx-get-method)
-    #:other
-    
-    #:property prop:procedure
-    (fn this command
+  (define-syntax-and-value-imitation-simple-struct
+    (sink-furge-by-own-method-unthorough?
+      sink-furge-by-own-method-unthorough-fault
+      sink-furge-by-own-method-unthorough-rinfo
+      sink-furge-by-own-method-unthorough-unwrap)
+    sink-furge-by-own-method-unthorough
+    sink-furge-by-own-method-unthorough/t
+    'sink-furge-by-own-method-unthorough (current-inspector)
+    (auto-write)
+    (#:prop prop:procedure #/fn this command
       (dissect this
         (sink-furge-by-own-method-unthorough
           fault rinfo getfx-get-method)
@@ -1504,7 +1565,7 @@
       #/cenegetfx-done #/just method))))
 
 (define-cmp-by-own-method-converter
-  sink-dex-by-own-method-unthorough
+  sink-dex-by-own-method-unthorough/t
   sink-dex
   unsafe:dex-by-own-method::getfx-err-different-methods
   unsafe:dex-by-own-method::getfx-get-method
@@ -1512,7 +1573,7 @@
   "Expected the result of a dex-by-own-method body to be a nothing or a just"
   "Expected the result of a dex-by-own-method body to be a maybe of a dex")
 (define-cmp-by-own-method-converter
-  sink-cline-by-own-method-unthorough
+  sink-cline-by-own-method-unthorough/t
   sink-cline
   unsafe:cline-by-own-method::getfx-err-different-methods
   unsafe:cline-by-own-method::getfx-get-method
@@ -1520,7 +1581,7 @@
   "Expected the result of a cline-by-own-method body to be a nothing or a just"
   "Expected the result of a cline-by-own-method body to be a maybe of a cline")
 (define-furge-by-own-method-converter
-  sink-merge-by-own-method-unthorough
+  sink-merge-by-own-method-unthorough/t
   sink-merge
   unsafe:merge-by-own-method::getfx-err-different-input-methods
   unsafe:merge-by-own-method::getfx-err-cannot-get-output-method
@@ -1530,7 +1591,7 @@
   "Expected the result of a merge-by-own-method body to be a nothing or a just"
   "Expected the result of a merge-by-own-method body to be a maybe of a merge")
 (define-furge-by-own-method-converter
-  sink-fuse-by-own-method-unthorough
+  sink-fuse-by-own-method-unthorough/t
   sink-fuse
   unsafe:fuse-by-own-method::getfx-err-different-input-methods
   unsafe:fuse-by-own-method::getfx-err-cannot-get-output-method
@@ -1540,12 +1601,15 @@
   "Expected the result of a fuse-by-own-method body to be a nothing or a just"
   "Expected the result of a fuse-by-own-method body to be a maybe of a fuse")
 
-(struct-easy
-  (sink-fuse-fusable-fn-unthorough fault rinfo arg-to-method)
-  #:other
-  
-  #:property prop:procedure
-  (fn this command
+(define-syntax-and-value-imitation-simple-struct
+  (sink-fuse-fusable-fn-unthorough?
+    sink-fuse-fusable-fn-unthorough-fault
+    sink-fuse-fusable-fn-unthorough-rinfo
+    sink-fuse-fusable-fn-unthorough-arg-to-method)
+  sink-fuse-fusable-fn-unthorough
+  sink-fuse-fusable-fn-unthorough/t
+  'sink-fuse-fusable-fn-unthorough (current-inspector) (auto-write)
+  (#:prop prop:procedure #/fn this command
     (dissect this
       (sink-fuse-fusable-fn-unthorough fault rinfo arg-to-method)
     #/getfx-run-cenegetfx rinfo
@@ -2342,11 +2406,10 @@
       (cenegetfx-cene-err fault "Expected d to be a dexed value")
     #/cenegetfx-done #/dexed-get-value d))
   
-  (def-nullary-func! "dex-name"
-    (sink-dex #/dex-struct sink-name #/dex-name))
+  (def-nullary-func! "dex-name" (sink-dex-name))
   
   (def-nullary-func! "dex-dex"
-    (sink-dex #/dex-struct sink-dex #/dex-dex))
+    (sink-dex #/dex-tuple sink-dex/t #/dex-dex))
   
   (def-nullary-func! "dex-give-up" (sink-dex #/dex-give-up))
   
@@ -2374,7 +2437,7 @@
       (cenegetfx-cene-err fault "Expected dexed-getfx-get-method to be a dexed value")
     #/cenegetfx-bind (cenegetfx-read-dexed-root-info) #/fn dexed-rinfo
     #/cenegetfx-done #/sink-dex #/unsafe:dex-by-own-method-thorough
-      (dexed-struct sink-dex-by-own-method-unthorough
+      (dexed-tuple sink-dex-by-own-method-unthorough/t
         (just-value #/pure-run-getfx #/getfx-dexed-of (dex-sink-fault)
           fault)
         dexed-rinfo
@@ -2387,7 +2450,7 @@
       (cenegetfx-cene-err fault "Expected dexed-unwrap to be a dexed value")
     #/cenegetfx-bind (cenegetfx-read-dexed-root-info) #/fn dexed-rinfo
     #/cenegetfx-done #/sink-dex #/dex-fix
-      (dexed-struct converter-for-dex-fix
+      (dexed-tuple converter-for-dex-fix/t
         (just-value #/pure-run-getfx #/getfx-dexed-of (dex-sink-fault)
           fault)
         dexed-rinfo
@@ -2435,7 +2498,7 @@
             (make-sink-struct csst-ordering-eq #/list))))))
   
   (def-nullary-func! "dex-cline"
-    (sink-dex #/dex-struct sink-cline #/dex-cline))
+    (sink-dex #/dex-tuple sink-cline/t #/dex-cline))
   
   (def-func-fault! "cline-by-dex" fault dex
     (expect dex (sink-dex dex)
@@ -2471,7 +2534,7 @@
     #/cenegetfx-bind (cenegetfx-read-dexed-root-info) #/fn dexed-rinfo
     #/cenegetfx-done #/sink-cline
       (unsafe:cline-by-own-method-thorough
-      #/dexed-struct sink-cline-by-own-method-unthorough
+      #/dexed-tuple sink-cline-by-own-method-unthorough/t
         (just-value #/pure-run-getfx #/getfx-dexed-of (dex-sink-fault)
           fault)
         dexed-rinfo
@@ -2484,7 +2547,7 @@
       (cenegetfx-cene-err fault "Expected dexed-unwrap to be a dexed value")
     #/cenegetfx-bind (cenegetfx-read-dexed-root-info) #/fn dexed-rinfo
     #/cenegetfx-done #/sink-cline #/cline-fix
-      (dexed-struct converter-for-cline-fix
+      (dexed-tuple converter-for-cline-fix/t
         (just-value #/pure-run-getfx #/getfx-dexed-of (dex-sink-fault)
           fault)
         dexed-rinfo
@@ -2511,10 +2574,10 @@
       #/racket-maybe->cenegetfx-sink maybe-result)))
   
   (def-nullary-func! "dex-merge"
-    (sink-dex #/dex-struct sink-merge #/dex-merge))
+    (sink-dex #/dex-tuple sink-merge/t #/dex-merge))
   
   (def-nullary-func! "dex-fuse"
-    (sink-dex #/dex-struct sink-fuse #/dex-fuse))
+    (sink-dex #/dex-tuple sink-fuse/t #/dex-fuse))
   
   ; NOTE: We do not implement operations like `merge-default` or
   ; `fuse-default` from the JavaScript version of Cene since they are
@@ -2554,7 +2617,7 @@
     #/cenegetfx-bind (cenegetfx-read-dexed-root-info) #/fn dexed-rinfo
     #/cenegetfx-done #/sink-merge
       (unsafe:merge-by-own-method-thorough
-      #/dexed-struct sink-merge-by-own-method-unthorough
+      #/dexed-tuple sink-merge-by-own-method-unthorough/t
         (just-value #/pure-run-getfx #/getfx-dexed-of (dex-sink-fault)
           fault)
         dexed-rinfo
@@ -2567,7 +2630,7 @@
       (cenegetfx-cene-err fault "Expected dexed-getfx-get-method to be a dexed value")
     #/cenegetfx-bind (cenegetfx-read-dexed-root-info) #/fn dexed-rinfo
     #/cenegetfx-done #/sink-fuse #/unsafe:fuse-by-own-method-thorough
-      (dexed-struct sink-fuse-by-own-method-unthorough
+      (dexed-tuple sink-fuse-by-own-method-unthorough/t
         (just-value #/pure-run-getfx #/getfx-dexed-of (dex-sink-fault)
           fault)
         dexed-rinfo
@@ -2580,7 +2643,7 @@
       (cenegetfx-cene-err fault "Expected dexed-unwrap to be a dexed value")
     #/cenegetfx-bind (cenegetfx-read-dexed-root-info) #/fn dexed-rinfo
     #/cenegetfx-done #/sink-merge #/merge-fix
-      (dexed-struct converter-for-merge-fix
+      (dexed-tuple converter-for-merge-fix/t
         (just-value #/pure-run-getfx #/getfx-dexed-of (dex-sink-fault)
           fault)
         dexed-rinfo
@@ -2593,7 +2656,7 @@
       (cenegetfx-cene-err fault "Expected dexed-unwrap to be a dexed value")
     #/cenegetfx-bind (cenegetfx-read-dexed-root-info) #/fn dexed-rinfo
     #/cenegetfx-done #/sink-fuse #/fuse-fix
-      (dexed-struct converter-for-fuse-fix
+      (dexed-tuple converter-for-fuse-fix/t
         (just-value #/pure-run-getfx #/getfx-dexed-of (dex-sink-fault)
           fault)
         dexed-rinfo
@@ -2624,9 +2687,9 @@
       (sink-dexed dexed-fault-and-arg-to-method)
       (cenegetfx-cene-err fault "Expected dexed-fault-and-arg-to-method to be a dexed value")
     #/cenegetfx-bind (cenegetfx-read-dexed-root-info) #/fn dexed-rinfo
-    #/cenegetfx-done #/sink-fuse #/fuse-struct sink-opaque-fn-fusable
+    #/cenegetfx-done #/sink-fuse #/fuse-tuple sink-opaque-fn-fusable/t
       (unsafe:fuse-fusable-function-thorough
-        (dexed-struct sink-fuse-fusable-fn-unthorough
+        (dexed-tuple sink-fuse-fusable-fn-unthorough/t
           (just-value #/pure-run-getfx
             (getfx-dexed-of (dex-sink-fault) fault))
           dexed-rinfo
@@ -3322,13 +3385,14 @@
     (expect merge-val (sink-merge merge-val)
       (cenegetfx-cene-err fault "Expected merge-val to be a merge")
     #/cenegetfx-done
-      (sink-merge #/merge-struct sink-table #/merge-table merge-val)))
+      (sink-merge
+        (merge-tuple sink-table/t #/merge-table merge-val))))
   
   (def-func-fault! "fuse-table" fault fuse-val
     (expect fuse-val (sink-fuse fuse-val)
       (cenegetfx-cene-err fault "Expected fuse-val to be a fuse")
     #/cenegetfx-done
-      (sink-fuse #/fuse-struct sink-table #/fuse-table fuse-val)))
+      (sink-fuse #/fuse-tuple sink-table/t #/fuse-table fuse-val)))
   
   (def-nullary-func! "table-empty" (sink-table #/table-empty))
   
@@ -3780,20 +3844,21 @@
   ; Integers
   
   (def-nullary-func! "dex-int"
-    (sink-dex #/dex-struct sink-int #/dex-exact-rational))
+    (sink-dex #/dex-tuple sink-int/t #/dex-exact-rational))
   
   (def-nullary-func! "cline-int"
-    (sink-cline #/cline-struct sink-int #/cline-exact-rational))
+    (sink-cline #/cline-tuple sink-int/t #/cline-exact-rational))
   
   (def-nullary-func! "int-zero" (sink-int 0))
   
   (def-nullary-func! "int-one" (sink-int 1))
   
   (def-nullary-func! "fuse-int-by-plus"
-    (sink-fuse #/fuse-struct sink-int #/fuse-exact-rational-by-plus))
+    (sink-fuse #/fuse-tuple sink-int/t #/fuse-exact-rational-by-plus))
   
   (def-nullary-func! "fuse-int-by-times"
-    (sink-fuse #/fuse-struct sink-int #/fuse-exact-rational-by-times))
+    (sink-fuse
+      (fuse-tuple sink-int/t #/fuse-exact-rational-by-times)))
   
   (def-func-fault! "int-minus" fault minuend subtrahend
     (expect minuend (sink-int minuend)

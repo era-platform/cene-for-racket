@@ -30,7 +30,7 @@
 (require #/only-in racket/contract get/build-late-neg-projection)
 (require #/only-in racket/contract/base
   -> ->* and/c any any/c contract? cons/c contract-name list/c listof
-  none/c or/c rename-contract struct/c)
+  none/c or/c rename-contract)
 (require #/only-in racket/contract/combinator
   blame-add-context coerce-contract make-contract raise-blame-error)
 (require #/only-in racket/contract/region define/contract)
@@ -43,11 +43,16 @@
   dissect dissectfn expect expectfn fn mat w- w-loop)
 (require #/only-in lathe-comforts/list
   list-any list-foldl list-foldr list-map list-zip-map nat->maybe)
+(require #/only-in lathe-comforts/match
+  define-match-expander-attenuated
+  define-match-expander-from-match-and-make match/c)
 (require #/only-in lathe-comforts/maybe
   just just-value maybe? maybe-bind maybe/c maybe-map nothing
   nothing?)
 (require #/only-in lathe-comforts/string immutable-string?)
-(require #/only-in lathe-comforts/struct struct-easy)
+(require #/only-in lathe-comforts/struct
+  auto-write define-imitation-simple-struct
+  define-syntax-and-value-imitation-simple-struct struct-easy)
 (require #/only-in lathe-comforts/trivial trivial)
 
 (require #/only-in interconfection/extensibility/base
@@ -64,8 +69,8 @@
   assocs->table-if-mutually-unique dex-immutable-string dex-trivial
   getfx-is-eq-by-dex ordering-eq)
 (require #/only-in interconfection/order/base
-  dex? dex-default dexed-first-order/c dex-give-up dex-name dex-struct
-  dex-table fuse-by-merge getfx-call-fuse getfx-dexed-of
+  dex? dex-default dexed-first-order/c dex-give-up dex-name dex-table
+  dex-tuple fuse-by-merge getfx-call-fuse getfx-dexed-of
   getfx-is-in-dex getfx-name-of getfx-table-map-fuse merge-by-dex
   merge-table name? ordering-eq? table? table-empty? table-empty
   table-get table-shadow)
@@ -160,8 +165,10 @@
 ; projections. The projections' names should have no duplicates. The
 ; value of `projs` should be a list of Cene values which are the
 ; values of the projections.
-(struct-easy (sink-struct tags projs)
-  #:other #:methods gen:sink [])
+(define-imitation-simple-struct
+  (sink-struct? sink-struct-tags sink-struct-projs)
+  sink-struct
+  'sink-struct (current-inspector) (auto-write) (#:gen gen:sink))
 
 (define/contract (make-sink-struct tags projs)
   (-> pair? (or/c (list) pair?) sink-struct?)
@@ -176,14 +183,14 @@
 (define/contract (dex-sink-must-be)
   (-> dex?)
   (dex-default
-    (dex-struct sink-you-must-be-this-lang-impl)
-    (dex-struct sink-you-must-be-someone)))
+    (dex-tuple sink-you-must-be-this-lang-impl/t)
+    (dex-tuple sink-you-must-be-someone/t)))
 
 (define/contract (dex-sink-i-am)
   (-> dex?)
   (dex-default
-    (dex-struct sink-i-am-this-lang-impl)
-    (dex-struct sink-i-am-someone)))
+    (dex-tuple sink-i-am-this-lang-impl/t)
+    (dex-tuple sink-i-am-someone/t)))
 
 (define/contract (sink-must-be? v)
   (-> sink? boolean?)
@@ -202,8 +209,8 @@
 
 (define/contract (dex-sink-innate-main-tag-entry)
   (-> dex?)
-  (dex-struct sink-innate-main-tag-entry
-    (dex-struct sink-name #/dex-name)
+  (dex-tuple sink-innate-main-tag-entry/t
+    (dex-tuple sink-name/t #/dex-name)
     (dex-sink-must-be)
     (dex-sink-must-be)))
 
@@ -255,47 +262,96 @@
       (cons s-proj rev-projs))))
 
 
-(struct-easy (sink-fault maybe-continuation-marks)
-  #:other #:methods gen:sink [])
+(define-imitation-simple-struct
+  (sink-fault? sink-fault-maybe-continuation-marks)
+  sink-fault
+  'sink-fault (current-inspector) (auto-write) (#:gen gen:sink))
 
 ; Innate main tag entries contain authorization conditions for the
 ; people who can define the function implementation and the people who
 ; can create construction and deconstruction expressions.
-(struct-easy (sink-you-must-be-this-lang-impl)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-you-must-be-someone)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-i-am-this-lang-impl)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-i-am-someone)
-  #:other #:methods gen:sink [])
-(struct-easy
-  (sink-innate-main-tag-entry
-    main-tag-name author-must-be user-must-be)
-  #:other #:methods gen:sink [])
+(define-syntax-and-value-imitation-simple-struct
+  (sink-you-must-be-this-lang-impl?)
+  sink-you-must-be-this-lang-impl
+  sink-you-must-be-this-lang-impl/t
+  'sink-you-must-be-this-lang-impl (current-inspector) (auto-write)
+  (#:gen gen:sink))
+(define-syntax-and-value-imitation-simple-struct
+  (sink-you-must-be-someone?)
+  sink-you-must-be-someone
+  sink-you-must-be-someone/t
+  'sink-you-must-be-someone (current-inspector) (auto-write)
+  (#:gen gen:sink))
+(define-syntax-and-value-imitation-simple-struct
+  (sink-i-am-this-lang-impl?)
+  sink-i-am-this-lang-impl
+  sink-i-am-this-lang-impl/t
+  'sink-i-am-this-lang-impl (current-inspector) (auto-write)
+  (#:gen gen:sink))
+(define-syntax-and-value-imitation-simple-struct
+  (sink-i-am-someone?)
+  sink-i-am-someone
+  sink-i-am-someone/t
+  'sink-i-am-someone (current-inspector) (auto-write)
+  (#:gen gen:sink))
+(define-syntax-and-value-imitation-simple-struct
+  (sink-innate-main-tag-entry?
+    sink-innate-main-tag-entry-main-tag-name
+    sink-innate-main-tag-entry-author-must-be
+    sink-innate-main-tag-entry-user-must-be)
+  sink-innate-main-tag-entry
+  sink-innate-main-tag-entry/t
+  'sink-innate-main-tag-entry (current-inspector) (auto-write)
+  (#:gen gen:sink))
 
-(struct-easy (sink-directive directive)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-dex dex)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-name name)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-authorized-name authorized-name)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-getfx cenegetfx-go)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-extfx cenegetfx-go)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-pub pub)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-sub sub)
-  #:other #:methods gen:sink [])
-(struct-easy
-  (sink-cexpr-sequence-output-stream
-    id box-of-maybe-state-and-handler)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-text-input-stream box-of-maybe-input)
-  #:other #:methods gen:sink [])
+(define-imitation-simple-struct
+  (sink-directive? sink-directive-directive)
+  sink-directive
+  'sink-directive (current-inspector) (auto-write) (#:gen gen:sink))
+(define-syntax-and-value-imitation-simple-struct
+  (sink-dex? sink-dex-dex)
+  sink-dex
+  sink-dex/t
+  'sink-dex (current-inspector) (auto-write) (#:gen gen:sink))
+(define-syntax-and-value-imitation-simple-struct
+  (sink-name? sink-name-name)
+  sink-name
+  sink-name/t
+  'sink-name (current-inspector) (auto-write) (#:gen gen:sink))
+(define-syntax-and-value-imitation-simple-struct
+  (sink-authorized-name? sink-authorized-name-authorized-name)
+  sink-authorized-name
+  sink-authorized-name/t
+  'sink-authorized-name (current-inspector) (auto-write)
+  (#:gen gen:sink))
+(define-imitation-simple-struct
+  (sink-getfx? sink-getfx-cenegetfx-go)
+  sink-getfx
+  'sink-getfx (current-inspector) (auto-write) (#:gen gen:sink))
+(define-imitation-simple-struct
+  (sink-extfx? sink-extfx-cenegetfx-go)
+  sink-extfx
+  'sink-extfx (current-inspector) (auto-write) (#:gen gen:sink))
+(define-imitation-simple-struct
+  (sink-pub? sink-pub-pub)
+  sink-pub
+  'sink-pub (current-inspector) (auto-write) (#:gen gen:sink))
+(define-imitation-simple-struct
+  (sink-sub? sink-sub-sub)
+  sink-sub
+  'sink-sub (current-inspector) (auto-write) (#:gen gen:sink))
+(define-imitation-simple-struct
+  (sink-cexpr-sequence-output-stream?
+    sink-cexpr-sequence-output-stream-id
+    sink-cexpr-sequence-output-stream-box-of-maybe-state-and-handler)
+  sink-cexpr-sequence-output-stream
+  'sink-cexpr-sequence-output-stream (current-inspector) (auto-write)
+  (#:gen gen:sink))
+(define-imitation-simple-struct
+  (sink-text-input-stream? sink-text-input-stream-box-of-maybe-input)
+  sink-text-input-stream
+  'sink-text-input-stream (current-inspector) (auto-write)
+  (#:gen gen:sink))
 
 ; The `parts` representation of a `sink-located-string` is a list of
 ; entries. Each entry is a three-element list where the first element
@@ -311,31 +367,63 @@
 ; character individually, which makes it clear which information will
 ; be retained in a substring and which information will not.
 ;
-(struct-easy (sink-located-string parts)
-  #:other #:methods gen:sink [])
+(define-imitation-simple-struct
+  (sink-located-string? sink-located-string-parts)
+  sink-located-string
+  'sink-located-string (current-inspector) (auto-write)
+  (#:gen gen:sink))
 
-(struct-easy (sink-string racket-string)
-  (#:guard-easy
-    ; Racket's basic string operations make it easy to end up with a
-    ; mutable string by accident, so we go out of our way to check
-    ; that all `sink-string` values are immutable.
-    (unless (immutable-string? racket-string)
-      (error "Expected racket-string to be an immutable string")))
-  #:other #:methods gen:sink [])
-(struct-easy (sink-opaque-fn-fusable racket-fn)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-opaque-fn-fault racket-fn)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-opaque-fn racket-fn)
-  #:other #:methods gen:sink [])
-(struct-easy (sink-table racket-table)
-  #:other #:methods gen:sink [])
+; NOTE: Racket's basic string operations make it easy to end up with a
+; mutable string by accident, so we go out of our way to check that
+; all `sink-string` values are immutable.
+;
+; TODO: See if we can somehow get a guarded tupler instead of
+; `unguarded-sink-string/t`.
+;
+(define-syntax-and-value-imitation-simple-struct
+  (sink-string? sink-string-racket-string)
+  unguarded-sink-string
+  unguarded-sink-string/t
+  'sink-string (current-inspector) (auto-write) (#:gen gen:sink))
+(define-match-expander-attenuated
+  attenuated-sink-string
+  unguarded-sink-string
+  [racket-string immutable-string?]
+  #t)
+(define-match-expander-from-match-and-make
+  sink-string
+  unguarded-sink-string
+  attenuated-sink-string
+  attenuated-sink-string)
+
+(define-syntax-and-value-imitation-simple-struct
+  (sink-opaque-fn-fusable? sink-opaque-fn-fusable-racket-fn)
+  sink-opaque-fn-fusable
+  sink-opaque-fn-fusable/t
+  'sink-opaque-fn-fusable (current-inspector) (auto-write)
+  (#:gen gen:sink))
+(define-imitation-simple-struct
+  (sink-opaque-fn-fault? sink-opaque-fn-fault-racket-fn)
+  sink-opaque-fn-fault
+  'sink-opaque-fn-fault (current-inspector) (auto-write)
+  (#:gen gen:sink))
+(define-imitation-simple-struct
+  (sink-opaque-fn? sink-opaque-fn-racket-fn)
+  sink-opaque-fn
+  'sink-opaque-fn (current-inspector) (auto-write) (#:gen gen:sink))
+(define-syntax-and-value-imitation-simple-struct
+  (sink-table? sink-table-racket-table)
+  sink-table
+  sink-table/t
+  'sink-table (current-inspector) (auto-write) (#:gen gen:sink))
 
 ; NOTE: The term "cexpr" is short for "compiled expression." It's the
 ; kind of expression that macros generate in order to use as function
 ; definitions.
-(struct-easy (sink-cexpr cexpr)
-  #:other #:methods gen:sink [])
+(define-imitation-simple-struct
+  (sink-cexpr? sink-cexpr-cexpr)
+  sink-cexpr
+  'sink-cexpr (current-inspector) (auto-write) (#:gen gen:sink))
 
 (define/contract (sink-name-rep-map name func)
   (-> sink-name? (-> any/c any/c) sink-name?)
@@ -368,7 +456,7 @@
 ; derived from the other fields of the `cene-root-info` that carries
 ; them, so we simply treat them as `ordering-eq` withouot bothering to
 ; compare them. We do this by defining a `dex-non-cene-value` dex to
-; use for the appropriate field of `(dex-struct cene-root-info ...)`.
+; use for the appropriate field of `(dex-tuple cene-root-info/t ...)`.
 
 (struct-easy (dex-internals-non-cene-value)
   
@@ -406,19 +494,26 @@
   (unsafe:dex #/dex-internals-non-cene-value))
 
 
-(struct-easy (cene-root-info dspace lang-impl-qualify-root tag-cache))
+(define-syntax-and-value-imitation-simple-struct
+  (cene-root-info?
+    cene-root-info-dspace
+    cene-root-info-lang-impl-qualify-root
+    cene-root-info-tag-cache)
+  cene-root-info
+  cene-root-info/t
+  'cene-root-info (current-inspector) (auto-write))
 
 (define/contract (cene-root-info/c)
   (-> contract?)
   (rename-contract
-    (struct/c cene-root-info dspace? sink-authorized-name? any/c)
+    (match/c cene-root-info dspace? sink-authorized-name? any/c)
     '(cene-root-info/c)))
 
 (define/contract (dex-cene-root-info)
   (-> dex?)
-  (dex-struct cene-root-info
+  (dex-tuple cene-root-info/t
     (dex-dspace)
-    (dex-struct sink-authorized-name #/dex-authorized-name)
+    (dex-tuple sink-authorized-name/t #/dex-authorized-name)
     (dex-non-cene-value)))
 
 (struct-easy (cenegetfx getfx-run))
@@ -1240,7 +1335,7 @@
 (define/contract (name-for-sink-string string)
   (-> sink-string? name?)
   (just-value #/pure-run-getfx #/getfx-name-of
-    (dex-struct sink-string #/dex-immutable-string)
+    (dex-tuple unguarded-sink-string/t #/dex-immutable-string)
     string))
 
 (define/contract (sink-name-for-string string)
