@@ -59,27 +59,25 @@
   fuse-exact-rational-by-times)
 (require #/only-in interconfection/order/base
   cline-by-dex cline-default cline-fix cline-give-up cline-opaque
-  cline-result? cline-tuple dex? dex-cline dex-default dex-dex dexed?
-  dexed-get-dex dexed-get-name dexed-get-value dex-fix dex-fuse
-  dex-give-up dex-merge dex-name dex-opaque dex-table dex-tuple
-  fusable-function? fuse-by-merge fuse-fix fuse-fusable-function
-  fuse-opaque fuse-table fuse-tuple get-dex-from-cline getfx-call-fuse
-  getfx-call-merge getfx-compare-by-cline getfx-compare-by-dex
-  getfx-dexed-of getfx-is-in-cline getfx-is-in-dex getfx-name-of
-  getfx-table-map-fuse getfx-table-sort make-fusable-function
-  merge-by-dex merge-fix merge-opaque merge-table merge-tuple name?
-  ordering-eq ordering-gt ordering-lt ordering-private table?
-  table-empty table-get table-shadow)
+  cline-result? cline-tuple dex? dex-by-own-method dex-cline
+  dex-default dex-dex dexed? dexed-get-dex dexed-get-name
+  dexed-get-value dex-fix dex-fuse dex-give-up dex-merge dex-name
+  dex-opaque dex-table dex-tuple fusable-function? fuse-by-merge
+  fuse-fix fuse-fusable-function fuse-opaque fuse-table fuse-tuple
+  get-dex-from-cline getfx-call-fuse getfx-call-merge
+  getfx-compare-by-cline getfx-compare-by-dex getfx-dexed-of
+  getfx-is-in-cline getfx-is-in-dex getfx-name-of getfx-table-map-fuse
+  getfx-table-sort make-fusable-function merge-by-dex merge-fix
+  merge-opaque merge-table merge-tuple name? ordering-eq ordering-gt
+  ordering-lt ordering-private table? table-empty table-get
+  table-shadow)
 (require #/prefix-in unsafe: #/only-in interconfection/order/unsafe
   autoname-cline autoname-dex autoname-fuse autoname-merge cline
   cline-by-own-method-thorough
   cline-by-own-method::getfx-err-different-methods
-  cline-by-own-method::getfx-get-method dex dex-by-own-method-thorough
-  dex-by-own-method::getfx-err-different-methods
-  dex-by-own-method::getfx-get-method dexed fuse
+  cline-by-own-method::getfx-get-method dex dexed fuse
   fuse-by-own-method-thorough
   fuse-by-own-method::getfx-err-cannot-get-output-method
-  fuse-by-own-method::getfx-err-different-input-methods
   fuse-by-own-method::getfx-err-different-output-method
   fuse-by-own-method::getfx-get-method fuse-fusable-function-thorough
   fuse-fusable-function::getfx-err-cannot-combine-results
@@ -87,7 +85,6 @@
   gen:dex-internals gen:furge-internals merge
   merge-by-own-method-thorough
   merge-by-own-method::getfx-err-cannot-get-output-method
-  merge-by-own-method::getfx-err-different-input-methods
   merge-by-own-method::getfx-err-different-output-method
   merge-by-own-method::getfx-get-method name table->sorted-list)
 
@@ -1454,57 +1451,77 @@
   "Expected the result of a fuse-fix body to be a fuse")
 
 
-(define-syntax-rule
-  (define-cmp-by-own-method-converter
-    sink-cmp-by-own-method-unthorough/t
-    sink-cmp
-    unsafe:cmp-by-own-method::getfx-err-different-methods
-    unsafe:cmp-by-own-method::getfx-get-method
-    expected-getfx
-    expected-maybe
-    expected-method)
-  (define-syntax-and-value-imitation-simple-struct
-    (sink-cmp-by-own-method-unthorough?
-      sink-cmp-by-own-method-unthorough-fault
-      sink-cmp-by-own-method-unthorough-rinfo
-      sink-cmp-by-own-method-unthorough-get-method)
-    sink-cmp-by-own-method-unthorough
-    sink-cmp-by-own-method-unthorough/t
-    'sink-cmp-by-own-method-unthorough (current-inspector)
-    (auto-write)
-    (#:prop prop:procedure #/fn this command
-      (dissect this
-        (sink-cmp-by-own-method-unthorough
-          fault rinfo getfx-get-method)
-      #/getfx-run-cenegetfx rinfo
-      #/mat command
-        (unsafe:cmp-by-own-method::getfx-err-different-methods
-          a b a-method b-method)
-        (cenegetfx-cene-err fault "Obtained two different methods from the two values being compared")
-      #/dissect command
-        (unsafe:cmp-by-own-method::getfx-get-method source)
-      #/cenegetfx-bind
-        (cenegetfx-sink-call fault getfx-get-method source)
-      #/fn sink-getfx-maybe-method
-      #/expect (sink-getfx? sink-getfx-maybe-method) #t
-        (cenegetfx-cene-err fault expected-getfx)
-      #/cenegetfx-bind
-        (cenegetfx-run-sink-getfx sink-getfx-maybe-method)
-      #/fn sink-maybe-method
-      #/cenegetfx-bind
-        (sink-maybe->cenegetfx-maybe-racket sink-maybe-method)
-      #/expectfn (just maybe-method)
-        (cenegetfx-cene-err fault expected-maybe)
-      #/expect maybe-method (just method) (cenegetfx-done #/nothing)
-      #/expect method (sink-cmp method)
-        (cenegetfx-cene-err fault expected-method)
-      #/cenegetfx-done #/just method))))
+(define-syntax-and-value-imitation-simple-struct
+  (converter-for-dex-by-own-method?
+    converter-for-dex-by-own-method-fault
+    converter-for-dex-by-own-method-rinfo
+    converter-for-dex-by-own-method-get-method)
+  converter-for-dex-by-own-method
+  converter-for-dex-by-own-method/t
+  'converter-for-dex-by-own-method (current-inspector)
+  (auto-write)
+  (#:prop prop:procedure #/fn this source
+    (dissect this
+      (converter-for-dex-by-own-method fault rinfo getfx-get-method)
+    #/getfx-run-cenegetfx rinfo
+    #/cenegetfx-bind
+      (cenegetfx-sink-call fault getfx-get-method source)
+    #/fn sink-getfx-maybe-method
+    #/expect (sink-getfx? sink-getfx-maybe-method) #t
+      (cenegetfx-cene-err fault "Expected the pure result of a dex-by-own-method body to be a getfx effectful computation")
+    #/cenegetfx-bind
+      (cenegetfx-run-sink-getfx sink-getfx-maybe-method)
+    #/fn sink-maybe-method
+    #/cenegetfx-bind
+      (sink-maybe->cenegetfx-maybe-racket sink-maybe-method)
+    #/expectfn (just maybe-method)
+      (cenegetfx-cene-err fault "Expected the result of a dex-by-own-method body to be a nothing or a just")
+    #/expect maybe-method (just method) (cenegetfx-done #/nothing)
+    #/expect method (sink-dex method)
+      (cenegetfx-cene-err fault "Expected the result of a dex-by-own-method body to be a maybe of a dex")
+    #/cenegetfx-done #/just method)))
+
+(define-syntax-and-value-imitation-simple-struct
+  (sink-cline-by-own-method-unthorough?
+    sink-cline-by-own-method-unthorough-fault
+    sink-cline-by-own-method-unthorough-rinfo
+    sink-cline-by-own-method-unthorough-get-method)
+  sink-cline-by-own-method-unthorough
+  sink-cline-by-own-method-unthorough/t
+  'sink-cline-by-own-method-unthorough (current-inspector)
+  (auto-write)
+  (#:prop prop:procedure #/fn this command
+    (dissect this
+      (sink-cline-by-own-method-unthorough
+        fault rinfo getfx-get-method)
+    #/getfx-run-cenegetfx rinfo
+    #/mat command
+      (unsafe:cline-by-own-method::getfx-err-different-methods
+        a b a-method b-method)
+      (cenegetfx-cene-err fault "Obtained two different methods from the two values being compared")
+    #/dissect command
+      (unsafe:cline-by-own-method::getfx-get-method source)
+    #/cenegetfx-bind
+      (cenegetfx-sink-call fault getfx-get-method source)
+    #/fn sink-getfx-maybe-method
+    #/expect (sink-getfx? sink-getfx-maybe-method) #t
+      (cenegetfx-cene-err fault "Expected the pure result of a cline-by-own-method body to be a getfx effectful computation")
+    #/cenegetfx-bind
+      (cenegetfx-run-sink-getfx sink-getfx-maybe-method)
+    #/fn sink-maybe-method
+    #/cenegetfx-bind
+      (sink-maybe->cenegetfx-maybe-racket sink-maybe-method)
+    #/expectfn (just maybe-method)
+      (cenegetfx-cene-err fault "Expected the result of a cline-by-own-method body to be a nothing or a just")
+    #/expect maybe-method (just method) (cenegetfx-done #/nothing)
+    #/expect method (sink-cline method)
+      (cenegetfx-cene-err fault "Expected the result of a cline-by-own-method body to be a maybe of a cline")
+    #/cenegetfx-done #/just method)))
 
 (define-syntax-rule
   (define-furge-by-own-method-converter
     sink-furge-by-own-method-unthorough/t
     sink-furge
-    unsafe:furge-by-own-method::getfx-err-different-input-methods
     unsafe:furge-by-own-method::getfx-err-cannot-get-output-method
     unsafe:furge-by-own-method::getfx-err-different-output-method
     unsafe:furge-by-own-method::getfx-get-method
@@ -1525,10 +1542,6 @@
         (sink-furge-by-own-method-unthorough
           fault rinfo getfx-get-method)
       #/getfx-run-cenegetfx rinfo
-      #/mat command
-        (unsafe:furge-by-own-method::getfx-err-different-input-methods
-          a b a-method b-method)
-        (cenegetfx-cene-err fault "Obtained two different methods from the two input values")
       #/mat command
         (unsafe:furge-by-own-method::getfx-err-cannot-get-output-method
           a b result input-method)
@@ -1555,26 +1568,9 @@
         (cenegetfx-cene-err fault expected-method)
       #/cenegetfx-done #/just method))))
 
-(define-cmp-by-own-method-converter
-  sink-dex-by-own-method-unthorough/t
-  sink-dex
-  unsafe:dex-by-own-method::getfx-err-different-methods
-  unsafe:dex-by-own-method::getfx-get-method
-  "Expected the pure result of a dex-by-own-method body to be a getfx effectful computation"
-  "Expected the result of a dex-by-own-method body to be a nothing or a just"
-  "Expected the result of a dex-by-own-method body to be a maybe of a dex")
-(define-cmp-by-own-method-converter
-  sink-cline-by-own-method-unthorough/t
-  sink-cline
-  unsafe:cline-by-own-method::getfx-err-different-methods
-  unsafe:cline-by-own-method::getfx-get-method
-  "Expected the pure result of a cline-by-own-method body to be a getfx effectful computation"
-  "Expected the result of a cline-by-own-method body to be a nothing or a just"
-  "Expected the result of a cline-by-own-method body to be a maybe of a cline")
 (define-furge-by-own-method-converter
   sink-merge-by-own-method-unthorough/t
   sink-merge
-  unsafe:merge-by-own-method::getfx-err-different-input-methods
   unsafe:merge-by-own-method::getfx-err-cannot-get-output-method
   unsafe:merge-by-own-method::getfx-err-different-output-method
   unsafe:merge-by-own-method::getfx-get-method
@@ -1584,7 +1580,6 @@
 (define-furge-by-own-method-converter
   sink-fuse-by-own-method-unthorough/t
   sink-fuse
-  unsafe:fuse-by-own-method::getfx-err-different-input-methods
   unsafe:fuse-by-own-method::getfx-err-cannot-get-output-method
   unsafe:fuse-by-own-method::getfx-err-different-output-method
   unsafe:fuse-by-own-method::getfx-get-method
@@ -2475,8 +2470,8 @@
     (expect dexed-getfx-get-method (sink-dexed dexed-getfx-get-method)
       (cenegetfx-cene-err fault "Expected dexed-getfx-get-method to be a dexed value")
     #/cenegetfx-bind (cenegetfx-read-dexed-root-info) #/fn dexed-rinfo
-    #/cenegetfx-done #/sink-dex #/unsafe:dex-by-own-method-thorough
-      (dexed-tuple sink-dex-by-own-method-unthorough/t
+    #/cenegetfx-done #/sink-dex #/dex-by-own-method
+      (dexed-tuple converter-for-dex-by-own-method/t
         (just-value #/pure-run-getfx #/getfx-dexed-of (dex-sink-fault)
           fault)
         dexed-rinfo
