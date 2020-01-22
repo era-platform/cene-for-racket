@@ -277,6 +277,15 @@
       (make-sink-struct csst-nothing #/list))))
 
 
+; NOTE: We only define `sink-internals-dummy` so we have an arbitrary
+; sink value to use in `sink-perffx-later`. We don't expose it to Cene
+; code.
+(define-syntax-and-value-imitation-simple-struct
+  (sink-internals-dummy?)
+  sink-internals-dummy
+  sink-internals-dummy/t
+  'sink-internals-dummy (current-inspector) (auto-write)
+  (#:gen gen:sink))
 (define-imitation-simple-struct
   (sink-dexed? dexed)
   sink-dexed
@@ -346,10 +355,8 @@
 
 (define/contract (sink-perffx-later then)
   (-> (-> sink-perffx?) sink-perffx?)
-  ; NOTE: We use a `sink-fault` here right now, but we could use any
-  ; sink value.
-  (sink-perffx-bind (sink-perffx-done #/sink-fault #/trivial)
-  #/dissectfn (sink-fault #/trivial)
+  (sink-perffx-bind (sink-perffx-done #/sink-internals-dummy)
+  #/dissectfn (sink-internals-dummy)
   #/then))
 
 (define/contract (sink-perffx-done-later compute-result)
@@ -4379,6 +4386,15 @@
   (def-func! "is-text-input-stream" v
     (racket-boolean->cenegetfx-sink #/sink-text-input-stream? v))
   
+  (def-func-fault! "extfx-read-fault" fault input-stream then
+    (expect (sink-text-input-stream? input-stream) #t
+      (cenegetfx-cene-err fault "Expected the original input stream to be a text input stream")
+    #/cenegetfx-done
+      (sink-extfx-read-fault fault input-stream
+      #/fn input-stream result-fault
+      #/verify-callback-extfx! fault #/cenegetfx-sink-call fault then
+        input-stream result-fault)))
+  
   (def-func-fault! "extfx-read-eof" fault input-stream on-eof then
     (expect (sink-text-input-stream? input-stream) #t
       (cenegetfx-cene-err fault "Expected input-stream to be a text input stream")
@@ -4389,6 +4405,25 @@
       #/fn input-stream
       #/verify-callback-extfx! fault #/cenegetfx-sink-call fault then
         input-stream)))
+  
+  (def-func-fault! "extfx-text-input-stream-split"
+    fault input-stream body then
+    
+    (expect (sink-text-input-stream? input-stream) #t
+      (cenegetfx-cene-err fault "Expected the original input stream to be a text input stream")
+    #/cenegetfx-done
+      (sink-extfx-sink-text-input-stream-split fault input-stream
+        (fn input-stream then
+          (verify-callback-extfx! fault
+          #/cenegetfx-sink-call fault body input-stream
+          #/sink-fn-curried-fault 2
+          #/fn fault input-stream auxiliary-result
+          #/expect (sink-text-input-stream? input-stream) #t
+            (cenegetfx-cene-err fault "Expected the updated input stream to be a text input stream")
+          #/then fault input-stream auxiliary-result))
+      #/fn during-input-stream afterward-input-stream auxiliary-result
+      #/verify-callback-extfx! fault #/cenegetfx-sink-call fault then
+        during-input-stream afterward-input-stream auxiliary-result)))
   
   ; TODO BUILTINS: Make sure we have a sufficient set of operations
   ; for manipulating `sink-text-input-stream` values. We don't even

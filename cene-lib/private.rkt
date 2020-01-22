@@ -37,6 +37,7 @@
 (require #/only-in racket/control reset-at shift-at)
 (require #/only-in racket/generic define/generic define-generics)
 (require #/only-in racket/math natural?)
+(require #/only-in racket/port filter-read-input-port)
 (require #/only-in syntax/parse/define define-simple-macro)
 
 (require #/only-in lathe-comforts
@@ -262,6 +263,19 @@
       (cons s-proj rev-projs))))
 
 
+(define-imitation-simple-struct
+  (cene-fault-rep-continuation-marks?
+    cene-fault-rep-continuation-marks-continuation-marks)
+  cene-fault-rep-continuation-marks
+  'cene-fault-rep-continuation-marks (current-inspector) (auto-write))
+; TODO: Somehow include the filename in this.
+(define-imitation-simple-struct
+  (cene-fault-rep-srcloc?
+    cene-fault-rep-srcloc-line
+    cene-fault-rep-srcloc-column
+    cene-fault-rep-srcloc-position)
+  cene-fault-rep-srcloc
+  'cene-fault-rep-srcloc (current-inspector) (auto-write))
 (define-imitation-simple-struct
   (sink-fault? sink-fault-maybe-continuation-marks)
   sink-fault
@@ -1213,19 +1227,22 @@
 ; those places should be abstracted over a fault value instead.
 (define/contract (make-fault-internal)
   (-> sink-fault?)
-  (sink-fault #/just #/current-continuation-marks))
+  (sink-fault #/cene-fault-rep-continuation-marks
+    (current-continuation-marks)))
 
 (define/contract (cenegetfx-err-from-clamor clamor)
   (-> sink? cenegetfx?)
   (cenegetfx-tag cssm-clamor-err #/fn csst-clamor-err
   #/dissect
     (expect (unmake-sink-struct-maybe csst-clamor-err clamor)
-      (just #/list (sink-fault maybe-marks) (sink-string message))
+      (just #/list (sink-fault rep) (sink-string message))
       (list (nothing) (format "~s" clamor))
-      (list maybe-marks message))
-    (list maybe-marks message)
+      (list rep message))
+    (list rep message)
+  ; TODO: Figure out how to incorporate other fault information like
+  ; `cene-fault-rep-srcloc`.
   #/w- marks
-    (mat maybe-marks (just marks) marks
+    (mat rep (cene-fault-rep-continuation-marks marks) marks
     #/current-continuation-marks)
   #/cenegetfx-run-getfx
     (getfx-err #/error-definer-from-exn #/exn:fail message marks)))
@@ -1460,6 +1477,16 @@
   #/begin (set-box! b (nothing))
   #/then input-port))
 
+(define/contract (sink-extfx-read-fault fault text-input-stream then)
+  (-> sink-fault? sink-text-input-stream?
+    (-> sink-text-input-stream? sink-fault? sink-extfx?)
+    sink-extfx?)
+  (sink-extfx-sink-text-input-stream-spend fault text-input-stream
+  #/fn in
+  #/let-values ([(line column position) (port-next-location in)])
+  #/then (sink-text-input-stream #/box #/just in)
+    (sink-fault #/cene-fault-rep-srcloc line column position)))
+
 (define/contract
   (sink-extfx-read-eof fault text-input-stream on-eof else)
   (->
@@ -1508,6 +1535,42 @@
           (list start-line start-column start-position)
           text
           (list stop-line stop-column stop-position))))))
+
+(define/contract
+  (sink-extfx-sink-text-input-stream-split
+    fault text-input-stream body then)
+  (->
+    sink-fault?
+    sink-text-input-stream?
+    (-> sink-text-input-stream?
+      (-> sink-fault? sink-text-input-stream? any/c sink-extfx?)
+      sink-extfx?)
+    (-> sink-text-input-stream? sink-text-input-stream? any/c
+      sink-extfx?)
+    sink-extfx?)
+  (sink-extfx-sink-text-input-stream-spend fault text-input-stream
+  #/fn in
+  #/let-values ([(pipe-in pipe-out) (make-pipe)])
+  #/w- original-monitored-in
+    (filter-read-input-port in
+      ; read-wrap
+      (fn storage result
+        (begin0 result
+          (when (natural? result)
+            (write-bytes storage pipe-out 0 result))))
+      ; peek-wrap
+      (fn storage result result))
+  #/body (sink-text-input-stream #/box #/just original-monitored-in)
+  #/fn fault text-input-stream auxiliary-result
+  #/sink-extfx-sink-text-input-stream-spend fault text-input-stream
+  #/fn modified-monitored-in
+  #/expect (eq? original-monitored-in modified-monitored-in) #t
+    (sink-extfx-cene-err fault "Expected the result of an extfx-text-input-stream-split body to be the a future incarnation of the body's original stream")
+  #/begin (close-output-port pipe-out)
+  #/then
+    (sink-text-input-stream #/box #/just pipe-in)
+    (sink-text-input-stream #/box #/just in)
+    auxiliary-result))
 
 (define sink-extfx-peek-whether-eof-pat
   (optimize-textpat #/textpat-lookahead #/textpat-one))

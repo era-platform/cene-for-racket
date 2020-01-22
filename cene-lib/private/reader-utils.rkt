@@ -32,6 +32,9 @@
 (require #/only-in lathe-comforts/trivial trivial)
 
 (require cene/private)
+(require #/only-in cene/private/textpat
+  optimized-textpat? optimize-textpat textpat-one-not-in-string
+  textpat-star)
 
 
 (provide
@@ -347,3 +350,168 @@
     #/unwrap output-stream #/dissectfn (trivial)
     
     #/next unique-name qualify text-input-stream n rev-results)))
+
+(define/contract
+  (sink-extfx-sink-text-input-stream-split-after-custom-matching-brackets
+    fault
+    text-input-stream
+    non-bracket-characters-pattern
+    bracket-patterns
+    overall-open-fault
+    overall-close-pattern
+    overall-accepts-eof
+    on-unexpected-eof-likely-extra-open
+    on-unexpected-text-likely-extra-close
+    on-success)
+  (->
+    sink-fault?
+    sink-text-input-stream?
+    optimized-textpat?
+    (listof #/list/c optimized-textpat? optimized-textpat? boolean?)
+    sink-fault?
+    optimized-textpat?
+    boolean?
+    (-> sink-fault? sink-text-input-stream? sink-text-input-stream?
+      sink-extfx?)
+    (-> sink-text-input-stream? sink-text-input-stream? sink-extfx?)
+    (-> sink-text-input-stream? sink-text-input-stream? sink-extfx?)
+    sink-extfx?)
+  (sink-extfx-sink-text-input-stream-split fault text-input-stream
+    (fn in then
+      (w-loop next-consumption in in brackets-expected (list)
+        (sink-extfx-optimized-textpat-read-located
+          (make-fault-internal)
+          non-bracket-characters-pattern
+          in
+        #/fn in maybe-str
+        #/expect maybe-str (just _)
+          (error "Expected non-bracket-characters-pattern to always match")
+        #/w- try-to-consume-non-eof
+          (fn in open-fault close-pattern on-consumption-succeeded
+            (sink-extfx-optimized-textpat-read-located
+              (make-fault-internal)
+              close-pattern
+              in
+            #/fn in maybe-str
+            #/mat maybe-str (just _)
+              (on-consumption-succeeded in)
+            #/sink-extfx-peek-whether-eof (make-fault-internal) in
+            #/fn in is-eof
+            #/if is-eof
+              (then (make-fault-internal) in #/fn during after
+                (on-unexpected-eof-likely-extra-open
+                  open-fault during after))
+            #/w-loop next-possible-open
+              in in
+              bracket-patterns bracket-patterns
+              
+              (expect bracket-patterns
+                (cons open-and-close bracket-patterns)
+                (then (make-fault-internal) in
+                  on-unexpected-text-likely-extra-close)
+              #/dissect open-and-close
+                (list open-pattern close-pattern accepts-eof)
+              #/
+                (fn then
+                  
+                  ; If the opening bracket we're attempting to read
+                  ; accepts end-of-file as its closing bracket, then
+                  ; unmatched opening bracket errors will be reported
+                  ; in terms of the existing bracket.
+                  (if accepts-eof
+                    (then in open-fault)
+                  
+                  ; Otherwise, they'll be reported in terms of the
+                  ; source location just before the open bracket we're
+                  ; about to read, so we capture that source location
+                  ; now.
+                  #/sink-extfx-read-fault (make-fault-internal) in
+                    then))
+              #/fn in open-fault
+              #/sink-extfx-optimized-textpat-read-located
+                (make-fault-internal)
+                open-pattern
+                in
+              #/fn in maybe-str
+              #/mat maybe-str (just _)
+                (next-consumption in
+                  (cons (list open-fault close-pattern accepts-eof)
+                    brackets-expected))
+              #/next-possible-open in bracket-patterns)))
+        #/w- try-to-consume
+          (fn in bracket-expected on-consumption-succeeded
+            (dissect bracket-expected
+              (list open-fault close-pattern accepts-eof)
+            #/if accepts-eof
+              (sink-extfx-peek-whether-eof (make-fault-internal) in
+              #/fn in is-eof
+              #/if is-eof
+                (on-consumption-succeeded in)
+              #/try-to-consume-non-eof open-fault close-pattern
+                on-consumption-succeeded)
+              (try-to-consume-non-eof open-fault close-pattern
+                on-consumption-succeeded)))
+        #/mat brackets-expected
+          (cons first-bracket-expected brackets-expected)
+          (try-to-consume in first-bracket-expected #/fn in
+            (next-consumption in brackets-expected))
+          (try-to-consume in
+            (list
+              overall-open-fault
+              overall-close-pattern
+              overall-accepts-eof)
+          #/fn in
+            (then (make-fault-internal) in on-success)))))
+  #/fn during afterward on-this-situation
+  #/on-this-situation during afterward))
+
+(define
+  sink-extfx-sink-text-input-stream-split-after-matching-brackets-non-bracket-characters-pat
+  (optimize-textpat
+    (textpat-star #/textpat-one-not-in-string "[]()")))
+
+; TODO LEXICAL UNITS: Use this to implement anything described in
+; notes/20190731-lexical-units.md with "Pre-reads its lexical extent
+; to find matching brackets. As of writing this comment, these are the
+; operations that should use this:
+;
+;   declare-matched-brackets-section-separately
+;   import-from-declaration
+;   import-from-file
+;   export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag
+;   export-metadata-op-and-bounded-expr-op
+;   def-unexportable-unceremonious-export-metadata-op-as-constant
+;
+(define/contract
+  (sink-extfx-sink-text-input-stream-split-after-matching-brackets
+    fault
+    text-input-stream
+    overall-open-fault
+    overall-close-pattern
+    overall-accepts-eof
+    then)
+  (->
+    sink-fault?
+    sink-text-input-stream?
+    sink-fault?
+    optimized-textpat?
+    boolean?
+    (-> sink-text-input-stream? sink-text-input-stream? sink-extfx?)
+    sink-extfx?)
+  (sink-extfx-sink-text-input-stream-split-after-custom-matching-brackets
+    fault
+    text-input-stream
+    sink-extfx-sink-text-input-stream-split-after-matching-brackets-non-bracket-characters-pat
+    (list
+      (list |pat "["| |pat "]"| #f)
+      (list |pat "("| |pat ")"| #f))
+    overall-open-fault
+    overall-close-pattern
+    overall-accepts-eof
+    (fn open-fault during after
+      (sink-extfx-cene-err open-fault "Encountered an unmatched opening bracket"))
+    (fn during after
+      (sink-extfx-read-fault (make-fault-internal) after
+      #/fn after close-fault
+      #/sink-extfx-cene-err close-fault "Encountered an unmatched closing bracket"))
+    then))
