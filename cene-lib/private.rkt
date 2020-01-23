@@ -393,8 +393,7 @@
   'sink-sub (current-inspector) (auto-write) (#:gen gen:sink))
 (define-imitation-simple-struct
   (sink-cexpr-sequence-output-stream?
-    sink-cexpr-sequence-output-stream-id
-    sink-cexpr-sequence-output-stream-box-of-maybe-state-and-handler)
+    sink-cexpr-sequence-output-stream-box-of-maybe-id-and-state-and-handler)
   sink-cexpr-sequence-output-stream
   'sink-cexpr-sequence-output-stream (current-inspector) (auto-write)
   (#:gen gen:sink))
@@ -1437,17 +1436,18 @@
     (->
       (list/c
         any/c
+        any/c
         (-> any/c sink-cexpr? (-> any/c sink-extfx?) sink-extfx?))
       sink-extfx?)
     sink-extfx?)
-  (dissect stream (sink-cexpr-sequence-output-stream id b)
+  (dissect stream (sink-cexpr-sequence-output-stream b)
   #/sink-extfx-later #/fn
   #/begin (assert-can-mutate!)
   ; TODO: See if this should be more thread-safe in some way.
-  #/expect (unbox b) (just state-and-handler)
+  #/expect (unbox b) (just id-and-state-and-handler)
     (sink-extfx-cene-err fault "Tried to spend an expression output stream that was already spent")
   #/begin (set-box! b (nothing))
-  #/then state-and-handler))
+  #/then id-and-state-and-handler))
 
 (define/contract
   (sink-extfx-make-cexpr-sequence-output-stream
@@ -1466,12 +1466,13 @@
   (sink-extfx-claim-and-split unique-name 0 #/dissectfn (list)
   #/w- identity (box #/trivial)
   #/then
-    (sink-cexpr-sequence-output-stream identity #/box #/just
-    #/list state on-cexpr)
+    (sink-cexpr-sequence-output-stream
+      (box #/just #/list identity state on-cexpr))
     (fn unwrap-fault output-stream then
       (w- fault (make-fault-double-callback fault unwrap-fault)
-      #/dissect output-stream
-        (sink-cexpr-sequence-output-stream found-id _)
+      #/sink-extfx-sink-cexpr-sequence-output-stream-spend
+        fault output-stream
+      #/dissectfn (list found-id state on-cexpr)
       #/expect (eq? identity found-id) #t
         ; TODO: See if we can tweak the design of
         ; `sink-extfx-make-cexpr-sequence-output-stream` in such a way
@@ -1481,9 +1482,6 @@
         ; it makes sense for Cene's
         ; `extfx-make-expr-sequence-output-stream` built-in.
         (sink-extfx-cene-err fault "Expected the expression sequence output stream given to an extfx-make-expr-sequence-output-stream unwrapper to be a descendant of the same one created by that call")
-      #/sink-extfx-sink-cexpr-sequence-output-stream-spend
-        fault output-stream
-      #/dissectfn (list state on-cexpr)
       #/then state))))
 
 (define/contract
@@ -1492,13 +1490,13 @@
     sink-fault? sink-cexpr-sequence-output-stream? sink-cexpr?
     (-> sink-cexpr-sequence-output-stream? sink-extfx?)
     sink-extfx?)
-  (dissect output-stream (sink-cexpr-sequence-output-stream id _)
+  (dissect output-stream (sink-cexpr-sequence-output-stream _)
   #/sink-extfx-sink-cexpr-sequence-output-stream-spend
     fault output-stream
-  #/dissectfn (list state on-cexpr)
+  #/dissectfn (list id state on-cexpr)
   #/on-cexpr state cexpr #/fn state
-  #/then #/sink-cexpr-sequence-output-stream id #/box #/just #/list
-    state on-cexpr))
+  #/then #/sink-cexpr-sequence-output-stream #/box #/just #/list
+    id state on-cexpr))
 
 (define/contract
   (sink-extfx-sink-text-input-stream-spend
