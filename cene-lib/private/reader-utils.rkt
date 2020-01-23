@@ -99,7 +99,7 @@
   #/sink-extfx-claim-and-split unique-name 2
   #/dissectfn (list unique-name-stream unique-name)
   #/sink-extfx-make-cexpr-sequence-output-stream
-    fault
+    (make-fault-internal)
     unique-name-stream
     rev-results
     (fn rev-results cexpr then
@@ -108,7 +108,7 @@
   #/sink-extfx-read-cexprs
     fault unique-name qualify text-input-stream output-stream
   #/fn unique-name qualify text-input-stream output-stream
-  #/unwrap output-stream #/fn rev-results
+  #/unwrap (make-fault-internal) output-stream #/fn rev-results
   #/then unique-name qualify text-input-stream rev-results))
 
 ; This reads identifiers and cexprs until it gets to a closing
@@ -337,7 +337,7 @@
     #/sink-extfx-claim-and-split unique-name 2
     #/dissectfn (list unique-name-stream unique-name)
     #/sink-extfx-make-cexpr-sequence-output-stream
-      fault
+      (make-fault-internal)
       unique-name-stream
       (trivial)
       (fn state cexpr then
@@ -347,7 +347,7 @@
     #/sink-extfx-read-cexprs
       fault unique-name qualify text-input-stream output-stream
     #/fn unique-name qualify text-input-stream output-stream
-    #/unwrap output-stream #/dissectfn (trivial)
+    #/unwrap (make-fault-internal) output-stream #/dissectfn (trivial)
     
     #/next unique-name qualify text-input-stream n rev-results)))
 

@@ -263,6 +263,12 @@
       (cons s-proj rev-projs))))
 
 
+; TODO: Generally speaking, we should make sure no fault object has a
+; substantial memory footprint, because that makes one fault object
+; appreciably different from another and makes their `ordering-eq`
+; status less meaningful. See if we can impose some arbitrary limit on
+; how much information we retain in each fault object.
+;
 (define-imitation-simple-struct
   (cene-fault-rep-continuation-marks?
     cene-fault-rep-continuation-marks-continuation-marks)
@@ -276,10 +282,39 @@
     cene-fault-rep-srcloc-position)
   cene-fault-rep-srcloc
   'cene-fault-rep-srcloc (current-inspector) (auto-write))
+; A fault object that blames an error on a call site that calls a
+; callback of a callback. In this situation, the fault object can
+; indicate not only the call site of the callback-callback, but also
+; the call site of the original operation that the callback-callback
+; is a callback-callback of.
+(define-imitation-simple-struct
+  (cene-fault-rep-double-callback?
+    cene-fault-rep-double-callback-founder-fault
+    cene-fault-rep-double-callback-callback-fault)
+  cene-fault-rep-double-callback
+  'cene-fault-rep-double-callback (current-inspector) (auto-write))
+
 (define-imitation-simple-struct
   (sink-fault? sink-fault-maybe-continuation-marks)
   sink-fault
   'sink-fault (current-inspector) (auto-write) (#:gen gen:sink))
+
+(define/contract (error-definer-from-fault-and-message fault message)
+  (-> sink-fault? immutable-string? error-definer?)
+  (dissect fault (sink-fault rep)
+  #/mat rep (cene-fault-rep-continuation-marks marks)
+    (error-definer-from-exn #/exn:fail message marks)
+  #/mat rep (cene-fault-rep-srcloc line column position)
+    ; TODO FAULT: See if we can incorporate more of the information we
+    ; have into the error message.
+    (error-definer-from-exn
+      (exn:fail message (current-continuation-marks)))
+  #/dissect rep
+    (cene-fault-rep-double-callback founder-fault callback-fault)
+    ; TODO FAULT: See if we can incorporate more of the information we
+    ; have into the error message.
+    (error-definer-from-fault-and-message callback-fault message)))
+
 
 ; Innate main tag entries contain authorization conditions for the
 ; people who can define the function implementation and the people who
@@ -1230,22 +1265,22 @@
   (sink-fault #/cene-fault-rep-continuation-marks
     (current-continuation-marks)))
 
+(define/contract
+  (make-fault-double-callback founder-fault callback-fault)
+  (-> sink-fault? sink-fault? sink-fault?)
+  (sink-fault
+    (cene-fault-rep-double-callback founder-fault callback-fault)))
+
 (define/contract (cenegetfx-err-from-clamor clamor)
   (-> sink? cenegetfx?)
   (cenegetfx-tag cssm-clamor-err #/fn csst-clamor-err
-  #/dissect
-    (expect (unmake-sink-struct-maybe csst-clamor-err clamor)
-      (just #/list (sink-fault rep) (sink-string message))
-      (list (nothing) (format "~s" clamor))
-      (list rep message))
-    (list rep message)
-  ; TODO: Figure out how to incorporate other fault information like
-  ; `cene-fault-rep-srcloc`.
-  #/w- marks
-    (mat rep (cene-fault-rep-continuation-marks marks) marks
-    #/current-continuation-marks)
-  #/cenegetfx-run-getfx
-    (getfx-err #/error-definer-from-exn #/exn:fail message marks)))
+  #/cenegetfx-run-getfx #/getfx-err
+    (mat (unmake-sink-struct-maybe csst-clamor-err clamor)
+      (just #/list fault (sink-string message))
+      (error-definer-from-fault-and-message fault message)
+      (error-definer-from-exn
+        (exn:fail (format "~s" clamor)
+          (current-continuation-marks))))))
 
 (define/contract (cenegetfx-cene-err fault message)
   (-> sink-fault? immutable-string? #/cenegetfx/c none/c)
@@ -1423,7 +1458,8 @@
     any/c
     (-> any/c sink-cexpr (-> any/c sink-extfx?) sink-extfx?)
     (-> sink-cexpr-sequence-output-stream?
-      (-> sink-cexpr-sequence-output-stream? (-> any/c sink-extfx?)
+      (-> sink-fault? sink-cexpr-sequence-output-stream?
+        (-> any/c sink-extfx?)
         sink-extfx?)
       sink-extfx?)
     sink-extfx?)
@@ -1432,8 +1468,9 @@
   #/then
     (sink-cexpr-sequence-output-stream identity #/box #/just
     #/list state on-cexpr)
-    (fn output-stream then
-      (dissect output-stream
+    (fn unwrap-fault output-stream then
+      (w- fault (make-fault-double-callback fault unwrap-fault)
+      #/dissect output-stream
         (sink-cexpr-sequence-output-stream found-id _)
       #/expect (eq? identity found-id) #t
         ; TODO: See if we can tweak the design of
@@ -2259,7 +2296,7 @@
   #/dissectfn
     (list unique-name-stream unique-name-writer unique-name-main)
   #/sink-extfx-make-cexpr-sequence-output-stream
-    fault
+    (make-fault-internal)
     unique-name-stream
     unique-name-writer
     (fn unique-name-writer cexpr then
@@ -2292,7 +2329,7 @@
   #/sink-extfx-read-cexprs
     fault unique-name-main qualify text-input-stream output-stream
   #/fn unique-name-main qualify text-input-stream output-stream
-  #/unwrap output-stream #/fn unique-name-writer
+  #/unwrap (make-fault-internal) output-stream #/fn unique-name-writer
   #/sink-extfx-claim-and-split unique-name-writer 0 #/dissectfn (list)
   #/sink-extfx-read-top-level
     fault unique-name-main qualify text-input-stream))

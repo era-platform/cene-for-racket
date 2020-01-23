@@ -4364,11 +4364,14 @@
       #/fn output-stream unwrap
       #/verify-callback-extfx! fault #/cenegetfx-sink-call fault then
         output-stream
-        (sink-fn-curried-fault 2 #/fn fault output-stream then
+        (sink-fn-curried-fault 2 #/fn unwrap-fault output-stream then
+        #/w- original-fault fault
+        #/w- fault
+          (make-fault-double-callback original-fault unwrap-fault)
         #/expect (sink-cexpr-sequence-output-stream? output-stream) #t
           (cenegetfx-cene-err fault "Expected output-stream to be an expression sequence output stream")
         #/cenegetfx-done
-          (unwrap output-stream #/fn state
+          (unwrap original-fault output-stream #/fn state
           #/verify-callback-extfx! fault
             (cenegetfx-sink-call fault then state))))))
   
