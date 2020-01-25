@@ -305,7 +305,7 @@
   'cene-fault-rep-eval (current-inspector) (auto-write))
 
 (define-imitation-simple-struct
-  (sink-fault? sink-fault-maybe-continuation-marks)
+  (sink-fault? sink-fault-rep)
   sink-fault
   'sink-fault (current-inspector) (auto-write) (#:gen gen:sink))
 
@@ -868,9 +868,9 @@
       #/fn fault-arg
       #/cenegetfx-bind (-eval-in-env fault func env) #/fn func
       #/cenegetfx-bind (-eval-in-env fault arg env) #/fn arg
-      #/expect (sink-fault? fault-arg) #t
-        (cenegetfx-cene-err fault "Expected the blame argument to be a blame value")
       #/w- eval-fault (make-fault-eval fault read-fault)
+      #/expect (sink-fault? fault-arg) #t
+        (cenegetfx-cene-err eval-fault "Expected the blame argument to be a blame value")
       #/cenegetfx-sink-call-fault eval-fault fault-arg func arg))
   ])
 
