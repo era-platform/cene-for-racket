@@ -142,14 +142,14 @@
     text-input-stream text-input-stream
     rev-results (list)
     
-    (sink-extfx-read-whitespace fault text-input-stream
+    (sink-extfx-read-whitespace text-input-stream
     #/fn text-input-stream whitespace
-    #/sink-extfx-peek-whether-eof fault text-input-stream
+    #/sink-extfx-peek-whether-eof text-input-stream
     #/fn text-input-stream is-eof
     #/if is-eof
       ; TODO FAULT: Make this `fault` more specific.
       (sink-extfx-cene-err fault "Encountered end of file while expecting any number of identifiers and expressions preceding a closing bracket")
-    #/sink-extfx-peek-whether-closing-bracket fault text-input-stream
+    #/sink-extfx-peek-whether-closing-bracket text-input-stream
     #/fn text-input-stream is-closing-bracket
     #/if is-closing-bracket
       (then unique-name qualify text-input-stream
@@ -262,14 +262,14 @@
     #/if (< n #/length rev-results)
       ; TODO FAULT: Make this `fault` more specific.
       (sink-extfx-cene-err fault "Encountered a single operation that expanded to too many expressions while expecting a specific number of identifiers and expressions")
-    #/sink-extfx-read-whitespace fault text-input-stream
+    #/sink-extfx-read-whitespace text-input-stream
     #/fn text-input-stream whitespace
-    #/sink-extfx-peek-whether-eof fault text-input-stream
+    #/sink-extfx-peek-whether-eof text-input-stream
     #/fn text-input-stream is-eof
     #/if is-eof
       ; TODO FAULT: Make this `fault` more specific.
       (sink-extfx-cene-err fault "Encountered end of file while expecting an identifier or an expression")
-    #/sink-extfx-peek-whether-closing-bracket fault text-input-stream
+    #/sink-extfx-peek-whether-closing-bracket text-input-stream
     #/fn text-input-stream is-closing-bracket
     #/if is-closing-bracket
       ; TODO FAULT: Make this `fault` more specific.
@@ -345,7 +345,7 @@
     (expect (nat->maybe n) (just next-n)
       (then unique-name qualify text-input-stream
         (reverse rev-results))
-    #/sink-extfx-read-whitespace fault text-input-stream
+    #/sink-extfx-read-whitespace text-input-stream
     #/fn text-input-stream whitespace
     #/sink-extfx-read-maybe-identifier
       fault qualify text-input-stream pre-qualify
@@ -403,27 +403,22 @@
   (sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
   #/fn text-input-stream
-  #/sink-extfx-sink-text-input-stream-split fault text-input-stream
+  #/sink-extfx-sink-text-input-stream-split text-input-stream
     (fn in then
       (w-loop next-consumption in in brackets-expected (list)
         (sink-extfx-optimized-textpat-read-located
-          (make-fault-internal)
-          non-bracket-characters-pattern
-          in
+          non-bracket-characters-pattern in
         #/fn in maybe-str
         #/expect maybe-str (just _)
           (error "Expected non-bracket-characters-pattern to always match")
         #/w- try-to-consume-non-eof
           (fn in open-fault close-pattern on-consumption-succeeded
             (sink-extfx-optimized-textpat-read-located
-              (make-fault-internal)
-              close-pattern
-              in
+              close-pattern in
             #/fn in maybe-str
             #/mat maybe-str (just _)
               (on-consumption-succeeded in)
-            #/sink-extfx-peek-whether-eof (make-fault-internal) in
-            #/fn in is-eof
+            #/sink-extfx-peek-whether-eof in #/fn in is-eof
             #/if is-eof
               (then (make-fault-internal) in #/fn during after
                 (on-unexpected-eof-likely-extra-open
@@ -452,13 +447,10 @@
                   ; source location just before the open bracket we're
                   ; about to read, so we capture that source location
                   ; now.
-                  #/sink-extfx-read-fault (make-fault-internal) in
-                    then))
+                  #/sink-extfx-read-fault in then))
               #/fn in open-fault
               #/sink-extfx-optimized-textpat-read-located
-                (make-fault-internal)
-                open-pattern
-                in
+                open-pattern in
               #/fn in maybe-str
               #/mat maybe-str (just _)
                 (next-consumption in
@@ -470,13 +462,12 @@
             (dissect bracket-expected
               (list open-fault close-pattern accepts-eof)
             #/if accepts-eof
-              (sink-extfx-peek-whether-eof (make-fault-internal) in
-              #/fn in is-eof
+              (sink-extfx-peek-whether-eof in #/fn in is-eof
               #/if is-eof
                 (on-consumption-succeeded in)
-              #/try-to-consume-non-eof open-fault close-pattern
+              #/try-to-consume-non-eof in open-fault close-pattern
                 on-consumption-succeeded)
-              (try-to-consume-non-eof open-fault close-pattern
+              (try-to-consume-non-eof in open-fault close-pattern
                 on-consumption-succeeded)))
         #/mat brackets-expected
           (cons first-bracket-expected brackets-expected)
@@ -542,8 +533,7 @@
       (w- open-read-fault (make-fault-read fault open-fault)
       #/sink-extfx-cene-err open-read-fault "Encountered an unmatched opening bracket"))
     (fn during after
-      (sink-extfx-read-fault (make-fault-internal) after
-      #/fn after close-fault
+      (sink-extfx-read-fault after #/fn after close-fault
       #/w- close-read-fault (make-fault-read fault close-fault)
       #/sink-extfx-cene-err close-read-fault "Encountered an unmatched closing bracket"))
     then))

@@ -1283,8 +1283,6 @@
     #/sink-opaque-fn #/fn arg
       (cenegetfx-done #/next n-args-after-next #/cons arg rev-args))))
 
-; TODO: See if we have to use this as often as we do. Maybe some of
-; those places should be abstracted over a fault value instead.
 (define/contract (make-fault-internal)
   (-> sink-fault?)
   (sink-fault #/cene-fault-rep-continuation-marks
@@ -1481,9 +1479,8 @@
       (box #/just id-and-state-and-handler))))
 
 (define/contract
-  (sink-extfx-sink-cexpr-sequence-output-stream-spend
-    fault stream then)
-  (-> sink-fault? sink-cexpr-sequence-output-stream?
+  (sink-extfx-sink-cexpr-sequence-output-stream-spend stream then)
+  (-> sink-cexpr-sequence-output-stream?
     (->
       (list/c
         any/c
@@ -1496,7 +1493,7 @@
   #/begin (assert-can-mutate!)
   ; TODO: See if this should be more thread-safe in some way.
   #/expect (unbox b) (just id-and-state-and-handler)
-    (sink-extfx-cene-err fault "Tried to spend an expression output stream that was already spent")
+    (error "Tried to spend an expression output stream that was already spent")
   #/begin (set-box! b (nothing))
   #/then id-and-state-and-handler))
 
@@ -1521,8 +1518,12 @@
       (box #/just #/list identity state on-cexpr))
     (fn unwrap-fault output-stream then
       (w- fault (make-fault-double-callback fault unwrap-fault)
+      #/sink-extfx-sink-cexpr-sequence-output-stream-freshen
+        output-stream
+        (cenegetfx-cene-err (make-fault-internal) "Expected output-stream to be an unspent expression sequence output stream")
+      #/fn output-stream
       #/sink-extfx-sink-cexpr-sequence-output-stream-spend
-        fault output-stream
+        output-stream
       #/dissectfn (list found-id state on-cexpr)
       #/expect (eq? identity found-id) #t
         ; TODO: See if we can tweak the design of
@@ -1535,18 +1536,15 @@
         (sink-extfx-cene-err fault "Expected the expression sequence output stream given to an extfx-make-expr-sequence-output-stream unwrapper to be a descendant of the same one created by that call")
       #/then state))))
 
-(define/contract
-  (sink-extfx-cexpr-write fault output-stream cexpr then)
-  (->
-    sink-fault? sink-cexpr-sequence-output-stream? sink-cexpr?
+(define/contract (sink-extfx-cexpr-write output-stream cexpr then)
+  (-> sink-cexpr-sequence-output-stream? sink-cexpr?
     (-> sink-cexpr-sequence-output-stream? sink-extfx?)
     sink-extfx?)
   (dissect output-stream (sink-cexpr-sequence-output-stream _)
   #/sink-extfx-sink-cexpr-sequence-output-stream-freshen output-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected output-stream to be an unspent expression sequence output stream")
   #/fn output-stream
-  #/sink-extfx-sink-cexpr-sequence-output-stream-spend
-    fault output-stream
+  #/sink-extfx-sink-cexpr-sequence-output-stream-spend output-stream
   #/dissectfn (list id state on-cexpr)
   #/on-cexpr state cexpr #/fn state
   #/then #/sink-cexpr-sequence-output-stream #/box #/just #/list
@@ -1567,36 +1565,32 @@
   #/then #/sink-text-input-stream #/box #/just input-port))
 
 (define/contract
-  (sink-extfx-sink-text-input-stream-spend
-    fault text-input-stream then)
-  (-> sink-fault? sink-text-input-stream? (-> input-port? sink-extfx?)
+  (sink-extfx-sink-text-input-stream-spend text-input-stream then)
+  (-> sink-text-input-stream? (-> input-port? sink-extfx?)
     sink-extfx?)
   (dissect text-input-stream (sink-text-input-stream b)
   #/sink-extfx-later #/fn
   #/begin (assert-can-mutate!)
   ; TODO: See if this should be more thread-safe in some way.
   #/expect (unbox b) (just input-port)
-    (sink-extfx-cene-err fault "Tried to spend a text input stream that was already spent")
+    (error "Tried to spend a text input stream that was already spent")
   #/begin (set-box! b (nothing))
   #/then input-port))
 
-(define/contract (sink-extfx-read-fault fault text-input-stream then)
-  (-> sink-fault? sink-text-input-stream?
+(define/contract (sink-extfx-read-fault text-input-stream then)
+  (-> sink-text-input-stream?
     (-> sink-text-input-stream? sink-fault? sink-extfx?)
     sink-extfx?)
   (sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
   #/fn text-input-stream
-  #/sink-extfx-sink-text-input-stream-spend fault text-input-stream
-  #/fn in
+  #/sink-extfx-sink-text-input-stream-spend text-input-stream #/fn in
   #/let-values ([(line column position) (port-next-location in)])
   #/then (sink-text-input-stream #/box #/just in)
     (sink-fault #/cene-fault-rep-srcloc line column position)))
 
-(define/contract
-  (sink-extfx-read-eof fault text-input-stream on-eof else)
+(define/contract (sink-extfx-read-eof text-input-stream on-eof else)
   (->
-    sink-fault?
     sink-text-input-stream?
     sink-extfx?
     (-> sink-text-input-stream? sink-extfx?)
@@ -1604,8 +1598,7 @@
   (sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
   #/fn text-input-stream
-  #/sink-extfx-sink-text-input-stream-spend fault text-input-stream
-  #/fn in
+  #/sink-extfx-sink-text-input-stream-spend text-input-stream #/fn in
   #/if (eof-object? #/peek-byte in)
     (begin (close-input-port in)
       on-eof)
@@ -1613,19 +1606,15 @@
 
 (define/contract
   (sink-extfx-optimized-textpat-read-located
-    fault pattern text-input-stream then)
-  (->
-    sink-fault?
-    optimized-textpat?
-    sink-text-input-stream?
+    pattern text-input-stream then)
+  (-> optimized-textpat? sink-text-input-stream?
     (-> sink-text-input-stream? (maybe/c sink-located-string?)
       sink-extfx?)
     sink-extfx?)
   (sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
   #/fn text-input-stream
-  #/sink-extfx-sink-text-input-stream-spend fault text-input-stream
-  #/fn in
+  #/sink-extfx-sink-text-input-stream-spend text-input-stream #/fn in
   #/let-values
     (
       [
@@ -1650,9 +1639,8 @@
 
 (define/contract
   (sink-extfx-sink-text-input-stream-split
-    fault text-input-stream body then)
+    text-input-stream body then)
   (->
-    sink-fault?
     sink-text-input-stream?
     (-> sink-text-input-stream?
       (-> sink-fault? sink-text-input-stream? any/c sink-extfx?)
@@ -1663,8 +1651,7 @@
   (sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected the original text input stream to be an unspent text input stream")
   #/fn text-input-stream
-  #/sink-extfx-sink-text-input-stream-spend fault text-input-stream
-  #/fn in
+  #/sink-extfx-sink-text-input-stream-spend text-input-stream #/fn in
   #/let-values ([(pipe-in pipe-out) (make-pipe)])
   #/w- original-monitored-in
     (filter-read-input-port in
@@ -1680,7 +1667,7 @@
   #/sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected the updated text input stream to be an unspent text input stream")
   #/fn text-input-stream
-  #/sink-extfx-sink-text-input-stream-spend fault text-input-stream
+  #/sink-extfx-sink-text-input-stream-spend text-input-stream
   #/fn modified-monitored-in
   #/expect (eq? original-monitored-in modified-monitored-in) #t
     (sink-extfx-cene-err fault "Expected the result of an extfx-text-input-stream-split body to be the a future incarnation of the body's original stream")
@@ -1693,18 +1680,15 @@
 (define sink-extfx-peek-whether-eof-pat
   (optimize-textpat #/textpat-lookahead #/textpat-one))
 
-(define/contract
-  (sink-extfx-peek-whether-eof fault text-input-stream then)
-  (->
-    sink-fault?
-    sink-text-input-stream?
+(define/contract (sink-extfx-peek-whether-eof text-input-stream then)
+  (-> sink-text-input-stream?
     (-> sink-text-input-stream? boolean? sink-extfx?)
     sink-extfx?)
   (sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
   #/fn text-input-stream
   #/sink-extfx-optimized-textpat-read-located
-    fault sink-extfx-peek-whether-eof-pat text-input-stream
+    sink-extfx-peek-whether-eof-pat text-input-stream
   #/fn text-input-stream maybe-located-string
   #/mat maybe-located-string (just located-string)
     (then text-input-stream #f)
@@ -1714,18 +1698,15 @@
   ; TODO: Support a more Unicode-aware notion of whitespace.
   (optimize-textpat #/textpat-star #/textpat-one-in-string " \t\r\n"))
 
-(define/contract
-  (sink-extfx-read-whitespace fault text-input-stream then)
-  (->
-    sink-fault?
-    sink-text-input-stream?
+(define/contract (sink-extfx-read-whitespace text-input-stream then)
+  (-> sink-text-input-stream?
     (-> sink-text-input-stream? sink-located-string? sink-extfx?)
     sink-extfx?)
   (sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
   #/fn text-input-stream
   #/sink-extfx-optimized-textpat-read-located
-    fault sink-extfx-read-whitespace-pat text-input-stream
+    sink-extfx-read-whitespace-pat text-input-stream
   #/fn text-input-stream maybe-located-string
   #/dissect maybe-located-string (just located-string)
   #/then text-input-stream located-string))
@@ -1736,17 +1717,15 @@
   #/textpat-star #/textpat-one-not-in-string "\r\n"))
 
 (define/contract
-  (sink-extfx-read-non-line-breaks fault text-input-stream then)
-  (->
-    sink-fault?
-    sink-text-input-stream?
+  (sink-extfx-read-non-line-breaks text-input-stream then)
+  (-> sink-text-input-stream?
     (-> sink-text-input-stream? sink-located-string? sink-extfx?)
     sink-extfx?)
   (sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
   #/fn text-input-stream
   #/sink-extfx-optimized-textpat-read-located
-    fault sink-extfx-read-non-line-breaks-pat text-input-stream
+    sink-extfx-read-non-line-breaks-pat text-input-stream
   #/fn text-input-stream maybe-located-string
   #/dissect maybe-located-string (just located-string)
   #/then text-input-stream located-string))
@@ -1793,7 +1772,7 @@
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
   #/fn text-input-stream
   #/sink-extfx-optimized-textpat-read-located
-    fault sink-extfx-read-maybe-identifier-pat text-input-stream
+    sink-extfx-read-maybe-identifier-pat text-input-stream
   #/fn text-input-stream maybe-located-string
   #/expect maybe-located-string (just located-string)
     (then text-input-stream #/nothing)
@@ -1815,9 +1794,8 @@
     (textpat-one-in-range #\A #\Z)))
 
 (define/contract
-  (sink-extfx-read-maybe-op-character fault text-input-stream then)
+  (sink-extfx-read-maybe-op-character text-input-stream then)
   (->
-    sink-fault?
     sink-text-input-stream?
     (-> sink-text-input-stream? (maybe/c sink-located-string?)
       sink-extfx?)
@@ -1826,8 +1804,7 @@
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
   #/fn text-input-stream
   #/sink-extfx-optimized-textpat-read-located
-    fault sink-extfx-read-maybe-op-character-pat text-input-stream
-    then))
+    sink-extfx-read-maybe-op-character-pat text-input-stream then))
 
 (define |pat "["| (optimize-textpat #/textpat-from-string "["))
 (define |pat "]"| (optimize-textpat #/textpat-from-string "]"))
@@ -1842,17 +1819,15 @@
   (optimize-textpat #/textpat-lookahead #/textpat-one-in-string "])"))
 
 (define/contract
-  (sink-extfx-peek-whether-closing-bracket
-    fault text-input-stream then)
-  (-> sink-fault? sink-text-input-stream?
+  (sink-extfx-peek-whether-closing-bracket text-input-stream then)
+  (-> sink-text-input-stream?
     (-> sink-text-input-stream? boolean? sink-extfx?)
     sink-extfx?)
   (sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
   #/fn text-input-stream
   #/sink-extfx-optimized-textpat-read-located
-    fault sink-extfx-peek-whether-closing-bracket-pat
-    text-input-stream
+    sink-extfx-peek-whether-closing-bracket-pat text-input-stream
   #/fn text-input-stream maybe-located-empty-string
   #/mat maybe-located-empty-string (just located-empty-string)
     (then text-input-stream #t)
@@ -1882,7 +1857,7 @@
   (sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
   #/fn text-input-stream
-  #/sink-extfx-read-maybe-op-character fault text-input-stream
+  #/sink-extfx-read-maybe-op-character text-input-stream
   #/fn text-input-stream maybe-identifier
   #/mat maybe-identifier (just identifier)
     (sink-extfx-run-cenegetfx
@@ -1895,20 +1870,20 @@
   #/w- then
     (fn text-input-stream op-name
       (sink-extfx-optimized-textpat-read-located
-        fault |pat ":"| text-input-stream
+        |pat ":"| text-input-stream
       #/fn text-input-stream maybe-str
       #/then text-input-stream op-name))
   
   ; TODO: Support the use of ( and [ as delimiters for macro
   ; names.
   #/sink-extfx-optimized-textpat-read-located
-    fault |pat "("| text-input-stream
+    |pat "("| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     ; TODO FAULT: Make this `fault` more specific.
     (sink-extfx-cene-err fault "The use of ( to delimit a macro name is not yet supported")
   #/sink-extfx-optimized-textpat-read-located
-    fault |pat "["| text-input-stream
+    |pat "["| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     ; TODO FAULT: Make this `fault` more specific.
@@ -2134,48 +2109,48 @@
     output-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected output-stream to be an unspent expression sequence output stream")
   #/fn output-stream
-  #/sink-extfx-read-whitespace fault text-input-stream
+  #/sink-extfx-read-whitespace text-input-stream
   #/fn text-input-stream whitespace
-  #/sink-extfx-peek-whether-eof fault text-input-stream
+  #/sink-extfx-peek-whether-eof text-input-stream
   #/fn text-input-stream is-eof
   #/if is-eof
     (then unique-name qualify text-input-stream output-stream)
   
   #/sink-extfx-optimized-textpat-read-located
-    fault |pat ")"| text-input-stream
+    |pat ")"| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     ; TODO FAULT: Make this `fault` more specific.
     (sink-extfx-cene-err fault "Encountered an unmatched )")
   #/sink-extfx-optimized-textpat-read-located
-    fault |pat "]"| text-input-stream
+    |pat "]"| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     ; TODO FAULT: Make this `fault` more specific.
     (sink-extfx-cene-err fault "Encountered an unmatched ]")
   
   #/sink-extfx-optimized-textpat-read-located
-    fault |pat "\\"| text-input-stream
+    |pat "\\"| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     (sink-extfx-read-and-run-freestanding-cexpr-op
       fault unique-name qualify text-input-stream output-stream then)
   
   #/sink-extfx-optimized-textpat-read-located
-    fault |pat "("| text-input-stream
+    |pat "("| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     (w- then
       (fn unique-name qualify text-input-stream output-stream
         (sink-extfx-optimized-textpat-read-located
-          fault |pat ")"| text-input-stream
+          |pat ")"| text-input-stream
         #/fn text-input-stream maybe-str
         #/expect maybe-str (just _)
           ; TODO FAULT: Make this `fault` more specific.
           (sink-extfx-cene-err fault "Encountered a syntax that began with ( or (. and did not end with )")
         #/then unique-name qualify text-input-stream output-stream))
     #/sink-extfx-optimized-textpat-read-located
-      fault |pat "."| text-input-stream
+      |pat "."| text-input-stream
     #/fn text-input-stream maybe-str
     #/mat maybe-str (just _)
       (sink-extfx-read-and-run-bounded-cexpr-op
@@ -2185,20 +2160,20 @@
       fault unique-name qualify text-input-stream output-stream then)
   
   #/sink-extfx-optimized-textpat-read-located
-    fault |pat "["| text-input-stream
+    |pat "["| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     (w- then
       (fn unique-name qualify text-input-stream output-stream
         (sink-extfx-optimized-textpat-read-located
-          fault |pat "]"| text-input-stream
+          |pat "]"| text-input-stream
         #/fn text-input-stream maybe-str
         #/expect maybe-str (just _)
           ; TODO FAULT: Make this `fault` more specific.
           (sink-extfx-cene-err fault "Encountered a syntax that began with [ or [. and did not end with ]")
         #/then unique-name qualify text-input-stream output-stream))
     #/sink-extfx-optimized-textpat-read-located
-      fault |pat "."| text-input-stream
+      |pat "."| text-input-stream
     #/fn text-input-stream maybe-str
     #/mat maybe-str (just _)
       (sink-extfx-read-and-run-bounded-cexpr-op
@@ -2208,20 +2183,19 @@
       fault unique-name qualify text-input-stream output-stream then)
   
   #/sink-extfx-optimized-textpat-read-located
-    fault |pat "/"| text-input-stream
+    |pat "/"| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     (w- then
       (fn unique-name qualify text-input-stream output-stream
-        (sink-extfx-peek-whether-closing-bracket
-          fault text-input-stream
+        (sink-extfx-peek-whether-closing-bracket text-input-stream
         #/fn text-input-stream is-closing-bracket
         #/if (not is-closing-bracket)
           ; TODO FAULT: Make this `fault` more specific.
           (sink-extfx-cene-err fault "Encountered a syntax that began with /. and did not end at ) or ]")
         #/then unique-name qualify text-input-stream output-stream))
     #/sink-extfx-optimized-textpat-read-located
-      fault |pat "."| text-input-stream
+      |pat "."| text-input-stream
     #/fn text-input-stream maybe-str
     #/mat maybe-str (just _)
       (sink-extfx-read-and-run-bounded-cexpr-op
@@ -2442,7 +2416,7 @@
   #/sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
   #/fn text-input-stream
-  #/sink-extfx-read-eof fault text-input-stream
+  #/sink-extfx-read-eof text-input-stream
     ; If we're at the end of the file, we're done. We claim the
     ; `unique-name` to stay in the habit, even though it's clear no
     ; one else can be using it.
