@@ -512,7 +512,8 @@
             'name:mobile-call-binary-arg-var)
         #/fn expr-arg
         #/sink-cexpr-perffx-done
-          (sink-cexpr-call-binary expr-func expr-arg))))
+          (sink-cexpr-call-binary (make-fault-internal) expr-func
+            expr-arg))))
     (cenegetfx-sink-mobile-built-in-call fault "mobile-call-binary"
       mobile-func mobile-arg)))
 
@@ -559,7 +560,7 @@
 (define/contract
   (sink-cexpr-built-in-call built-in-name-string . expr-args)
   (->* (immutable-string?) #:rest (listof sink-cexpr?) sink-cexpr?)
-  (sink-cexpr-call-list
+  (sink-cexpr-call-list (make-fault-internal)
     (sink-cexpr-built-in-construct-nullary built-in-name-string)
     (expect expr-args (list) expr-args
       ; NOTE: Nullary built-in functions work differently. We have to
@@ -1819,15 +1820,19 @@
   ; body of precisely `n-args` cexprs, then writes a single cexpr
   ; computed from those using `body`.
   (define/contract (macro-impl-specific-number-of-args n-args body)
-    (-> natural? (-> (listof sink-cexpr?) #/cenegetfx/c sink-cexpr?)
+    (->
+      natural?
+      (-> sink-fault? (listof sink-cexpr?) #/cenegetfx/c sink-cexpr?)
       sink?)
     (macro-impl #/fn
       fault unique-name qualify text-input-stream output-stream then
       
-      (sink-extfx-read-bounded-specific-number-of-cexprs
+      (sink-extfx-read-fault (make-fault-internal) text-input-stream
+      #/fn text-input-stream read-fault
+      #/sink-extfx-read-bounded-specific-number-of-cexprs
         fault unique-name qualify text-input-stream n-args
       #/fn unique-name qualify text-input-stream args
-      #/sink-extfx-run-cenegetfx (body args) #/fn expr
+      #/sink-extfx-run-cenegetfx (body read-fault args) #/fn expr
       #/sink-extfx-cexpr-write fault output-stream expr
       #/fn output-stream
       #/then unique-name qualify text-input-stream output-stream)))
@@ -1915,11 +1920,12 @@
         ; do some error-checking as an ad hoc line of defense against
         ; that kind of mistake.
         ;
-        (macro-impl-specific-number-of-args n-args #/fn args
-          (cenegetfx-done
-            (sink-cexpr-call-list
-              (sink-cexpr-construct main-tag-entry #/list)
-              args))))
+        (macro-impl-specific-number-of-args n-args
+          (fn read-fault args
+            (cenegetfx-done
+              (sink-cexpr-call-list read-fault
+                (sink-cexpr-construct main-tag-entry #/list)
+                args)))))
       
       ; We define a Cene struct function implementation containing
       ; the function's run time behavior.
@@ -1995,9 +2001,9 @@
         ; special kind of compilation for nullary function calls; it
         ; just has the user pass `(trivial)` explicitly.
         ;
-        (macro-impl-specific-number-of-args 0 #/fn args
+        (macro-impl-specific-number-of-args 0 #/fn read-fault args
           (cenegetfx-done
-            (sink-cexpr-call-binary
+            (sink-cexpr-call-binary read-fault
               (sink-cexpr-construct main-tag-entry #/list)
               (make-sink-cexpr-construct csst-trivial #/list)))))
       
@@ -2090,10 +2096,11 @@
         ; we do some error-checking as an ad hoc line of defense
         ; against that kind of mistake.
         ;
-        #/macro-impl-specific-number-of-args n-projs #/fn proj-cexprs
-          (cenegetfx-done
-            (sink-cexpr-construct main-tag-entry
-              (map list proj-names proj-cexprs)))))
+        #/macro-impl-specific-number-of-args n-projs
+          (fn read-fault proj-cexprs
+            (cenegetfx-done
+              (sink-cexpr-construct main-tag-entry
+                (map list proj-names proj-cexprs))))))
       
       ; We define a Cene struct function implementation which throws
       ; an error. We do this so that we do in fact have a function
@@ -3214,22 +3221,27 @@
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "expr-call-blame"
-    fault fault-arg-expr func-expr arg-expr
+    fault read-fault fault-arg-expr func-expr arg-expr
     
-    (expect fault-arg-expr (sink-cexpr fault-arg-expr)
+    (expect (sink-fault? read-fault) #t
+      (cenegetfx-cene-err fault "Expected read-blame to be a blame value")
+    #/expect fault-arg-expr (sink-cexpr fault-arg-expr)
       (cenegetfx-cene-err fault "Expected blame-arg-expr to be an expression")
     #/expect func-expr (sink-cexpr func-expr)
       (cenegetfx-cene-err fault "Expected func-expr to be an expression")
     #/expect arg-expr (sink-cexpr arg-expr)
       (cenegetfx-cene-err fault "Expected arg-expr to be an expression")
     #/cenegetfx-done #/sink-cexpr
-      (cexpr-call-fault fault-arg-expr func-expr arg-expr)))
+      (cexpr-call-fault read-fault fault-arg-expr func-expr
+        arg-expr)))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-macro! "c-blame" #/fn
     fault unique-name qualify text-input-stream then
     
-    (sink-extfx-read-leading-specific-number-of-cexprs
+    (sink-extfx-read-fault (make-fault-internal) text-input-stream
+    #/fn text-input-stream read-fault
+    #/sink-extfx-read-leading-specific-number-of-cexprs
       fault unique-name qualify text-input-stream 2
     #/fn unique-name qualify text-input-stream args-func
     #/dissect args-func
@@ -3247,20 +3259,23 @@
       (sink-extfx-cene-err fault "Expected a c-blame form to have at least one argument aside from the blame argument and the function to call")
     
     #/then unique-name qualify text-input-stream
-      (sink-cexpr #/cexpr-call-fault fault-arg-expr
+      (sink-cexpr #/cexpr-call-fault read-fault fault-arg-expr
         (list-foldl func-expr (reverse rev-past-args-args)
           (fn func arg
-            (cexpr-call func arg)))
+            (cexpr-call read-fault func arg)))
         last-arg-arg)))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
   ; `cexpr-call`.
-  (def-func-fault! "expr-call" fault func-expr arg-expr
-    (expect func-expr (sink-cexpr func-expr)
+  (def-func-fault! "expr-call" fault read-fault func-expr arg-expr
+    (expect (sink-fault? read-fault) #t
+      (cenegetfx-cene-err fault "Expected read-blame to be a blame value")
+    #/expect func-expr (sink-cexpr func-expr)
       (cenegetfx-cene-err fault "Expected func-expr to be an expression")
     #/expect arg-expr (sink-cexpr arg-expr)
       (cenegetfx-cene-err fault "Expected arg-expr to be an expression")
-    #/cenegetfx-done #/sink-cexpr #/cexpr-call func-expr arg-expr))
+    #/cenegetfx-done
+      (sink-cexpr #/cexpr-call read-fault func-expr arg-expr)))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "mobile-call-binary" fault mobile-func mobile-arg
@@ -3273,7 +3288,9 @@
   (def-macro! "c" #/fn
     fault unique-name qualify text-input-stream then
     
-    (sink-extfx-read-leading-specific-number-of-cexprs
+    (sink-extfx-read-fault (make-fault-internal) text-input-stream
+    #/fn text-input-stream read-fault
+    #/sink-extfx-read-leading-specific-number-of-cexprs
       fault unique-name qualify text-input-stream 1
     #/fn unique-name qualify text-input-stream args-func
     #/dissect args-func (list (sink-cexpr func-expr))
@@ -3286,7 +3303,7 @@
     
     #/then unique-name qualify text-input-stream
     #/sink-cexpr #/list-foldl func-expr args-args #/fn func arg
-      (cexpr-call func arg)))
+      (cexpr-call read-fault func arg)))
   
   ; NOTE BUILTINS: The following built-ins from the JavaScript version
   ; of Cene seem like they're not relevant to the approach we've taken

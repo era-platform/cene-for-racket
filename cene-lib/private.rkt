@@ -284,7 +284,7 @@
   'cene-fault-rep-srcloc (current-inspector) (auto-write))
 ; A fault object that blames an error on a call site that calls a
 ; callback of a callback. In this situation, the fault object can
-; indicate not only the call site of the callback-callback, but also
+; indicate not only the call site of the callback-callback but also
 ; the call site of the original operation that the callback-callback
 ; is a callback-callback of.
 (define-imitation-simple-struct
@@ -293,6 +293,16 @@
     cene-fault-rep-double-callback-callback-fault)
   cene-fault-rep-double-callback
   'cene-fault-rep-double-callback (current-inspector) (auto-write))
+; A fault object that blames an error on a call site that occurs in a
+; cexpr being evaluated. In this situation, the fault object can
+; indicate not only the call site being evaluated but also the call
+; site of the evaluation operation.
+(define-imitation-simple-struct
+  (cene-fault-rep-eval?
+    cene-fault-rep-eval-eval-fault
+    cene-fault-rep-eval-expr-fault)
+  cene-fault-rep-eval
+  'cene-fault-rep-eval (current-inspector) (auto-write))
 
 (define-imitation-simple-struct
   (sink-fault? sink-fault-maybe-continuation-marks)
@@ -309,11 +319,15 @@
     ; have into the error message.
     (error-definer-from-exn
       (exn:fail message (current-continuation-marks)))
-  #/dissect rep
+  #/mat rep
     (cene-fault-rep-double-callback founder-fault callback-fault)
     ; TODO FAULT: See if we can incorporate more of the information we
     ; have into the error message.
-    (error-definer-from-fault-and-message callback-fault message)))
+    (error-definer-from-fault-and-message callback-fault message)
+  #/dissect rep (cene-fault-rep-eval eval-fault expr-fault)
+    ; TODO FAULT: See if we can incorporate more of the information we
+    ; have into the error message.
+    (error-definer-from-fault-and-message expr-fault message)))
 
 
 ; Innate main tag entries contain authorization conditions for the
@@ -830,7 +844,7 @@
         vals))
   ])
 
-(struct-easy (cexpr-call-fault fault-arg func arg)
+(struct-easy (cexpr-call-fault read-fault fault-arg func arg)
   
   #:other
   
@@ -840,7 +854,7 @@
     (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
-      (expect this (cexpr-call-fault fault-arg func arg)
+      (expect this (cexpr-call-fault read-fault fault-arg func arg)
         (error "Expected this to be a cexpr-call-fault")
       #/or
         (-has-free-vars? fault-arg env)
@@ -848,7 +862,7 @@
         (-has-free-vars? arg env)))
     
     (define (cenegetfx-cexpr-eval-in-env fault this env)
-      (expect this (cexpr-call-fault fault-arg func arg)
+      (expect this (cexpr-call-fault read-fault fault-arg func arg)
         (error "Expected this to be a cexpr-call-fault")
       #/cenegetfx-bind (-eval-in-env fault fault-arg env)
       #/fn fault-arg
@@ -856,10 +870,11 @@
       #/cenegetfx-bind (-eval-in-env fault arg env) #/fn arg
       #/expect (sink-fault? fault-arg) #t
         (cenegetfx-cene-err fault "Expected the blame argument to be a blame value")
-      #/cenegetfx-sink-call-fault fault fault-arg func arg))
+      #/w- eval-fault (make-fault-eval fault read-fault)
+      #/cenegetfx-sink-call-fault eval-fault fault-arg func arg))
   ])
 
-(struct-easy (cexpr-call func arg)
+(struct-easy (cexpr-call read-fault func arg)
   
   #:other
   
@@ -869,16 +884,17 @@
     (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
     
     (define (cexpr-has-free-vars? this env)
-      (expect this (cexpr-call func arg)
+      (expect this (cexpr-call read-fault func arg)
         (error "Expected this to be a cexpr-call")
       #/or (-has-free-vars? func env) (-has-free-vars? arg env)))
     
     (define (cenegetfx-cexpr-eval-in-env fault this env)
-      (expect this (cexpr-call func arg)
+      (expect this (cexpr-call read-fault func arg)
         (error "Expected this to be a cexpr-call")
       #/cenegetfx-bind (-eval-in-env fault func env) #/fn func
       #/cenegetfx-bind (-eval-in-env fault arg env) #/fn arg
-      #/cenegetfx-sink-call fault func arg))
+      #/w- eval-fault (make-fault-eval fault read-fault)
+      #/cenegetfx-sink-call eval-fault func arg))
   ])
 
 (struct-easy (cexpr-opaque-fn-fault fault-param param body)
@@ -1157,16 +1173,16 @@
   #/list-zip-map proj-names proj-cexprs #/fn proj-name proj-cexpr
     (list (sink-name proj-name) proj-cexpr)))
 
-(define/contract (sink-cexpr-call-binary func arg)
-  (-> sink-cexpr? sink-cexpr? sink-cexpr?)
+(define/contract (sink-cexpr-call-binary read-fault func arg)
+  (-> sink-fault? sink-cexpr? sink-cexpr? sink-cexpr?)
   (dissect func (sink-cexpr func)
   #/dissect arg (sink-cexpr arg)
-  #/sink-cexpr #/cexpr-call func arg))
+  #/sink-cexpr #/cexpr-call read-fault func arg))
 
-(define/contract (sink-cexpr-call-list func args)
-  (-> sink-cexpr? (listof sink-cexpr?) sink-cexpr?)
+(define/contract (sink-cexpr-call-list read-fault func args)
+  (-> sink-fault? sink-cexpr? (listof sink-cexpr?) sink-cexpr?)
   (list-foldl func args #/fn func arg
-    (sink-cexpr-call-binary func arg)))
+    (sink-cexpr-call-binary read-fault func arg)))
 
 (define/contract (sink-cexpr-opaque-fn-fault fault-param param body)
   (-> sink-name? sink-name? sink-cexpr? sink-cexpr?)
@@ -1269,6 +1285,10 @@
   (-> sink-fault? sink-fault? sink-fault?)
   (sink-fault
     (cene-fault-rep-double-callback founder-fault callback-fault)))
+
+(define/contract (make-fault-eval eval-fault expr-fault)
+  (-> sink-fault? sink-fault? sink-fault?)
+  (sink-fault #/cene-fault-rep-eval eval-fault expr-fault))
 
 (define/contract (cenegetfx-err-from-clamor clamor)
   (-> sink? cenegetfx?)

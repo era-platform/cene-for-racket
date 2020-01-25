@@ -334,10 +334,12 @@
   /fn
     bl-macro unique-name qualify text-input-stream output-stream then
     
-    (extfx-read-bounded-specific-number-of-exprs
+    (extfx-read-fault text-input-stream /fn text-input-stream bl-read
+    /extfx-read-bounded-specific-number-of-exprs
       bl-macro unique-name qualify text-input-stream n-args
     /fn unique-name qualify text-input-stream args
-    /extfx-expr-write output-stream (c-blame bl-body body args)
+    /extfx-expr-write output-stream
+      (c-blame bl-body body bl-read args)
     /fn output-stream
     /let effects
       (c-blame bl-macro then
