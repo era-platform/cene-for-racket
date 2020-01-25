@@ -89,6 +89,9 @@
       sink-extfx?)
     sink-extfx?)
   (sink-extfx-claim-freshen unique-name #/fn unique-name
+  #/sink-extfx-sink-text-input-stream-freshen text-input-stream
+    (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
+  #/fn text-input-stream
   #/sink-extfx-read-maybe-identifier
     fault qualify text-input-stream pre-qualify
   #/fn text-input-stream maybe-id
@@ -130,6 +133,9 @@
       sink-extfx?)
     sink-extfx?)
   (sink-extfx-claim-freshen unique-name #/fn unique-name
+  #/sink-extfx-sink-text-input-stream-freshen text-input-stream
+    (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
+  #/fn text-input-stream
   #/w-loop next
     unique-name unique-name
     qualify qualify
@@ -170,7 +176,11 @@
       (listof sink-cexpr?)
       sink-extfx?)
     sink-extfx?)
-  (sink-extfx-read-bounded-ids-and-exprs
+  (sink-extfx-claim-freshen unique-name #/fn unique-name
+  #/sink-extfx-sink-text-input-stream-freshen text-input-stream
+    (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
+  #/fn text-input-stream
+  #/sink-extfx-read-bounded-ids-and-exprs
     fault unique-name qualify text-input-stream
     sink-name-for-local-variable
   #/fn unique-name qualify text-input-stream ids-and-exprs
@@ -196,7 +206,11 @@
       (listof sink-cexpr?)
       sink-extfx?)
     sink-extfx?)
-  (sink-extfx-read-bounded-cexprs
+  (sink-extfx-claim-freshen unique-name #/fn unique-name
+  #/sink-extfx-sink-text-input-stream-freshen text-input-stream
+    (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
+  #/fn text-input-stream
+  #/sink-extfx-read-bounded-cexprs
     fault unique-name qualify text-input-stream
   #/fn unique-name qualify text-input-stream cexprs
   #/w- actual-n (length cexprs)
@@ -229,6 +243,9 @@
       sink-extfx?)
     sink-extfx?)
   (sink-extfx-claim-freshen unique-name #/fn unique-name
+  #/sink-extfx-sink-text-input-stream-freshen text-input-stream
+    (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
+  #/fn text-input-stream
   #/w-loop next
     unique-name unique-name
     qualify qualify
@@ -282,7 +299,11 @@
       (listof sink-cexpr?)
       sink-extfx?)
     sink-extfx?)
-  (sink-extfx-read-leading-specific-number-of-ids-and-exprs
+  (sink-extfx-claim-freshen unique-name #/fn unique-name
+  #/sink-extfx-sink-text-input-stream-freshen text-input-stream
+    (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
+  #/fn text-input-stream
+  #/sink-extfx-read-leading-specific-number-of-ids-and-exprs
     fault unique-name qualify text-input-stream n
     sink-name-for-local-variable
   #/fn unique-name qualify text-input-stream ids-and-exprs
@@ -311,6 +332,9 @@
       sink-extfx?)
     sink-extfx?)
   (sink-extfx-claim-freshen unique-name #/fn unique-name
+  #/sink-extfx-sink-text-input-stream-freshen text-input-stream
+    (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
+  #/fn text-input-stream
   #/w-loop next
     unique-name unique-name
     qualify qualify
@@ -376,7 +400,10 @@
     (-> sink-text-input-stream? sink-text-input-stream? sink-extfx?)
     (-> sink-text-input-stream? sink-text-input-stream? sink-extfx?)
     sink-extfx?)
-  (sink-extfx-sink-text-input-stream-split fault text-input-stream
+  (sink-extfx-sink-text-input-stream-freshen text-input-stream
+    (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
+  #/fn text-input-stream
+  #/sink-extfx-sink-text-input-stream-split fault text-input-stream
     (fn in then
       (w-loop next-consumption in in brackets-expected (list)
         (sink-extfx-optimized-textpat-read-located
@@ -498,7 +525,10 @@
     boolean?
     (-> sink-text-input-stream? sink-text-input-stream? sink-extfx?)
     sink-extfx?)
-  (sink-extfx-sink-text-input-stream-split-after-custom-matching-brackets
+  (sink-extfx-sink-text-input-stream-freshen text-input-stream
+    (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
+  #/fn text-input-stream
+  #/sink-extfx-sink-text-input-stream-split-after-custom-matching-brackets
     fault
     text-input-stream
     sink-extfx-sink-text-input-stream-split-after-matching-brackets-non-bracket-characters-pat

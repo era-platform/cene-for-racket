@@ -235,6 +235,9 @@
     [errb implicit-bl /str-prim:Expected text-input-stream to be a text input stream]
   /cast (is-nat n) yep -
     [errb implicit-bl /str-prim:Expected n to be a natural number]
+  /extfx-text-input-stream-freshen text-input-stream
+    [fn - /errb implicit-bl /str-prim:Expected text-input-stream to be an unspent text input stream]
+  /fn text-input-stream
   /extfx-read-bounded-exprs
     explicit-bl unique-name qualify text-input-stream
   /fn unique-name qualify text-input-stream exprs
@@ -313,14 +316,24 @@
       [errb macro-bl /str-prim:Expected text-input-stream to be a text input stream]
     /cast (is-expr-sequence-output-stream output-stream) yep -
       [errb macro-bl /str-prim:Expected output-stream to be an expression sequence output stream]
-    /c body
-      macro-bl unique-name qualify text-input-stream output-stream
-    /fn unique-name qualify text-input-stream output-stream
+    /extfx-text-input-stream-freshen text-input-stream
+      [fn - /errb macro-bl /str-prim:Expected text-input-stream to be an unspent text input stream]
+    /fn text-input-stream
+    /extfx-expr-sequence-output-stream-freshen output-stream
+      [fn - /errb macro-bl /str-prim:Expected output-stream to be an unspent expression sequence output stream]
+    /fn output-stream
     /let effects
-      (c-blame macro-bl then
-        unique-name qualify text-input-stream output-stream)
+      (c body
+        macro-bl unique-name qualify text-input-stream output-stream
+      /fn unique-name qualify text-input-stream output-stream
+      /let effects
+        (c-blame macro-bl then
+          unique-name qualify text-input-stream output-stream)
+      /cast (is-extfx effects) yep -
+        [errb macro-bl /str-prim:Expected the return value of a macro's callback to be an extfx effectful computation]
+        effects)
     /cast (is-extfx effects) yep -
-      [errb macro-bl /str-prim:Expected the return value of a macro's callback to be an extfx effectful computation]
+      [errb body-bl /str-prim:Expected the return value of a macro-impl body to be an extfx effectful computation]
       effects)))
 
 \= This creates a macro implementation function that reads a form body
