@@ -32,13 +32,13 @@
 
 \= TODO: See if we should rename this.
 (prelude-to-everyone-def-func-blame
-  errb bl-implicit bl-explicit message
-  (follow-heart/clamor-err bl-explicit message))
+  errb implicit-bl explicit-bl message
+  (follow-heart/clamor-err explicit-bl message))
 
 (prelude-to-everyone-def-func-blame
-  fix bl-f f
-  (fn-blame bl-arg arg
-    (c-blame bl-arg (c-blame bl-f f f) arg)))
+  fix f-bl f
+  (fn-blame arg-bl arg
+    (c-blame arg-bl (c-blame f-bl f f) arg)))
 
 (prelude-to-everyone-def-func-blame
   just-value bl m
@@ -216,7 +216,7 @@
 \= This reads expressions until it gets to a closing bracket.
 (prelude-to-everyone-def-func-blame
   extfx-read-bounded-exprs
-  bl-implicit bl-explicit unique-name qualify text-input-stream then
+  implicit-bl explicit-bl unique-name qualify text-input-stream then
   
   \= TODO: Implement this.
   (nil))
@@ -225,31 +225,31 @@
 \= verifies that there are precisely `n` of them.
 (prelude-to-everyone-def-func-blame
   extfx-read-bounded-specific-number-of-exprs
-  bl-implicit bl-explicit unique-name qualify text-input-stream n then
+  implicit-bl explicit-bl unique-name qualify text-input-stream n then
   
-  (cast (is-blame bl-explicit) yep -
-    [errb bl-implicit /str-prim:Expected bl-explicit to be a blame value]
+  (cast (is-blame explicit-bl) yep -
+    [errb implicit-bl /str-prim:Expected explicit-bl to be a blame value]
   /cast (is-authorized-name unique-name) yep -
-    [errb bl-implicit /str-prim:Expected unique-name to be an authorized name]
+    [errb implicit-bl /str-prim:Expected unique-name to be an authorized name]
   /cast (is-text-input-stream text-input-stream) yep -
-    [errb bl-implicit /str-prim:Expected text-input-stream to be a text input stream]
+    [errb implicit-bl /str-prim:Expected text-input-stream to be a text input stream]
   /cast (is-nat n) yep -
-    [errb bl-implicit /str-prim:Expected n to be a natural number]
+    [errb implicit-bl /str-prim:Expected n to be a natural number]
   /extfx-read-bounded-exprs
-    bl-explicit unique-name qualify text-input-stream
+    explicit-bl unique-name qualify text-input-stream
   /fn unique-name qualify text-input-stream exprs
   /let actual-n (list-length exprs)
   /case (pure-is-lt (cline-int) n actual-n) yep -
-    \= TODO FAULT: Make this `bl-explicit` more specific.
-    [errb bl-explicit /str-prim:Encountered too many expressions]
+    \= TODO FAULT: Make this `explicit-bl` more specific.
+    [errb explicit-bl /str-prim:Encountered too many expressions]
   /case (pure-is-lt (cline-int) actual-n n) yep -
-    \= TODO FAULT: Make this `bl-explicit` more specific.
-    [errb bl-explicit /str-prim:Expected another expression]
+    \= TODO FAULT: Make this `explicit-bl` more specific.
+    [errb explicit-bl /str-prim:Expected another expression]
   /let effects
-    (c-blame bl-implicit then
+    (c-blame implicit-bl then
       unique-name qualify text-input-stream exprs)
   /cast (is-extfx effects) yep -
-    [errb bl-implicit /str-prim:Expected the return value of an extfx-read-bounded-specific-number-of-exprs callback to be an extfx effectful computation]
+    [errb implicit-bl /str-prim:Expected the return value of an extfx-read-bounded-specific-number-of-exprs callback to be an extfx effectful computation]
     effects))
 
 
@@ -303,49 +303,49 @@
 
 
 (prelude-to-everyone-def-func-blame
-  macro-impl bl-body body
-  (fn-blame bl-macro
+  macro-impl body-bl body
+  (fn-blame macro-bl
     unique-name qualify text-input-stream output-stream then
     
     (cast (is-authorized-name unique-name) yep -
-      [errb bl-macro /str-prim:Expected unique-name to be an authorized name]
+      [errb macro-bl /str-prim:Expected unique-name to be an authorized name]
     /cast (is-text-input-stream text-input-stream) yep -
-      [errb bl-macro /str-prim:Expected text-input-stream to be a text input stream]
+      [errb macro-bl /str-prim:Expected text-input-stream to be a text input stream]
     /cast (is-expr-sequence-output-stream output-stream) yep -
-      [errb bl-macro /str-prim:Expected output-stream to be an expression sequence output stream]
+      [errb macro-bl /str-prim:Expected output-stream to be an expression sequence output stream]
     /c body
-      bl-macro unique-name qualify text-input-stream output-stream
+      macro-bl unique-name qualify text-input-stream output-stream
     /fn unique-name qualify text-input-stream output-stream
     /let effects
-      (c-blame bl-macro then
+      (c-blame macro-bl then
         unique-name qualify text-input-stream output-stream)
     /cast (is-extfx effects) yep -
-      [errb bl-macro /str-prim:Expected the return value of a macro's callback to be an extfx effectful computation]
+      [errb macro-bl /str-prim:Expected the return value of a macro's callback to be an extfx effectful computation]
       effects)))
 
 \= This creates a macro implementation function that reads a form body
 \= of precisely `n-args` cexprs, then writes a single cexpr computed
 \= from those using `body`.
 (prelude-to-everyone-def-func-blame
-  macro-impl-specific-number-of-args bl-body n-args body
+  macro-impl-specific-number-of-args body-bl n-args body
   (cast (is-nat n-args) yep -
-    [errb bl-body /str-prim:Expected n-args to be a natural number]
+    [errb body-bl /str-prim:Expected n-args to be a natural number]
   /macro-impl
   /fn
-    bl-macro unique-name qualify text-input-stream output-stream then
+    macro-bl unique-name qualify text-input-stream output-stream then
     
-    (extfx-read-fault text-input-stream /fn text-input-stream bl-read
+    (extfx-read-fault text-input-stream /fn text-input-stream read-bl
     /extfx-read-bounded-specific-number-of-exprs
-      bl-macro unique-name qualify text-input-stream n-args
+      macro-bl unique-name qualify text-input-stream n-args
     /fn unique-name qualify text-input-stream args
     /extfx-expr-write output-stream
-      (c-blame bl-body body bl-read args)
+      (c-blame body-bl body read-bl args)
     /fn output-stream
     /let effects
-      (c-blame bl-macro then
+      (c-blame macro-bl then
         unique-name qualify text-input-stream output-stream)
     /cast (is-extfx effects) yep -
-      [errb bl-macro /str-prim:Expected the return value of a macro-impl-specific-number-of-args callback to be an extfx effectful computation]
+      [errb macro-bl /str-prim:Expected the return value of a macro-impl-specific-number-of-args callback to be an extfx effectful computation]
       effects)))
 
 
