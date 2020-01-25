@@ -1828,7 +1828,8 @@
       fault unique-name qualify text-input-stream output-stream then
       
       (sink-extfx-read-fault (make-fault-internal) text-input-stream
-      #/fn text-input-stream read-fault
+      #/fn text-input-stream expr-fault
+      #/w- read-fault (make-fault-read fault expr-fault)
       #/sink-extfx-read-bounded-specific-number-of-cexprs
         fault unique-name qualify text-input-stream n-args
       #/fn unique-name qualify text-input-stream args
@@ -2373,6 +2374,33 @@
   ; TODO BUILTINS: Implement the macro `err`, probably in a Cene
   ; prelude. In the prelude, before we define `err`, we can still
   ; report errors using `[follow-heart/clamor-err bl /str-prim ...]`.
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func-fault! "make-blame-double-callback"
+    fault founder-fault callback-fault
+    
+    (expect (sink-fault? founder-fault) #t
+      (cenegetfx-cene-err fault "Expected founder-blame to be a blame value")
+    #/expect (sink-fault? callback-fault) #t
+      (cenegetfx-cene-err fault "Expected callback-blame to be a blame value")
+    #/cenegetfx-done
+      (make-fault-double-callback founder-fault callback-fault)))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func-fault! "make-blame-read" fault read-fault expr-fault
+    (expect (sink-fault? read-fault) #t
+      (cenegetfx-cene-err fault "Expected read-blame to be a blame value")
+    #/expect (sink-fault? expr-fault) #t
+      (cenegetfx-cene-err fault "Expected expr-blame to be a blame value")
+    #/cenegetfx-done #/make-fault-read read-fault expr-fault))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func-fault! "make-blame-eval" fault eval-fault expr-fault
+    (expect (sink-fault? eval-fault) #t
+      (cenegetfx-cene-err fault "Expected eval-blame to be a blame value")
+    #/expect (sink-fault? expr-fault) #t
+      (cenegetfx-cene-err fault "Expected expr-blame to be a blame value")
+    #/cenegetfx-done #/make-fault-eval eval-fault expr-fault))
   
   
   ; Order
@@ -3240,7 +3268,8 @@
     fault unique-name qualify text-input-stream then
     
     (sink-extfx-read-fault (make-fault-internal) text-input-stream
-    #/fn text-input-stream read-fault
+    #/fn text-input-stream expr-fault
+    #/w- read-fault (make-fault-read fault expr-fault)
     #/sink-extfx-read-leading-specific-number-of-cexprs
       fault unique-name qualify text-input-stream 2
     #/fn unique-name qualify text-input-stream args-func
@@ -3289,7 +3318,8 @@
     fault unique-name qualify text-input-stream then
     
     (sink-extfx-read-fault (make-fault-internal) text-input-stream
-    #/fn text-input-stream read-fault
+    #/fn text-input-stream expr-fault
+    #/w- read-fault (make-fault-read fault expr-fault)
     #/sink-extfx-read-leading-specific-number-of-cexprs
       fault unique-name qualify text-input-stream 1
     #/fn unique-name qualify text-input-stream args-func

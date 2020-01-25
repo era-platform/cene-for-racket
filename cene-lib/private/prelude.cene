@@ -334,7 +334,8 @@
   /fn
     macro-bl unique-name qualify text-input-stream output-stream then
     
-    (extfx-read-fault text-input-stream /fn text-input-stream read-bl
+    (extfx-read-fault text-input-stream /fn text-input-stream expr-bl
+    /let read-bl (make-blame-read macro-bl expr-bl)
     /extfx-read-bounded-specific-number-of-exprs
       macro-bl unique-name qualify text-input-stream n-args
     /fn unique-name qualify text-input-stream args

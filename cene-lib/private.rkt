@@ -294,6 +294,16 @@
   cene-fault-rep-double-callback
   'cene-fault-rep-double-callback (current-inspector) (auto-write))
 ; A fault object that blames an error on a call site that occurs in a
+; cexpr being read. In this situation, the fault object can indicate
+; not only the call site being read but also the call site of the read
+; operation.
+(define-imitation-simple-struct
+  (cene-fault-rep-read?
+    cene-fault-rep-read-read-fault
+    cene-fault-rep-read-expr-fault)
+  cene-fault-rep-read
+  'cene-fault-rep-read (current-inspector) (auto-write))
+; A fault object that blames an error on a call site that occurs in a
 ; cexpr being evaluated. In this situation, the fault object can
 ; indicate not only the call site being evaluated but also the call
 ; site of the evaluation operation.
@@ -1285,6 +1295,10 @@
   (-> sink-fault? sink-fault? sink-fault?)
   (sink-fault
     (cene-fault-rep-double-callback founder-fault callback-fault)))
+
+(define/contract (make-fault-read read-fault expr-fault)
+  (-> sink-fault? sink-fault? sink-fault?)
+  (sink-fault #/cene-fault-rep-eval read-fault expr-fault))
 
 (define/contract (make-fault-eval eval-fault expr-fault)
   (-> sink-fault? sink-fault? sink-fault?)

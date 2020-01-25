@@ -509,9 +509,11 @@
     overall-close-pattern
     overall-accepts-eof
     (fn open-fault during after
-      (sink-extfx-cene-err open-fault "Encountered an unmatched opening bracket"))
+      (w- open-read-fault (make-fault-read fault open-fault)
+      #/sink-extfx-cene-err open-read-fault "Encountered an unmatched opening bracket"))
     (fn during after
       (sink-extfx-read-fault (make-fault-internal) after
       #/fn after close-fault
-      #/sink-extfx-cene-err close-fault "Encountered an unmatched closing bracket"))
+      #/w- close-read-fault (make-fault-read fault close-fault)
+      #/sink-extfx-cene-err close-read-fault "Encountered an unmatched closing bracket"))
     then))
