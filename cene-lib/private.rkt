@@ -1925,6 +1925,9 @@
   (sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
   #/fn text-input-stream
+  #/sink-extfx-read-fault text-input-stream
+  #/fn text-input-stream expr-fault
+  #/w- read-fault (make-fault-read fault expr-fault)
   #/sink-extfx-read-maybe-op-character text-input-stream
   #/fn text-input-stream maybe-identifier
   #/mat maybe-identifier (just identifier)
@@ -1948,14 +1951,12 @@
     |pat "("| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
-    ; TODO FAULT: Make this `fault` more specific.
-    (sink-extfx-cene-err fault "The use of ( to delimit a macro name is not yet supported")
+    (sink-extfx-cene-err read-fault "The use of ( to delimit a macro name is not yet supported")
   #/sink-extfx-optimized-textpat-read-located
     |pat "["| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
-    ; TODO FAULT: Make this `fault` more specific.
-    (sink-extfx-cene-err fault "The use of [ to delimit a macro name is not yet supported")
+    (sink-extfx-cene-err read-fault "The use of [ to delimit a macro name is not yet supported")
   
   #/sink-extfx-read-maybe-identifier
     fault qualify text-input-stream pre-qualify
@@ -1963,8 +1964,7 @@
   #/mat maybe-name (just #/list located-string name)
     (then text-input-stream name)
   
-  ; TODO FAULT: Make this `fault` more specific.
-  #/sink-extfx-cene-err fault "Encountered an unrecognized case of the expression operator syntax"))
+  #/sink-extfx-cene-err read-fault "Encountered an unrecognized case of the expression operator syntax"))
 
 (define/contract
   (sink-extfx-run-op
