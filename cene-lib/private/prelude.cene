@@ -322,10 +322,33 @@
     /extfx-expr-sequence-output-stream-freshen output-stream
       [fn - /errb macro-bl /str-prim:Expected output-stream to be an unspent expression sequence output stream]
     /fn output-stream
+    /extfx-text-input-stream-track-identity text-input-stream
+    /fn text-input-stream extfx-verify-same-text-input-stream
+    /extfx-expr-sequence-output-stream-track-identity output-stream
+    /fn output-stream extfx-verify-same-output-stream
     /let effects
       (c body
         macro-bl unique-name qualify text-input-stream output-stream
       /fn unique-name qualify text-input-stream output-stream
+      /cast (is-authorized-name unique-name) yep -
+        [errb body-bl /str-prim:Expected a macro-impl body's resulting unique-name to be an authorized name]
+      /cast (is-text-input-stream text-input-stream) yep -
+        [errb body-bl /str-prim:Expected a macro-impl body's resulting text input stream to be a text input stream]
+      /cast (is-expr-sequence-output-stream output-stream) yep -
+        [errb body-bl /str-prim:Expected a macro-impl body's resulting output stream to be an expression sequence output stream]
+      /extfx-text-input-stream-freshen text-input-stream
+        [fn - /errb body-bl /str-prim:Expected a macro-impl body's resulting text input stream to be an unspent text input stream]
+      /fn text-input-stream
+      /extfx-claim-freshen unique-name /fn unique-name
+      /extfx-expr-sequence-output-stream-freshen output-stream
+        [fn - /errb body-bl /str-prim:Expected a macro-impl body's resulting output stream to be an unspent expression sequence output stream]
+      /fn output-stream
+      /c extfx-verify-same-text-input-stream text-input-stream
+        [fn - /errb body-bl /str-prim:Expected a macro-impl body's resulting input stream to be a future incarnation of the body's original input stream]
+      /fn text-input-stream
+      /c extfx-verify-same-output-stream output-stream
+        [fn - /errb body-bl /str-prim:Expected a macro-impl body's resulting output stream to be a future incarnation of the body's original output stream]
+      /fn output-stream
       /let effects
         (c-blame macro-bl then
           unique-name qualify text-input-stream output-stream)

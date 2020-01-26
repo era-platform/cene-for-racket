@@ -1834,7 +1834,7 @@
           (cenegetfx-cene-err (make-fault-internal) "Expected a macro-impl body's resulting output stream to be an unspent expression sequence output stream")
         #/fn output-stream
         #/sink-extfx-verify-same-text-input-stream text-input-stream
-          (cenegetfx-cene-err (make-fault-internal) "Expected a macro-impl body's resulting input stream to be a future incarnation of the body's original input stream")
+          (cenegetfx-cene-err (make-fault-internal) "Expected a macro-impl body's resulting text input stream to be a future incarnation of the body's original input stream")
         #/fn text-input-stream
         #/sink-extfx-verify-same-output-stream output-stream
           (cenegetfx-cene-err (make-fault-internal) "Expected a macro-impl body's resulting output stream to be a future incarnation of the body's original output stream")
