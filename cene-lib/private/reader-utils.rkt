@@ -102,7 +102,6 @@
   #/sink-extfx-claim-and-split unique-name 2
   #/dissectfn (list unique-name-stream unique-name)
   #/sink-extfx-make-cexpr-sequence-output-stream
-    (make-fault-internal)
     unique-name-stream
     rev-results
     (fn rev-results cexpr then
@@ -111,7 +110,7 @@
   #/sink-extfx-read-cexprs
     fault unique-name qualify text-input-stream output-stream
   #/fn unique-name qualify text-input-stream output-stream
-  #/unwrap (make-fault-internal) output-stream #/fn rev-results
+  #/unwrap output-stream #/fn rev-results
   #/then unique-name qualify text-input-stream rev-results))
 
 ; This reads identifiers and cexprs until it gets to a closing
@@ -361,7 +360,6 @@
     #/sink-extfx-claim-and-split unique-name 2
     #/dissectfn (list unique-name-stream unique-name)
     #/sink-extfx-make-cexpr-sequence-output-stream
-      (make-fault-internal)
       unique-name-stream
       (trivial)
       (fn state cexpr then
@@ -371,7 +369,7 @@
     #/sink-extfx-read-cexprs
       fault unique-name qualify text-input-stream output-stream
     #/fn unique-name qualify text-input-stream output-stream
-    #/unwrap (make-fault-internal) output-stream #/dissectfn (trivial)
+    #/unwrap output-stream #/dissectfn (trivial)
     
     #/next unique-name qualify text-input-stream n rev-results)))
 
@@ -420,7 +418,7 @@
               (on-consumption-succeeded in)
             #/sink-extfx-peek-whether-eof in #/fn in is-eof
             #/if is-eof
-              (then (make-fault-internal) in #/fn during after
+              (then in #/fn during after
                 (on-unexpected-eof-likely-extra-open
                   open-fault during after))
             #/w-loop next-possible-open
@@ -429,8 +427,7 @@
               
               (expect bracket-patterns
                 (cons open-and-close bracket-patterns)
-                (then (make-fault-internal) in
-                  on-unexpected-text-likely-extra-close)
+                (then in on-unexpected-text-likely-extra-close)
               #/dissect open-and-close
                 (list open-pattern close-pattern accepts-eof)
               #/
@@ -479,7 +476,7 @@
               overall-close-pattern
               overall-accepts-eof)
           #/fn in
-            (then (make-fault-internal) in on-success)))))
+            (then in on-success)))))
   #/fn during afterward on-this-situation
   #/on-this-situation during afterward))
 

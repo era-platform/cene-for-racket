@@ -1463,11 +1463,11 @@
 
 (define/contract
   (sink-extfx-sink-cexpr-sequence-output-stream-freshen
-    stream on-err then)
+    output-stream on-err then)
   (-> sink-cexpr-sequence-output-stream? (cenegetfx/c none/c)
     (-> sink-cexpr-sequence-output-stream? sink-extfx?)
     sink-extfx?)
-  (dissect stream (sink-cexpr-sequence-output-stream b)
+  (dissect output-stream (sink-cexpr-sequence-output-stream b)
   #/sink-extfx-later #/fn
   #/begin (assert-can-mutate!)
   ; TODO: See if this should be more thread-safe in some way.
@@ -1479,7 +1479,8 @@
       (box #/just id-and-state-and-handler))))
 
 (define/contract
-  (sink-extfx-sink-cexpr-sequence-output-stream-spend stream then)
+  (sink-extfx-sink-cexpr-sequence-output-stream-spend
+    output-stream then)
   (-> sink-cexpr-sequence-output-stream?
     (->
       (list/c
@@ -1488,7 +1489,7 @@
         (-> any/c sink-cexpr? (-> any/c sink-extfx?) sink-extfx?))
       sink-extfx?)
     sink-extfx?)
-  (dissect stream (sink-cexpr-sequence-output-stream b)
+  (dissect output-stream (sink-cexpr-sequence-output-stream b)
   #/sink-extfx-later #/fn
   #/begin (assert-can-mutate!)
   ; TODO: See if this should be more thread-safe in some way.
@@ -1498,42 +1499,73 @@
   #/then id-and-state-and-handler))
 
 (define/contract
+  (sink-extfx-sink-cexpr-sequence-output-stream-track-identity
+    output-stream then)
+  (-> sink-cexpr-sequence-output-stream?
+    (->
+      sink-cexpr-sequence-output-stream?
+      (-> sink-cexpr-sequence-output-stream? (cenegetfx/c none/c)
+        (-> sink-cexpr-sequence-output-stream? sink-extfx?)
+        sink-extfx?)
+      sink-extfx?)
+    sink-extfx?)
+  (sink-extfx-sink-cexpr-sequence-output-stream-freshen output-stream
+    (cenegetfx-cene-err (make-fault-internal) "Expected output-stream to be an unspent expression sequence output stream")
+  #/fn output-stream
+  #/sink-extfx-sink-cexpr-sequence-output-stream-spend output-stream
+  #/dissectfn (list id state on-cexpr)
+  #/then
+    (sink-cexpr-sequence-output-stream
+      (box #/just #/list id state on-cexpr))
+    (fn other-output-stream on-err then
+      (sink-extfx-sink-cexpr-sequence-output-stream-freshen
+        other-output-stream
+        (cenegetfx-cene-err (make-fault-internal) "Expected other-output-stream to be an unspent expression sequence output stream")
+      #/fn other-output-stream
+      #/sink-extfx-sink-cexpr-sequence-output-stream-spend
+        other-output-stream
+      #/dissectfn (list other-id other-state other-on-cexpr)
+      #/expect (eq? id other-id) #t
+        (sink-extfx-run-cenegetfx on-err)
+      #/then
+        (sink-cexpr-sequence-output-stream
+          (box #/just #/list other-id other-state other-on-cexpr))))))
+
+(define/contract
   (sink-extfx-make-cexpr-sequence-output-stream
-    fault unique-name state on-cexpr then)
+    unique-name state on-cexpr then)
   (->
-    sink-fault?
     sink-authorized-name?
     any/c
     (-> any/c sink-cexpr (-> any/c sink-extfx?) sink-extfx?)
     (-> sink-cexpr-sequence-output-stream?
-      (-> sink-fault? sink-cexpr-sequence-output-stream?
+      (-> sink-cexpr-sequence-output-stream?
         (-> any/c sink-extfx?)
         sink-extfx?)
       sink-extfx?)
     sink-extfx?)
   (sink-extfx-claim-and-split unique-name 0 #/dissectfn (list)
   #/w- identity (box #/trivial)
+  #/w- output-stream
+    (sink-cexpr-sequence-output-stream
+      (box #/just #/list identity state on-cexpr))
+  #/sink-extfx-sink-cexpr-sequence-output-stream-track-identity
+    output-stream
+  #/fn output-stream sink-extfx-verify-same-output-stream
   #/then
     (sink-cexpr-sequence-output-stream
       (box #/just #/list identity state on-cexpr))
-    (fn unwrap-fault output-stream then
-      (w- fault (make-fault-double-callback fault unwrap-fault)
-      #/sink-extfx-sink-cexpr-sequence-output-stream-freshen
+    (fn output-stream then
+      (sink-extfx-sink-cexpr-sequence-output-stream-freshen
         output-stream
         (cenegetfx-cene-err (make-fault-internal) "Expected output-stream to be an unspent expression sequence output stream")
+      #/fn output-stream
+      #/sink-extfx-verify-same-output-stream output-stream
+        (cenegetfx-cene-err (make-fault-internal) "Expected the expression sequence output stream given to an sink-extfx-make-cexpr-sequence-output-stream unwrapper to be a future incarnation of the same one created by that call")
       #/fn output-stream
       #/sink-extfx-sink-cexpr-sequence-output-stream-spend
         output-stream
       #/dissectfn (list found-id state on-cexpr)
-      #/expect (eq? identity found-id) #t
-        ; TODO: See if we can tweak the design of
-        ; `sink-extfx-make-cexpr-sequence-output-stream` in such a way
-        ; that its clients can specify their own error messages to
-        ; take the place of this one. Since we don't currently support
-        ; that, we're reporting this error message in such a way that
-        ; it makes sense for Cene's
-        ; `extfx-make-expr-sequence-output-stream` built-in.
-        (sink-extfx-cene-err fault "Expected the expression sequence output stream given to an extfx-make-expr-sequence-output-stream unwrapper to be a descendant of the same one created by that call")
       #/then state))))
 
 (define/contract (sink-extfx-cexpr-write output-stream cexpr then)
@@ -1551,11 +1583,12 @@
     id state on-cexpr))
 
 (define/contract
-  (sink-extfx-sink-text-input-stream-freshen stream on-err then)
+  (sink-extfx-sink-text-input-stream-freshen
+    text-input-stream on-err then)
   (-> sink-text-input-stream? (cenegetfx/c none/c)
     (-> sink-text-input-stream? sink-extfx?)
     sink-extfx?)
-  (dissect stream (sink-text-input-stream b)
+  (dissect text-input-stream (sink-text-input-stream b)
   #/sink-extfx-later #/fn
   #/begin (assert-can-mutate!)
   ; TODO: See if this should be more thread-safe in some way.
@@ -1576,6 +1609,37 @@
     (error "Tried to spend a text input stream that was already spent")
   #/begin (set-box! b (nothing))
   #/then input-port))
+
+(define/contract
+  (sink-extfx-sink-text-input-stream-track-identity
+    text-input-stream then)
+  (-> sink-text-input-stream?
+    (->
+      sink-text-input-stream?
+      (-> sink-text-input-stream? (cenegetfx/c none/c)
+        (-> sink-text-input-stream? sink-extfx?)
+        sink-extfx?)
+      sink-extfx?)
+    sink-extfx?)
+  (sink-extfx-sink-text-input-stream-freshen text-input-stream
+    (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
+  #/fn text-input-stream
+  #/sink-extfx-sink-text-input-stream-spend text-input-stream
+  #/fn input-port
+  #/then
+    (sink-text-input-stream #/box #/just input-port)
+    (fn other-text-input-stream on-err then
+      (sink-extfx-sink-text-input-stream-freshen
+        other-text-input-stream
+        (cenegetfx-cene-err (make-fault-internal) "Expected other-text-input-stream to be an unspent text input stream")
+      #/fn other-text-input-stream
+      #/sink-extfx-sink-text-input-stream-spend
+        other-text-input-stream
+      #/fn other-input-port
+      #/expect (eq? input-port other-input-port) #t
+        (sink-extfx-run-cenegetfx on-err)
+      #/then
+        (sink-text-input-stream #/box #/just other-input-port)))))
 
 (define/contract (sink-extfx-read-fault text-input-stream then)
   (-> sink-text-input-stream?
@@ -1643,7 +1707,7 @@
   (->
     sink-text-input-stream?
     (-> sink-text-input-stream?
-      (-> sink-fault? sink-text-input-stream? any/c sink-extfx?)
+      (-> sink-text-input-stream? any/c sink-extfx?)
       sink-extfx?)
     (-> sink-text-input-stream? sink-text-input-stream? any/c
       sink-extfx?)
@@ -1651,6 +1715,9 @@
   (sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected the original text input stream to be an unspent text input stream")
   #/fn text-input-stream
+  #/sink-extfx-sink-text-input-stream-track-identity
+    text-input-stream
+  #/fn text-input-stream sink-extfx-verify-same-text-input-stream
   #/sink-extfx-sink-text-input-stream-spend text-input-stream #/fn in
   #/let-values ([(pipe-in pipe-out) (make-pipe)])
   #/w- original-monitored-in
@@ -1663,14 +1730,15 @@
       ; peek-wrap
       (fn storage result result))
   #/body (sink-text-input-stream #/box #/just original-monitored-in)
-  #/fn fault text-input-stream auxiliary-result
+  #/fn text-input-stream auxiliary-result
   #/sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected the updated text input stream to be an unspent text input stream")
   #/fn text-input-stream
+  #/sink-extfx-verify-same-text-input-stream text-input-stream
+    (cenegetfx-cene-err (make-fault-internal) "Expected the result of a sink-extfx-sink-text-input-stream-split body to be a future incarnation of the body's original stream")
+  #/fn text-input-stream
   #/sink-extfx-sink-text-input-stream-spend text-input-stream
   #/fn modified-monitored-in
-  #/expect (eq? original-monitored-in modified-monitored-in) #t
-    (sink-extfx-cene-err fault "Expected the result of an extfx-text-input-stream-split body to be the a future incarnation of the body's original stream")
   #/begin (close-output-port pipe-out)
   #/then
     (sink-text-input-stream #/box #/just pipe-in)
@@ -2426,7 +2494,6 @@
   #/dissectfn
     (list unique-name-stream unique-name-writer unique-name-main)
   #/sink-extfx-make-cexpr-sequence-output-stream
-    (make-fault-internal)
     unique-name-stream
     unique-name-writer
     (fn unique-name-writer cexpr then
@@ -2459,7 +2526,7 @@
   #/sink-extfx-read-cexprs
     fault unique-name-main qualify text-input-stream output-stream
   #/fn unique-name-main qualify text-input-stream output-stream
-  #/unwrap (make-fault-internal) output-stream #/fn unique-name-writer
+  #/unwrap output-stream #/fn unique-name-writer
   #/sink-extfx-claim-and-split unique-name-writer 0 #/dissectfn (list)
   #/sink-extfx-read-top-level
     fault unique-name-main qualify text-input-stream))

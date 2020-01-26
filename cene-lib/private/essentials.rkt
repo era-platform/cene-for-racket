@@ -4421,7 +4421,8 @@
     #/cenegetfx-done
       (sink-extfx-sink-cexpr-sequence-output-stream-freshen
         output-stream
-        (cenegetfx-bind
+        (cenegetfx-later #/fn
+        #/cenegetfx-bind
           (cenegetfx-sink-call fault on-err
             (make-sink-struct csst-nil #/list))
         #/fn on-err-result
@@ -4429,6 +4430,47 @@
       #/fn output-stream
       #/verify-callback-extfx! fault #/cenegetfx-sink-call fault then
         output-stream)))
+  
+  (def-func-fault! "extfx-expr-sequence-output-stream-track-identity"
+    fault output-stream then
+    
+    (expect (sink-cexpr-sequence-output-stream? output-stream) #t
+      (cenegetfx-cene-err fault "Expected output-stream to be an expression sequence output stream")
+    #/cenegetfx-tag cssm-nil #/fn csst-nil
+    #/cenegetfx-done
+      (sink-extfx-sink-cexpr-sequence-output-stream-freshen
+        output-stream
+        (cenegetfx-cene-err fault "Expected output-stream to be an unspent expression sequence output stream")
+      #/fn output-stream
+      #/sink-extfx-sink-cexpr-sequence-output-stream-track-identity
+        output-stream
+      #/fn output-stream sink-extfx-verify-same-output-stream
+      #/verify-callback-extfx! fault #/cenegetfx-sink-call fault then
+        output-stream
+        (sink-fn-curried-fault 3
+          (fn fault other-output-stream on-err then
+            (expect
+              (sink-cexpr-sequence-output-stream? other-output-stream)
+              #t
+              (cenegetfx-cene-err fault "Expected other-output-stream to be an expression sequence output stream")
+            #/cenegetfx-tag cssm-nil #/fn csst-nil
+            #/cenegetfx-done
+              (sink-extfx-sink-cexpr-sequence-output-stream-freshen
+                other-output-stream
+                (cenegetfx-cene-err fault "Expected other-output-stream to be an unspent expression sequence output stream")
+              #/fn output-stream
+              #/sink-extfx-verify-same-output-stream
+                other-output-stream
+                (cenegetfx-later #/fn
+                #/cenegetfx-bind
+                  (cenegetfx-sink-call fault on-err
+                    (make-sink-struct csst-nil #/list))
+                #/fn on-err-result
+                #/cenegetfx-cene-err fault "Expected on-err to have no return value")
+              #/fn other-output-stream
+              #/verify-callback-extfx! fault
+                (cenegetfx-sink-call fault then
+                  other-output-stream))))))))
   
   (def-func-fault! "extfx-make-expr-sequence-output-stream"
     fault unique-name state on-expr then
@@ -4438,8 +4480,8 @@
     (expect (sink-authorized-name? unique-name) #t
       (cenegetfx-cene-err fault "Expected unique-name to be an authorized name")
     #/cenegetfx-done
-      (sink-extfx-make-cexpr-sequence-output-stream
-        fault
+      (sink-extfx-claim-freshen unique-name #/fn unique-name
+      #/sink-extfx-make-cexpr-sequence-output-stream
         unique-name
         state
         (fn state cexpr then
@@ -4450,12 +4492,13 @@
               (sink-fn-curried 1 #/fn state
                 (cenegetfx-done #/then state)))))
       #/fn output-stream unwrap
+      #/sink-extfx-sink-cexpr-sequence-output-stream-track-identity
+        output-stream
+      #/fn output-stream sink-extfx-verify-same-output-stream
       #/verify-callback-extfx! fault #/cenegetfx-sink-call fault then
         output-stream
         (sink-fn-curried-fault 2 #/fn unwrap-fault output-stream then
-        #/w- original-fault fault
-        #/w- fault
-          (make-fault-double-callback original-fault unwrap-fault)
+        #/w- fault (make-fault-double-callback fault unwrap-fault)
         #/expect (sink-cexpr-sequence-output-stream? output-stream) #t
           (cenegetfx-cene-err fault "Expected output-stream to be an expression sequence output stream")
         #/cenegetfx-done
@@ -4463,7 +4506,10 @@
             output-stream
             (cenegetfx-cene-err fault "Expected output-stream to be an unspent expression sequence output stream")
           #/fn output-stream
-          #/unwrap original-fault output-stream #/fn state
+          #/sink-extfx-verify-same-output-stream output-stream
+            (cenegetfx-cene-err fault "Expected the expression sequence output stream given to an extfx-make-expr-sequence-output-stream unwrapper to be a future incarnation of the same one created by that call")
+          #/fn output-stream
+          #/unwrap output-stream #/fn state
           #/verify-callback-extfx! fault
             (cenegetfx-sink-call fault then state))))))
   
@@ -4504,7 +4550,8 @@
     #/cenegetfx-tag cssm-nil #/fn csst-nil
     #/cenegetfx-done
       (sink-extfx-sink-text-input-stream-freshen input-stream
-        (cenegetfx-bind
+        (cenegetfx-later #/fn
+        #/cenegetfx-bind
           (cenegetfx-sink-call fault on-err
             (make-sink-struct csst-nil #/list))
         #/fn on-err-result
@@ -4512,6 +4559,42 @@
       #/fn input-stream
       #/verify-callback-extfx! fault #/cenegetfx-sink-call fault then
         input-stream)))
+  
+  (def-func-fault! "extfx-text-input-stream-track-identity"
+    fault input-stream then
+    
+    (expect (sink-text-input-stream? input-stream) #t
+      (cenegetfx-cene-err fault "Expected input-stream to be a text input stream")
+    #/cenegetfx-tag cssm-nil #/fn csst-nil
+    #/cenegetfx-done
+      (sink-extfx-sink-text-input-stream-freshen input-stream
+        (cenegetfx-cene-err fault "Expected input-stream to be an unspent text input stream")
+      #/fn input-stream
+      #/sink-extfx-sink-text-input-stream-track-identity input-stream
+      #/fn input-stream sink-extfx-verify-same-input-stream
+      #/verify-callback-extfx! fault #/cenegetfx-sink-call fault then
+        input-stream
+        (sink-fn-curried-fault 3
+          (fn fault other-input-stream on-err then
+            (expect (sink-text-input-stream? other-input-stream) #t
+              (cenegetfx-cene-err fault "Expected other-input-stream to be a text input stream")
+            #/cenegetfx-tag cssm-nil #/fn csst-nil
+            #/cenegetfx-done
+              (sink-extfx-sink-text-input-stream-freshen
+                other-input-stream
+                (cenegetfx-cene-err fault "Expected other-input-stream to be an unspent text input stream")
+              #/fn input-stream
+              #/sink-extfx-verify-same-input-stream other-input-stream
+                (cenegetfx-later #/fn
+                #/cenegetfx-bind
+                  (cenegetfx-sink-call fault on-err
+                    (make-sink-struct csst-nil #/list))
+                #/fn on-err-result
+                #/cenegetfx-cene-err fault "Expected on-err to have no return value")
+              #/fn other-input-stream
+              #/verify-callback-extfx! fault
+                (cenegetfx-sink-call fault then
+                  other-input-stream))))))))
   
   (def-func-fault! "extfx-read-eof" fault input-stream on-eof then
     (expect (sink-text-input-stream? input-stream) #t
@@ -4535,6 +4618,8 @@
       (sink-extfx-sink-text-input-stream-freshen input-stream
         (cenegetfx-cene-err fault "Expected the original input stream to be an unspent text input stream")
       #/fn input-stream
+      #/sink-extfx-sink-text-input-stream-track-identity input-stream
+      #/fn text-input-stream sink-extfx-verify-same-input-stream
       #/sink-extfx-sink-text-input-stream-split input-stream
         (fn input-stream then
           (verify-callback-extfx! fault
@@ -4546,8 +4631,10 @@
           #/sink-extfx-sink-text-input-stream-freshen input-stream
             (cenegetfx-cene-err fault "Expected the updated input stream to be an unspent text input stream")
           #/fn input-stream
-          #/cenegetfx-done
-            (then fault input-stream auxiliary-result)))
+          #/sink-extfx-verify-same-input-stream input-stream
+            (cenegetfx-cene-err fault "Expected the result of an extfx-text-input-stream-split body to be a future incarnation of the body's original stream")
+          #/fn input-stream
+          #/cenegetfx-done #/then input-stream auxiliary-result))
       #/fn during-input-stream afterward-input-stream auxiliary-result
       #/verify-callback-extfx! fault #/cenegetfx-sink-call fault then
         during-input-stream afterward-input-stream auxiliary-result)))
