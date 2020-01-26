@@ -402,83 +402,78 @@
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
   #/fn text-input-stream
   #/sink-extfx-sink-text-input-stream-split text-input-stream
-    (fn in then
-      (w-loop next-consumption in in brackets-expected (list)
-        (sink-extfx-optimized-textpat-read-located
-          non-bracket-characters-pattern in
+  #/fn in finish-split
+  #/w-loop next-consumption in in brackets-expected (list)
+    (sink-extfx-optimized-textpat-read-located
+      non-bracket-characters-pattern in
+    #/fn in maybe-str
+    #/expect maybe-str (just _)
+      (error "Expected non-bracket-characters-pattern to always match")
+    #/w- try-to-consume-non-eof
+      (fn in open-fault close-pattern on-consumption-succeeded
+        (sink-extfx-optimized-textpat-read-located close-pattern in
         #/fn in maybe-str
-        #/expect maybe-str (just _)
-          (error "Expected non-bracket-characters-pattern to always match")
-        #/w- try-to-consume-non-eof
-          (fn in open-fault close-pattern on-consumption-succeeded
-            (sink-extfx-optimized-textpat-read-located
-              close-pattern in
-            #/fn in maybe-str
-            #/mat maybe-str (just _)
-              (on-consumption-succeeded in)
-            #/sink-extfx-peek-whether-eof in #/fn in is-eof
-            #/if is-eof
-              (then in #/fn during after
-                (on-unexpected-eof-likely-extra-open
-                  open-fault during after))
-            #/w-loop next-possible-open
-              in in
-              bracket-patterns bracket-patterns
+        #/mat maybe-str (just _)
+          (on-consumption-succeeded in)
+        #/sink-extfx-peek-whether-eof in #/fn in is-eof
+        #/if is-eof
+          (finish-split in #/fn during after
+            (on-unexpected-eof-likely-extra-open
+              open-fault during after))
+        #/w-loop next-possible-open
+          in in
+          bracket-patterns bracket-patterns
+          
+          (expect bracket-patterns
+            (cons open-and-close bracket-patterns)
+            (finish-split in on-unexpected-text-likely-extra-close)
+          #/dissect open-and-close
+            (list open-pattern close-pattern accepts-eof)
+          #/
+            (fn then
               
-              (expect bracket-patterns
-                (cons open-and-close bracket-patterns)
-                (then in on-unexpected-text-likely-extra-close)
-              #/dissect open-and-close
-                (list open-pattern close-pattern accepts-eof)
-              #/
-                (fn then
-                  
-                  ; If the opening bracket we're attempting to read
-                  ; accepts end-of-file as its closing bracket, then
-                  ; unmatched opening bracket errors will be reported
-                  ; in terms of the existing bracket.
-                  (if accepts-eof
-                    (then in open-fault)
-                  
-                  ; Otherwise, they'll be reported in terms of the
-                  ; source location just before the open bracket we're
-                  ; about to read, so we capture that source location
-                  ; now.
-                  #/sink-extfx-read-fault in then))
-              #/fn in open-fault
-              #/sink-extfx-optimized-textpat-read-located
-                open-pattern in
-              #/fn in maybe-str
-              #/mat maybe-str (just _)
-                (next-consumption in
-                  (cons (list open-fault close-pattern accepts-eof)
-                    brackets-expected))
-              #/next-possible-open in bracket-patterns)))
-        #/w- try-to-consume
-          (fn in bracket-expected on-consumption-succeeded
-            (dissect bracket-expected
-              (list open-fault close-pattern accepts-eof)
-            #/if accepts-eof
-              (sink-extfx-peek-whether-eof in #/fn in is-eof
-              #/if is-eof
-                (on-consumption-succeeded in)
-              #/try-to-consume-non-eof in open-fault close-pattern
-                on-consumption-succeeded)
-              (try-to-consume-non-eof in open-fault close-pattern
-                on-consumption-succeeded)))
-        #/mat brackets-expected
-          (cons first-bracket-expected brackets-expected)
-          (try-to-consume in first-bracket-expected #/fn in
-            (next-consumption in brackets-expected))
-          (try-to-consume in
-            (list
-              overall-open-fault
-              overall-close-pattern
-              overall-accepts-eof)
-          #/fn in
-            (then in on-success)))))
-  #/fn during afterward on-this-situation
-  #/on-this-situation during afterward))
+              ; If the opening bracket we're attempting to read
+              ; accepts end-of-file as its closing bracket, then
+              ; unmatched opening bracket errors will be reported in
+              ; terms of the existing bracket.
+              (if accepts-eof
+                (then in open-fault)
+              
+              ; Otherwise, they'll be reported in terms of the source
+              ; location just before the open bracket we're about to
+              ; read, so we capture that source location now.
+              #/sink-extfx-read-fault in then))
+          #/fn in open-fault
+          #/sink-extfx-optimized-textpat-read-located open-pattern in
+          #/fn in maybe-str
+          #/mat maybe-str (just _)
+            (next-consumption in
+              (cons (list open-fault close-pattern accepts-eof)
+                brackets-expected))
+          #/next-possible-open in bracket-patterns)))
+    #/w- try-to-consume
+      (fn in bracket-expected on-consumption-succeeded
+        (dissect bracket-expected
+          (list open-fault close-pattern accepts-eof)
+        #/if accepts-eof
+          (sink-extfx-peek-whether-eof in #/fn in is-eof
+          #/if is-eof
+            (on-consumption-succeeded in)
+          #/try-to-consume-non-eof in open-fault close-pattern
+            on-consumption-succeeded)
+          (try-to-consume-non-eof in open-fault close-pattern
+            on-consumption-succeeded)))
+    #/mat brackets-expected
+      (cons first-bracket-expected brackets-expected)
+      (try-to-consume in first-bracket-expected #/fn in
+        (next-consumption in brackets-expected))
+      (try-to-consume in
+        (list
+          overall-open-fault
+          overall-close-pattern
+          overall-accepts-eof)
+      #/fn in
+        (finish-split in on-success)))))
 
 (define
   sink-extfx-sink-text-input-stream-split-after-matching-brackets-non-bracket-characters-pat

@@ -1703,13 +1703,14 @@
 
 (define/contract
   (sink-extfx-sink-text-input-stream-split
-    text-input-stream body then)
+    text-input-stream body)
   (->
     sink-text-input-stream?
     (-> sink-text-input-stream?
-      (-> sink-text-input-stream? any/c sink-extfx?)
-      sink-extfx?)
-    (-> sink-text-input-stream? sink-text-input-stream? any/c
+      (-> sink-text-input-stream?
+        (-> sink-text-input-stream? sink-text-input-stream?
+          sink-extfx?)
+        sink-extfx?)
       sink-extfx?)
     sink-extfx?)
   (sink-extfx-sink-text-input-stream-freshen text-input-stream
@@ -1730,20 +1731,19 @@
       ; peek-wrap
       (fn storage result result))
   #/body (sink-text-input-stream #/box #/just original-monitored-in)
-  #/fn text-input-stream auxiliary-result
+  #/fn text-input-stream then
   #/sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected the updated text input stream to be an unspent text input stream")
   #/fn text-input-stream
   #/sink-extfx-verify-same-text-input-stream text-input-stream
-    (cenegetfx-cene-err (make-fault-internal) "Expected the result of a sink-extfx-sink-text-input-stream-split body to be a future incarnation of the body's original stream")
+    (cenegetfx-cene-err (make-fault-internal) "Expected the resulting text input stream of a sink-extfx-sink-text-input-stream-split body to be a future incarnation of the body's original stream")
   #/fn text-input-stream
   #/sink-extfx-sink-text-input-stream-spend text-input-stream
   #/fn modified-monitored-in
   #/begin (close-output-port pipe-out)
   #/then
     (sink-text-input-stream #/box #/just pipe-in)
-    (sink-text-input-stream #/box #/just in)
-    auxiliary-result))
+    (sink-text-input-stream #/box #/just in)))
 
 (define sink-extfx-peek-whether-eof-pat
   (optimize-textpat #/textpat-lookahead #/textpat-one))

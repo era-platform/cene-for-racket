@@ -4630,7 +4630,7 @@
         input-stream)))
   
   (def-func-fault! "extfx-text-input-stream-split"
-    fault input-stream body then
+    fault input-stream body
     
     (expect (sink-text-input-stream? input-stream) #t
       (cenegetfx-cene-err fault "Expected the original input stream to be a text input stream")
@@ -4641,23 +4641,22 @@
       #/sink-extfx-sink-text-input-stream-track-identity input-stream
       #/fn text-input-stream sink-extfx-verify-same-input-stream
       #/sink-extfx-sink-text-input-stream-split input-stream
-        (fn input-stream then
-          (verify-callback-extfx! fault
-          #/cenegetfx-sink-call fault body input-stream
-          #/sink-fn-curried-fault 2
-          #/fn fault input-stream auxiliary-result
-          #/expect (sink-text-input-stream? input-stream) #t
-            (cenegetfx-cene-err fault "Expected the updated input stream to be a text input stream")
-          #/sink-extfx-sink-text-input-stream-freshen input-stream
-            (cenegetfx-cene-err fault "Expected the updated input stream to be an unspent text input stream")
-          #/fn input-stream
-          #/sink-extfx-verify-same-input-stream input-stream
-            (cenegetfx-cene-err fault "Expected the result of an extfx-text-input-stream-split body to be a future incarnation of the body's original stream")
-          #/fn input-stream
-          #/cenegetfx-done #/then input-stream auxiliary-result))
-      #/fn during-input-stream afterward-input-stream auxiliary-result
+      #/fn input-stream finish-split
+      #/verify-callback-extfx! fault
+      #/cenegetfx-sink-call fault body input-stream
+      #/sink-fn-curried-fault 2 #/fn fault input-stream then
+      #/expect (sink-text-input-stream? input-stream) #t
+        (cenegetfx-cene-err fault "Expected the updated input stream to be a text input stream")
+      #/sink-extfx-sink-text-input-stream-freshen input-stream
+        (cenegetfx-cene-err fault "Expected the updated input stream to be an unspent text input stream")
+      #/fn input-stream
+      #/sink-extfx-verify-same-input-stream input-stream
+        (cenegetfx-cene-err fault "Expected the resulting input stream of an extfx-text-input-stream-split body to be a future incarnation of the body's original stream")
+      #/fn input-stream
+      #/finish-split input-stream
+      #/fn during-input-stream afterward-input-stream
       #/verify-callback-extfx! fault #/cenegetfx-sink-call fault then
-        during-input-stream afterward-input-stream auxiliary-result)))
+        during-input-stream afterward-input-stream)))
   
   ; TODO BUILTINS: Make sure we have a sufficient set of operations
   ; for manipulating `sink-text-input-stream` values. We don't even
