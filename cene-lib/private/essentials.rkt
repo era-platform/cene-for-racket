@@ -444,14 +444,13 @@
   (-> sink? sink-perffx? (cenegetfx/c sink-mobile?) sink-mobile?)
   (make-sink-mobile-perffx value perffx-expr-perffx
     (cenegetfx-bind cenegetfx-mobile-mobile #/fn mobile-mobile
-    #/cenegetfx-sink-mobile-built-in-call (make-fault-internal)
-      "perffx-done"
+    #/cenegetfx-sink-mobile-built-in-call "perffx-done"
       mobile-mobile)))
 
 (define/contract
   (sink-mobile-construct-nullary-as-someone
-    fault mobile-innate-main-tag-entry)
-  (-> sink-fault? sink-mobile? sink-mobile?)
+    mobile-innate-main-tag-entry)
+  (-> sink-mobile? sink-mobile?)
   (dissect mobile-innate-main-tag-entry
     (sink-mobile innate-main-tag-entry _ _)
   #/expect innate-main-tag-entry
@@ -464,14 +463,14 @@
     (make-sink-struct (list innate-main-tag-entry) (list))
     (sink-perffx-done #/sink-cexpr-perffx-done
       (sink-cexpr-construct innate-main-tag-entry #/list))
-    (cenegetfx-sink-mobile-built-in-call fault
+    (cenegetfx-sink-mobile-built-in-call
       "mobile-construct-nullary-as-someone"
       mobile-innate-main-tag-entry)))
 
 (define/contract
-  (sink-mobile-built-in-construct-nullary fault main-tag-string)
-  (-> sink-fault? immutable-string? sink-mobile?)
-  (sink-mobile-construct-nullary-as-someone fault
+  (sink-mobile-built-in-construct-nullary main-tag-string)
+  (-> immutable-string? sink-mobile?)
+  (sink-mobile-construct-nullary-as-someone
     ; TODO MOBILE: Stop using `sink-mobile-reified` here, and instead
     ; express the name using a module import so that compilers can
     ; anticipate having to serialize this kind of value.
@@ -487,8 +486,7 @@
       (sink-perffx-done #/sink-cexpr-perffx-done
         (sink-cexpr-reified value))
       (cenegetfx-later #/fn
-        (cenegetfx-sink-mobile-built-in-call (make-fault-internal)
-          "mobile-reified"
+        (cenegetfx-sink-mobile-built-in-call "mobile-reified"
           (next))))))
 
 (define/contract
@@ -514,7 +512,7 @@
         #/sink-cexpr-perffx-done
           (sink-cexpr-call-binary (make-fault-internal) expr-func
             expr-arg))))
-    (cenegetfx-sink-mobile-built-in-call fault "mobile-call-binary"
+    (cenegetfx-sink-mobile-built-in-call "mobile-call-binary"
       mobile-func mobile-arg)))
 
 (define/contract
@@ -533,19 +531,18 @@
 
 (define/contract
   (cenegetfx-sink-mobile-built-in-call
-    fault built-in-name-string . mobile-args)
-  (->* (sink-fault? immutable-string?) #:rest (listof sink-mobile?)
+    built-in-name-string . mobile-args)
+  (->* (immutable-string?) #:rest (listof sink-mobile?)
     (cenegetfx/c sink-mobile?))
-  (cenegetfx-sink-mobile-call-list fault
-    (sink-mobile-built-in-construct-nullary
-      fault built-in-name-string)
+  (cenegetfx-sink-mobile-call-list (make-fault-internal)
+    (sink-mobile-built-in-construct-nullary built-in-name-string)
     (expect mobile-args (list) mobile-args
       ; NOTE: Nullary built-in functions work differently. We have to
       ; pass them `(nil)`. Yes, this means
       ; `cenegetfx-sink-mobile-built-in-call` can be used to call a
       ; built-in unary function as though it were nullary, but we just
       ; don't do that.
-      (list #/sink-mobile-built-in-construct-nullary fault "nil"))))
+      (list #/sink-mobile-built-in-construct-nullary "nil"))))
 
 (define/contract
   (sink-cexpr-built-in-construct-nullary main-tag-string)
@@ -3107,7 +3104,7 @@
     #/expect user-must-be (sink-you-must-be-someone)
       (cenegetfx-cene-err fault "Expected mobile-innate-main-tag-entry to be a mobile innate main tag entry where the client of the tag could be anyone")
     #/cenegetfx-done #/sink-mobile-construct-nullary-as-someone
-      fault mobile-innate-main-tag-entry))
+      mobile-innate-main-tag-entry))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-macro! "construct" #/fn
@@ -3788,25 +3785,28 @@
   ; won't support this operation, and those that do might have it
   ; cause run time errors.
   ;
-  (def-func-fault! "perffx-mobile-evaluated" fault mobile-expr
-    (expect mobile-expr (sink-mobile expr _ _)
-      (cenegetfx-cene-err fault "Expected mobile-expr to be a mobile value")
+  (def-func-fault! "perffx-mobile-evaluated-blame"
+    caller-fault eval-fault mobile-expr
+    
+    (expect (sink-fault? eval-fault) #t
+      (cenegetfx-cene-err caller-fault "Expected eval-blame to be a blame value")
+    #/expect mobile-expr (sink-mobile expr _ _)
+      (cenegetfx-cene-err caller-fault "Expected mobile-expr to be a mobile value")
     #/expect expr (sink-cexpr expr)
-      (cenegetfx-cene-err fault "Expected mobile-expr to be a mobile expression")
+      (cenegetfx-cene-err caller-fault "Expected mobile-expr to be a mobile expression")
     #/expect (cexpr-is-closed? expr) #t
-      (cenegetfx-cene-err fault "Expected mobile-expr to be a mobile expression which had all the information it needed for evaluation")
-    ; TODO: See if we can make a variation of this that passes an
-    ; `explicit-fault` parameter to `cenegetfx-cexpr-eval`.
-    #/cenegetfx-bind (cenegetfx-cexpr-eval fault expr)
+      (cenegetfx-cene-err caller-fault "Expected mobile-expr to be a mobile expression which had all the information it needed for evaluation")
+    #/cenegetfx-bind (cenegetfx-cexpr-eval eval-fault expr)
     #/fn perffx-value
     #/expect (sink-perffx? perffx-value) #t
-      (cenegetfx-cene-err fault "Expected the evaluation result of mobile-expr to be a perffx effectful computation")
+      (cenegetfx-cene-err caller-fault "Expected the evaluation result of mobile-expr to be a perffx effectful computation")
     #/cenegetfx-done
       (sink-perffx-bind perffx-value #/fn value
       #/sink-perffx-done #/make-sink-mobile-perffx value
         (sink-perffx-done expr)
-        (cenegetfx-sink-mobile-built-in-call fault
-          "perffx-mobile-evaluated"
+        (cenegetfx-sink-mobile-built-in-call
+          "perffx-mobile-evaluated-blame"
+          (sink-mobile-reified #/make-fault-internal)
           mobile-expr))))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
@@ -3817,20 +3817,23 @@
   ; won't support this operation, and those that do might have it
   ; cause run time errors.
   ;
-  (def-func-fault! "pure-mobile-evaluated" fault mobile-expr
-    (expect mobile-expr (sink-mobile expr _ _)
-      (cenegetfx-cene-err fault "Expected mobile-expr to be a mobile value")
+  (def-func-fault! "pure-mobile-evaluated-blame"
+    caller-fault eval-fault mobile-expr
+    
+    (expect (sink-fault? eval-fault) #t
+      (cenegetfx-cene-err caller-fault "Expected eval-blame to be a blame value")
+    #/expect mobile-expr (sink-mobile expr _ _)
+      (cenegetfx-cene-err caller-fault "Expected mobile-expr to be a mobile value")
     #/expect expr (sink-cexpr expr)
-      (cenegetfx-cene-err fault "Expected mobile-expr to be a mobile expression")
+      (cenegetfx-cene-err caller-fault "Expected mobile-expr to be a mobile expression")
     #/expect (cexpr-is-closed? expr) #t
-      (cenegetfx-cene-err fault "Expected mobile-expr to be a mobile expression which had all the information it needed for evaluation")
-    ; TODO: See if we can make a variation of this that passes an
-    ; `explicit-fault` parameter to `cenegetfx-cexpr-eval`.
-    #/cenegetfx-bind (cenegetfx-cexpr-eval fault expr) #/fn value
+      (cenegetfx-cene-err caller-fault "Expected mobile-expr to be a mobile expression which had all the information it needed for evaluation")
+    #/cenegetfx-bind (cenegetfx-cexpr-eval eval-fault expr) #/fn value
     #/cenegetfx-done #/make-sink-mobile value
       (sink-perffx-done #/sink-cexpr-perffx-done expr)
-      (cenegetfx-sink-mobile-built-in-call fault
-        "pure-mobile-evaluated"
+      (cenegetfx-sink-mobile-built-in-call
+        "pure-mobile-evaluated-blame"
+        (sink-mobile-reified #/make-fault-internal)
         mobile-expr)))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
@@ -3950,12 +3953,14 @@
   ; won't support this operation, and those that do might have it
   ; cause run time errors.
   ;
-  (def-func-fault! "expr-eval-blame" caller-fault explicit-fault expr
-    (expect expr (sink-cexpr expr)
+  (def-func-fault! "expr-eval-blame" caller-fault eval-fault expr
+    (expect (sink-fault? eval-fault) #t
+      (cenegetfx-cene-err caller-fault "Expected eval-blame to be a blame value")
+    #/expect expr (sink-cexpr expr)
       (cenegetfx-cene-err caller-fault "Expected expr to be an expression")
     #/expect (cexpr-is-closed? expr) #t
       (cenegetfx-cene-err caller-fault "Expected expr to be an expression which had all the information it needed for evaluation")
-    #/cenegetfx-cexpr-eval explicit-fault expr))
+    #/cenegetfx-cexpr-eval eval-fault expr))
   
   ; TODO BUILTINS: Consider implementing something like the following
   ; built-ins from the JavaScript version of Cene. We can probably
@@ -4816,7 +4821,7 @@
       #/expect (cexpr-is-closed? func-expr) #t
         (sink-extfx-cene-err fault "Expected the function body of a prelude-to-everyone-def-func-blame form to have no free variables")
       #/sink-extfx-run-cenegetfx
-        (cenegetfx-cexpr-eval (make-fault-internal) func-expr)
+        (cenegetfx-cexpr-eval fault func-expr)
       #/fn func
       #/then unique-name qualify text-input-stream
         (sink-cexpr-built-in-call "directive"
