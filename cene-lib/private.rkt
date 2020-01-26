@@ -1986,6 +1986,11 @@
     output-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected output-stream to be an unspent expression sequence output stream")
   #/fn output-stream
+  #/sink-extfx-sink-text-input-stream-track-identity text-input-stream
+  #/fn text-input-stream sink-extfx-verify-same-text-input-stream
+  #/sink-extfx-sink-cexpr-sequence-output-stream-track-identity
+    output-stream
+  #/fn output-stream sink-extfx-verify-same-output-stream
   #/sink-extfx-run-cenegetfx
     (cenegetfx-sink-call fault op-impl
       unique-name qualify text-input-stream output-stream
@@ -2005,6 +2010,12 @@
     #/sink-extfx-sink-cexpr-sequence-output-stream-freshen
       output-stream
       (cenegetfx-cene-err fault "Expected the expression sequence output stream of a macro's callback results to be an unspent expression sequence output stream")
+    #/fn output-stream
+    #/sink-extfx-verify-same-text-input-stream text-input-stream
+      (cenegetfx-cene-err fault "Expected the text input stream of a macro's callback results to be a future incarnation of the macro's original input stream")
+    #/fn text-input-stream
+    #/sink-extfx-verify-same-output-stream output-stream
+      (cenegetfx-cene-err fault "Expected the expression sequence output stream of a macro's callback results to be a future incarnation of the macro's original output stream")
     #/fn output-stream
     #/then unique-name qualify text-input-stream output-stream)
   #/fn result

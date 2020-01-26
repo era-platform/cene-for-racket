@@ -1816,9 +1816,29 @@
           output-stream
           (cenegetfx-cene-err fault "Expected output-stream to be an unspent expression sequence output stream")
         #/fn output-stream
+        #/sink-extfx-sink-text-input-stream-track-identity
+          text-input-stream
+        #/fn
+          text-input-stream sink-extfx-verify-same-text-input-stream
+        #/sink-extfx-sink-cexpr-sequence-output-stream-track-identity
+          output-stream
+        #/fn output-stream sink-extfx-verify-same-output-stream
         #/body
           fault unique-name qualify text-input-stream output-stream
         #/fn unique-name qualify text-input-stream output-stream
+        #/sink-extfx-sink-text-input-stream-freshen text-input-stream
+          (cenegetfx-cene-err (make-fault-internal) "Expected a macro-impl body's resulting text input stream to be an unspent text input stream")
+        #/fn text-input-stream
+        #/sink-extfx-sink-cexpr-sequence-output-stream-freshen
+          output-stream
+          (cenegetfx-cene-err (make-fault-internal) "Expected a macro-impl body's resulting output stream to be an unspent expression sequence output stream")
+        #/fn output-stream
+        #/sink-extfx-verify-same-text-input-stream text-input-stream
+          (cenegetfx-cene-err (make-fault-internal) "Expected a macro-impl body's resulting input stream to be a future incarnation of the body's original input stream")
+        #/fn text-input-stream
+        #/sink-extfx-verify-same-output-stream output-stream
+          (cenegetfx-cene-err (make-fault-internal) "Expected a macro-impl body's resulting output stream to be a future incarnation of the body's original output stream")
+        #/fn output-stream
         #/sink-extfx-run-cenegetfx
           (cenegetfx-sink-call fault then
             unique-name qualify text-input-stream output-stream)
