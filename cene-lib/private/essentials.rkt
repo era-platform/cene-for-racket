@@ -1701,10 +1701,8 @@
 ; in some kind of CLI entrypoint or something.
 
 (define/contract
-  (sink-extfx-init-package
-    fault unique-name cenegetfx-qualify-for-package)
+  (sink-extfx-init-package unique-name cenegetfx-qualify-for-package)
   (->
-    sink-fault?
     sink-authorized-name?
     (-> sink-name? #/cenegetfx/c sink-authorized-name?)
     sink-extfx?)
@@ -4468,8 +4466,9 @@
       #/verify-callback-extfx! fault #/cenegetfx-sink-call fault then
         output-stream
         (sink-fn-curried-fault 3
-          (fn fault other-output-stream on-err then
-            (expect
+          (fn verify-fault other-output-stream on-err then
+            (w- fault (make-fault-double-callback fault verify-fault)
+            #/expect
               (sink-cexpr-sequence-output-stream? other-output-stream)
               #t
               (cenegetfx-cene-err fault "Expected other-output-stream to be an expression sequence output stream")
@@ -4595,8 +4594,9 @@
       #/verify-callback-extfx! fault #/cenegetfx-sink-call fault then
         input-stream
         (sink-fn-curried-fault 3
-          (fn fault other-input-stream on-err then
-            (expect (sink-text-input-stream? other-input-stream) #t
+          (fn verify-fault other-input-stream on-err then
+            (w- fault (make-fault-double-callback fault verify-fault)
+            #/expect (sink-text-input-stream? other-input-stream) #t
               (cenegetfx-cene-err fault "Expected other-input-stream to be a text input stream")
             #/cenegetfx-tag cssm-nil #/fn csst-nil
             #/cenegetfx-done
@@ -4644,7 +4644,9 @@
       #/fn input-stream finish-split
       #/verify-callback-extfx! fault
       #/cenegetfx-sink-call fault body input-stream
-      #/sink-fn-curried-fault 2 #/fn fault input-stream then
+      #/sink-fn-curried-fault 2
+      #/fn finish-split-fault input-stream then
+      #/w- fault (make-fault-double-callback fault finish-split-fault)
       #/expect (sink-text-input-stream? input-stream) #t
         (cenegetfx-cene-err fault "Expected the updated input stream to be a text input stream")
       #/sink-extfx-sink-text-input-stream-freshen input-stream
@@ -4727,7 +4729,7 @@
       (cenegetfx-cene-err fault "Expected unique-name to be an authorized name")
     #/cenegetfx-done
       (sink-extfx-claim-freshen unique-name #/fn unique-name
-      #/sink-extfx-init-package fault unique-name #/fn name
+      #/sink-extfx-init-package unique-name #/fn name
         (cenegetfx-bind (cenegetfx-sink-call fault qualify name)
         #/fn qualified-name
         #/expect (sink-authorized-name? qualified-name) #t
@@ -4773,8 +4775,10 @@
         #/fn unique-name cenegetfx-qualify
           (verify-callback-extfx! fault
             (cenegetfx-sink-call fault step unique-name
-              (sink-fn-curried-fault 1 #/fn fault name
-                (expect (sink-name? name) #t
+              (sink-fn-curried-fault 1 #/fn step-fault name
+                (w- fault
+                  (make-fault-double-callback fault step-fault)
+                #/expect (sink-name? name) #t
                   (cenegetfx-cene-err fault "Expected the input to an extfx-add-init-package-step qualify function to be a name")
                 #/cenegetfx-qualify name))))))))
   
@@ -4878,7 +4882,7 @@
   ; this will automatically cause that step to run for the prelude
   ; itself, so the prelude can use it right away.
   (add-init-essentials-step! #/fn unique-name
-    (sink-extfx-init-package root-fault unique-name
+    (sink-extfx-init-package unique-name
       (fn name #/cenegetfx-qualify-for-prelude name)))
   
   ; Run the prelude code.

@@ -67,7 +67,7 @@
         (fn name #/sink-authorized-name-subname name unique-name-root)
       #/sink-extfx-fuse
         (sink-extfx-init-essentials fault unique-name-essentials)
-        (sink-extfx-init-package fault unique-name-package #/fn name
+        (sink-extfx-init-package unique-name-package #/fn name
           (cenegetfx-done #/qualify name))
         (sink-extfx-run-string
           fault unique-name-sample qualify code-string)
