@@ -1865,8 +1865,9 @@
   
   (define/contract
     (sink-extfx-def-func-impl
-      unique-name main-tag-entry proj-tag-names impl-code)
+      eval-fault unique-name main-tag-entry proj-tag-names impl-code)
     (->
+      sink-fault?
       sink-authorized-name?
       sink-innate-main-tag-entry?
       table?
@@ -1883,7 +1884,7 @@
         main-tag-entry proj-tag-names)
     #/fn target-name-for-value
     #/sink-extfx-run-cenegetfx
-      (cenegetfx-cexpr-eval (make-fault-internal) impl-code)
+      (cenegetfx-cexpr-eval eval-fault impl-code)
     #/fn impl-value
     #/sink-extfx-fuse
       (sink-extfx-def-value-for-lang-impl
@@ -1901,7 +1902,7 @@
     (-> sink-authorized-name? sink-innate-main-tag-entry? table? sink?
       sink-extfx?)
     (sink-extfx-claim-freshen unique-name #/fn unique-name
-    #/sink-extfx-def-func-impl
+    #/sink-extfx-def-func-impl (make-fault-internal)
       unique-name main-tag-entry proj-tag-names
       (cexpr-reified impl-value)))
   
@@ -4425,6 +4426,7 @@
     #/cenegetfx-done
       (sink-extfx-claim-freshen unique-name #/fn unique-name
       #/sink-extfx-def-func-impl
+        fault
         unique-name
         main-tag-entry
         (table-v-map proj-tag-names #/dissectfn _ #/trivial)
