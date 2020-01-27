@@ -40,3 +40,4 @@
 (provide sink-extfx-init-package)
 (provide sink-extfx-run-string)
 (provide sink-name-of-racket-string)
+(provide sink-qualify)

@@ -231,6 +231,8 @@
     [errb implicit-bl /str-prim:Expected explicit-bl to be a blame value]
   /cast (is-authorized-name unique-name) yep -
     [errb implicit-bl /str-prim:Expected unique-name to be an authorized name]
+  /cast (is-qualify qualify) yep -
+    [errb implicit-bl /str-prim:Expected qualify to be a qualify value]
   /cast (is-text-input-stream text-input-stream) yep -
     [errb implicit-bl /str-prim:Expected text-input-stream to be a text input stream]
   /cast (is-nat n) yep -
@@ -282,7 +284,8 @@
   /extfx-add-init-package-step unique-name
   /fn unique-name qualify-for-package
     (extfx-claim unique-name /fn -
-    /extfx-put (c qualify-for-package target-name) dex value)))
+    /extfx-put (qualify-call qualify-for-package target-name)
+      dex value)))
 
 (prelude-to-everyone-def-func-blame
   extfx-def-value-for-lang-impl bl unique-name target-name value
@@ -312,6 +315,8 @@
     
     (cast (is-authorized-name unique-name) yep -
       [errb macro-bl /str-prim:Expected unique-name to be an authorized name]
+    /cast (is-qualify qualify) yep -
+      [errb macro-bl /str-prim:Expected qualify to be a qualify value]
     /cast (is-text-input-stream text-input-stream) yep -
       [errb macro-bl /str-prim:Expected text-input-stream to be a text input stream]
     /cast (is-expr-sequence-output-stream output-stream) yep -
@@ -331,7 +336,9 @@
         macro-bl unique-name qualify text-input-stream output-stream
       /fn unique-name qualify text-input-stream output-stream
       /cast (is-authorized-name unique-name) yep -
-        [errb body-bl /str-prim:Expected a macro-impl body's resulting unique-name to be an authorized name]
+        [errb body-bl /str-prim:Expected a macro-impl body's resulting unique name to be an authorized name]
+      /cast (is-qualify qualify) yep -
+        [errb body-bl /str-prim:Expected a macro-impl body's resulting qualify value to be a qualify value]
       /cast (is-text-input-stream text-input-stream) yep -
         [errb body-bl /str-prim:Expected a macro-impl body's resulting text input stream to be a text input stream]
       /cast (is-expr-sequence-output-stream output-stream) yep -

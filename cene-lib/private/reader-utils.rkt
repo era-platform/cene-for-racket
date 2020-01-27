@@ -77,13 +77,13 @@
   (->
     sink-fault?
     sink-authorized-name?
-    sink?
+    sink-qualify?
     sink-text-input-stream?
     (listof id-or-expr?)
     (-> sink-name? sink-name?)
     (->
       sink-authorized-name?
-      sink?
+      sink-qualify?
       sink-text-input-stream?
       (listof id-or-expr?)
       sink-extfx?)
@@ -93,7 +93,7 @@
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
   #/fn text-input-stream
   #/sink-extfx-read-maybe-identifier
-    fault qualify text-input-stream pre-qualify
+    qualify text-input-stream pre-qualify
   #/fn text-input-stream maybe-id
   #/mat maybe-id (just #/list located-string qualified-name)
     (then unique-name qualify text-input-stream
@@ -121,12 +121,12 @@
   (->
     sink-fault?
     sink-authorized-name?
-    sink?
+    sink-qualify?
     sink-text-input-stream?
     (-> sink-name? sink-name?)
     (->
       sink-authorized-name?
-      sink?
+      sink-qualify?
       sink-text-input-stream?
       (listof id-or-expr?)
       sink-extfx?)
@@ -166,11 +166,11 @@
   (->
     sink-fault?
     sink-authorized-name?
-    sink?
+    sink-qualify?
     sink-text-input-stream?
     (->
       sink-authorized-name?
-      sink?
+      sink-qualify?
       sink-text-input-stream?
       (listof sink-cexpr?)
       sink-extfx?)
@@ -195,12 +195,12 @@
   (->
     sink-fault?
     sink-authorized-name?
-    sink?
+    sink-qualify?
     sink-text-input-stream?
     natural?
     (->
       sink-authorized-name?
-      sink?
+      sink-qualify?
       sink-text-input-stream?
       (listof sink-cexpr?)
       sink-extfx?)
@@ -230,13 +230,13 @@
   (->
     sink-fault?
     sink-authorized-name?
-    sink?
+    sink-qualify?
     sink-text-input-stream?
     natural?
     (-> sink-name? sink-name?)
     (->
       sink-authorized-name?
-      sink?
+      sink-qualify?
       sink-text-input-stream?
       (listof id-or-expr?)
       sink-extfx?)
@@ -288,12 +288,12 @@
   (->
     sink-fault?
     sink-authorized-name?
-    sink?
+    sink-qualify?
     sink-text-input-stream?
     natural?
     (->
       sink-authorized-name?
-      sink?
+      sink-qualify?
       sink-text-input-stream?
       (listof sink-cexpr?)
       sink-extfx?)
@@ -319,13 +319,13 @@
   (->
     sink-fault?
     sink-authorized-name?
-    sink?
+    sink-qualify?
     sink-text-input-stream?
     natural?
     (-> sink-name? sink-name?)
     (->
       sink-authorized-name?
-      sink?
+      sink-qualify?
       sink-text-input-stream?
       (listof #/list/c sink-located-string? sink-authorized-name?)
       sink-extfx?)
@@ -347,7 +347,7 @@
     #/sink-extfx-read-whitespace text-input-stream
     #/fn text-input-stream whitespace
     #/sink-extfx-read-maybe-identifier
-      fault qualify text-input-stream pre-qualify
+      qualify text-input-stream pre-qualify
     #/fn text-input-stream maybe-id
     #/mat maybe-id (just id)
       (next unique-name qualify text-input-stream next-n

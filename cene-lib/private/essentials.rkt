@@ -689,9 +689,13 @@
     fault unique-name qualify text-input-stream then)
   (->
     sink-fault?
-    sink-authorized-name? sink? sink-text-input-stream?
+    sink-authorized-name?
+    sink-qualify?
+    sink-text-input-stream?
     (->
-      sink-authorized-name? sink? sink-text-input-stream?
+      sink-authorized-name?
+      sink-qualify?
+      sink-text-input-stream?
       cene-struct-metadata?
       sink-extfx?)
     sink-extfx?)
@@ -1669,10 +1673,7 @@
   (->
     sink-fault?
     sink-authorized-name?
-    (->
-      sink-authorized-name?
-      (-> sink-name? #/cenegetfx/c sink-authorized-name?)
-      sink-extfx?)
+    (-> sink-authorized-name? sink-qualify? sink-extfx?)
     sink-extfx?)
   (sink-extfx-claim-and-split unique-name 2
   #/dissectfn (list unique-name-for-sub-write unique-name-for-step)
@@ -1691,18 +1692,16 @@
       (sink-extfx-cene-err fault "Expected each package initialization command to be a command-init-package")
     #/expect (sink-name? key) #t
       (sink-extfx-cene-err fault "Expected each package initialization command to have a name as its key")
-    #/step (sink-authorized-name-subname key unique-name-for-step)
-      (fn name #/cenegetfx-sink-call-qualify fault qualify name))))
+    #/step
+      (sink-authorized-name-subname key unique-name-for-step)
+      qualify)))
 
 ; TODO: Use `sink-extfx-init-package` and `sink-extfx-init-essentials`
 ; in some kind of CLI entrypoint or something.
 
 (define/contract
-  (sink-extfx-init-package unique-name cenegetfx-qualify-for-package)
-  (->
-    sink-authorized-name?
-    (-> sink-name? #/cenegetfx/c sink-authorized-name?)
-    sink-extfx?)
+  (sink-extfx-init-package unique-name qualify-for-package)
+  (-> sink-authorized-name? sink-qualify? sink-extfx?)
   (sink-extfx-claim-and-split unique-name 2
   #/dissectfn (list unique-name-for-pub-write unique-name-for-step)
   #/sink-extfx-run-cenegetfx
@@ -1716,10 +1715,7 @@
   #/sink-extfx-pub-write p unique-name-for-pub-write
     (make-sink-struct csst-command-init-package #/list
       (sink-authorized-name-get-name unique-name-for-step)
-      (sink-fn-curried-fault 1 #/fn fault name
-        (expect (sink-name? name) #t
-          (cenegetfx-cene-err fault "Expected the input to an extfx-put-all-built-in-syntaxes-this-came-with qualify function to be a name")
-        #/cenegetfx-qualify-for-package name)))))
+      qualify-for-package)))
 
 (define/contract
   (sink-extfx-init-essentials root-fault root-unique-name)
@@ -1755,10 +1751,10 @@
     (-> sink-authorized-name? sink-name? sink-dex? sink? sink-extfx?)
     (sink-extfx-claim-freshen unique-name #/fn unique-name
     #/sink-extfx-add-init-package-step root-fault unique-name
-    #/fn unique-name cenegetfx-qualify-for-package
+    #/fn unique-name qualify-for-package
       (sink-extfx-claim unique-name #/fn
       #/sink-extfx-run-cenegetfx
-        (cenegetfx-qualify-for-package target-name)
+        (cenegetfx-sink-qualify-call qualify-for-package target-name)
       #/fn qualified
       #/sink-extfx-put qualified dex value)))
   
@@ -1785,10 +1781,14 @@
     (->
       (->
         sink-fault?
-        sink-authorized-name? sink? sink-text-input-stream?
+        sink-authorized-name?
+        sink-qualify?
+        sink-text-input-stream?
         sink-cexpr-sequence-output-stream?
         (->
-          sink-authorized-name? sink? sink-text-input-stream?
+          sink-authorized-name?
+          sink-qualify?
+          sink-text-input-stream?
           sink-cexpr-sequence-output-stream?
           sink-extfx?)
         sink-extfx?)
@@ -1798,6 +1798,8 @@
       
       (expect (sink-authorized-name? unique-name) #t
         (cenegetfx-cene-err fault "Expected unique-name to be an authorized name")
+      #/expect (sink-qualify? qualify) #t
+        (cenegetfx-cene-err fault "Expected qualify to be a qualify value")
       #/expect (sink-text-input-stream? text-input-stream) #t
         (cenegetfx-cene-err fault "Expected text-input-stream to be a text input stream")
       #/expect (sink-cexpr-sequence-output-stream? output-stream) #t
@@ -2204,9 +2206,13 @@
       immutable-string?
       (->
         sink-fault?
-        sink-authorized-name? sink? sink-text-input-stream?
+        sink-authorized-name?
+        sink-qualify?
+        sink-text-input-stream?
         (->
-          sink-authorized-name? sink? sink-text-input-stream?
+          sink-authorized-name?
+          sink-qualify?
+          sink-text-input-stream?
           sink-cexpr?
           sink-extfx?)
         sink-extfx?)
@@ -2231,9 +2237,13 @@
       immutable-string?
       (->
         sink-fault?
-        sink-authorized-name? sink? sink-text-input-stream?
+        sink-authorized-name?
+        sink-qualify?
+        sink-text-input-stream?
         (->
-          sink-authorized-name? sink? sink-text-input-stream?
+          sink-authorized-name?
+          sink-qualify?
+          sink-text-input-stream?
           sink-cexpr?
           sink-extfx?)
         sink-extfx?)
@@ -2249,9 +2259,13 @@
       immutable-string?
       (->
         sink-fault?
-        sink-authorized-name? sink? sink-text-input-stream?
+        sink-authorized-name?
+        sink-qualify?
+        sink-text-input-stream?
         (->
-          sink-authorized-name? sink? sink-text-input-stream?
+          sink-authorized-name?
+          sink-qualify?
+          sink-text-input-stream?
           sink-cexpr?
           sink-extfx?)
         sink-extfx?)
@@ -2265,9 +2279,13 @@
       immutable-string?
       (->
         sink-fault?
-        sink-authorized-name? sink? sink-text-input-stream?
+        sink-authorized-name?
+        sink-qualify?
+        sink-text-input-stream?
         (->
-          sink-authorized-name? sink? sink-text-input-stream?
+          sink-authorized-name?
+          sink-qualify?
+          sink-text-input-stream?
           sink-cexpr?
           sink-extfx?)
         sink-extfx?)
@@ -2884,9 +2902,13 @@
       fault unique-name qualify text-input-stream then)
     (->
       sink-fault?
-      sink-authorized-name? sink? sink-text-input-stream?
+      sink-authorized-name?
+      sink-qualify?
+      sink-text-input-stream?
       (->
-        sink-authorized-name? sink? sink-text-input-stream?
+        sink-authorized-name?
+        sink-qualify?
+        sink-text-input-stream?
         sink-innate-main-tag-entry?
         (listof #/list/c name? cexpr?)
         sink-extfx?)
@@ -2916,11 +2938,15 @@
       user-must-be then)
     (->
       sink-fault?
-      sink-authorized-name? sink? sink-text-input-stream?
+      sink-authorized-name?
+      sink-qualify?
+      sink-text-input-stream?
       sink-must-be?
       sink-must-be?
       (->
-        sink-authorized-name? sink? sink-text-input-stream?
+        sink-authorized-name?
+        sink-qualify?
+        sink-text-input-stream?
         sink-innate-main-tag-entry?
         (listof #/list/c name? cexpr?)
         sink-extfx?)
@@ -3176,12 +3202,12 @@
     (->
       sink-fault?
       sink-authorized-name?
-      sink?
+      sink-qualify?
       sink-text-input-stream?
       (->i
         (
           [unique-name sink-authorized-name?]
-          [qualify sink?]
+          [qualify sink-qualify?]
           [text-input-stream sink-text-input-stream?]
           [tags (cons/c sink-innate-main-tag-entry? #/listof name?)]
           [vars (listof sink-name?)])
@@ -4343,6 +4369,30 @@
   (def-nullary-func! "dex-innate-main-tag-entry"
     (sink-dex #/dex-sink-innate-main-tag-entry))
   
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func! "is-qualify" v
+    (racket-boolean->cenegetfx-sink #/sink-qualify? v))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func-fault! "make-qualify" fault call
+    (cenegetfx-done #/sink-qualify #/fn name
+      ; TODO FAULT: See if we should combine this `fault` with the one
+      ; we had already in the outer scope... maybe not using
+      ; `make-fault-double-callback`, but using something like that.
+      (cenegetfx-bind (cenegetfx-sink-call fault call name)
+      #/fn result
+      #/expect (sink-authorized-name? result) #t
+        (cenegetfx-cene-err fault "Expected the result of a make-qualify behavior to be an authorized name")
+        result)))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func-fault! "qualify-call" fault qualify name
+    (expect (sink-qualify? qualify) #t
+      (cenegetfx-cene-err fault "Expected qualify to be a qualify value")
+    #/expect (sink-name? name) #t
+      (cenegetfx-cene-err fault "Expected name to be a name")
+    #/cenegetfx-sink-qualify-call qualify name))
+  
   (def-func! "directive" directive
     (cenegetfx-done #/sink-directive directive))
   
@@ -4732,14 +4782,11 @@
     
     (expect (sink-authorized-name? unique-name) #t
       (cenegetfx-cene-err fault "Expected unique-name to be an authorized name")
+    #/expect (sink-qualify? qualify) #t
+      (cenegetfx-cene-err fault "Expected qualify to be a qualify value")
     #/cenegetfx-done
       (sink-extfx-claim-freshen unique-name #/fn unique-name
-      #/sink-extfx-init-package unique-name #/fn name
-        (cenegetfx-bind (cenegetfx-sink-call fault qualify name)
-        #/fn qualified-name
-        #/expect (sink-authorized-name? qualified-name) #t
-          (cenegetfx-cene-err fault "Expected the result of an extfx-put-all-built-in-syntaxes-this-came-with qualify function to be an authorized name")
-        #/cenegetfx-done qualified-name))))
+      #/sink-extfx-init-package unique-name qualify)))
   
   
   
@@ -4777,15 +4824,19 @@
         (cenegetfx-cene-err fault "Expected unique-name to be an authorized name")
       #/cenegetfx-done
         (sink-extfx-add-init-package-step fault unique-name
-        #/fn unique-name cenegetfx-qualify
+        #/fn unique-name qualify
           (verify-callback-extfx! fault
             (cenegetfx-sink-call fault step unique-name
               (sink-fn-curried-fault 1 #/fn step-fault name
+                ; TODO FAULT: See if this is the right way to combine
+                ; `step-fault` with `fault`. We probably won't be
+                ; using `make-fault-double-callback` for other qualify
+                ; functions, so should we really use it for this one?
                 (w- fault
                   (make-fault-double-callback fault step-fault)
                 #/expect (sink-name? name) #t
                   (cenegetfx-cene-err fault "Expected the input to an extfx-add-init-package-step qualify function to be a name")
-                #/cenegetfx-qualify name))))))))
+                #/cenegetfx-sink-qualify-call qualify name))))))))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-macro-verbose! sink-extfx-def-value-for-prelude
@@ -4888,15 +4939,14 @@
   ; itself, so the prelude can use it right away.
   (add-init-essentials-step! #/fn unique-name
     (sink-extfx-init-package unique-name
-      (fn name #/cenegetfx-qualify-for-prelude name)))
+      (sink-qualify cenegetfx-qualify-for-prelude)))
   
   ; Run the prelude code.
   (add-init-essentials-step! #/fn unique-name
-    (sink-extfx-read-top-level root-fault unique-name
-      (sink-fn-curried-fault 1 #/fn fault name
-        (expect (sink-name? name) #t
-          (cenegetfx-cene-err fault "Expected the input to the prelude qualify function to be a name")
-        #/cenegetfx-qualify-for-prelude name))
+    (sink-extfx-read-top-level
+      root-fault
+      unique-name
+      (sink-qualify cenegetfx-qualify-for-prelude)
       (sink-text-input-stream #/box #/just
         (open-input-file prelude-path))))
   

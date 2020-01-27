@@ -64,11 +64,12 @@
           unique-name-package
           unique-name-sample)
       #/w- qualify
-        (fn name #/sink-authorized-name-subname name unique-name-root)
+        (sink-qualify #/fn name
+          (cenegetfx-done
+            (sink-authorized-name-subname name unique-name-root)))
       #/sink-extfx-fuse
         (sink-extfx-init-essentials fault unique-name-essentials)
-        (sink-extfx-init-package unique-name-package #/fn name
-          (cenegetfx-done #/qualify name))
+        (sink-extfx-init-package unique-name-package qualify)
         (sink-extfx-run-string
           fault unique-name-sample qualify code-string)
       #/make-sink-extfx #/cenegetfx-done
