@@ -4826,17 +4826,7 @@
         (sink-extfx-add-init-package-step fault unique-name
         #/fn unique-name qualify
           (verify-callback-extfx! fault
-            (cenegetfx-sink-call fault step unique-name
-              (sink-fn-curried-fault 1 #/fn step-fault name
-                ; TODO FAULT: See if this is the right way to combine
-                ; `step-fault` with `fault`. We probably won't be
-                ; using `make-fault-double-callback` for other qualify
-                ; functions, so should we really use it for this one?
-                (w- fault
-                  (make-fault-double-callback fault step-fault)
-                #/expect (sink-name? name) #t
-                  (cenegetfx-cene-err fault "Expected the input to an extfx-add-init-package-step qualify function to be a name")
-                #/cenegetfx-sink-qualify-call qualify name))))))))
+            (cenegetfx-sink-call fault step unique-name qualify))))))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-macro-verbose! sink-extfx-def-value-for-prelude
