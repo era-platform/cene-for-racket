@@ -1668,10 +1668,8 @@
   #/textpat-star #/textpat-one-not-in-string "[]()"))
 
 
-(define/contract
-  (sink-extfx-add-init-package-step fault unique-name step)
+(define/contract (sink-extfx-add-init-package-step unique-name step)
   (->
-    sink-fault?
     sink-authorized-name?
     (-> sink-authorized-name? sink-qualify? sink-extfx?)
     sink-extfx?)
@@ -1689,9 +1687,9 @@
     #/expect
       (unmake-sink-struct-maybe csst-command-init-package entry)
       (just #/list key qualify)
-      (sink-extfx-cene-err fault "Expected each package initialization command to be a command-init-package")
+      (sink-extfx-cene-err (make-fault-internal) "Expected each package initialization command to be a command-init-package")
     #/expect (sink-name? key) #t
-      (sink-extfx-cene-err fault "Expected each package initialization command to have a name as its key")
+      (sink-extfx-cene-err (make-fault-internal) "Expected each package initialization command to have a name as its key")
     #/step
       (sink-authorized-name-subname key unique-name-for-step)
       qualify)))
@@ -1750,7 +1748,7 @@
       unique-name target-name dex value)
     (-> sink-authorized-name? sink-name? sink-dex? sink? sink-extfx?)
     (sink-extfx-claim-freshen unique-name #/fn unique-name
-    #/sink-extfx-add-init-package-step root-fault unique-name
+    #/sink-extfx-add-init-package-step unique-name
     #/fn unique-name qualify-for-package
       (sink-extfx-claim unique-name #/fn
       #/sink-extfx-run-cenegetfx
@@ -4823,7 +4821,7 @@
       (expect (sink-authorized-name? unique-name) #t
         (cenegetfx-cene-err fault "Expected unique-name to be an authorized name")
       #/cenegetfx-done
-        (sink-extfx-add-init-package-step fault unique-name
+        (sink-extfx-add-init-package-step unique-name
         #/fn unique-name qualify
           (verify-callback-extfx! fault
             (cenegetfx-sink-call fault step unique-name qualify))))))
