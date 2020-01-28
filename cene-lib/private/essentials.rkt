@@ -2911,7 +2911,7 @@
   
   (define/contract
     (sink-extfx-expand-metadata-based-struct-op
-      fault unique-name qualify text-input-stream then)
+      read-fault unique-name qualify text-input-stream then)
     (->
       sink-fault?
       sink-authorized-name?
@@ -2931,13 +2931,13 @@
       (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
     #/fn text-input-stream
     #/sink-extfx-read-struct-metadata-authorized-as-user
-      fault unique-name qualify text-input-stream
+      read-fault unique-name qualify text-input-stream
     #/fn unique-name qualify text-input-stream metadata
     #/dissect (struct-metadata-tags metadata)
       (cons main-tag-entry proj-names)
     
     #/sink-extfx-read-bounded-specific-number-of-cexprs
-      fault unique-name qualify text-input-stream
+      read-fault unique-name qualify text-input-stream
       (length proj-names)
     #/fn unique-name qualify text-input-stream proj-exprs
     
@@ -3357,7 +3357,6 @@
     
     #/expect (reverse args-args)
       (cons last-arg-arg rev-past-args-args)
-      ; TODO FAULT: Make this `syntax-error-fault` more specific.
       (sink-extfx-cene-err syntax-error-fault "Expected a c-blame form to have at least one argument aside from the blame argument and the function to call")
     
     #/then unique-name qualify text-input-stream
