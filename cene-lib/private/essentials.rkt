@@ -2545,6 +2545,7 @@
   
   (def-func-fault! "dex-default"
     fault dex-for-trying-first dex-for-trying-second
+    
     (expect dex-for-trying-first (sink-dex dex-for-trying-first)
       (cenegetfx-cene-err fault "Expected dex-for-trying-first to be a dex")
     #/expect dex-for-trying-second (sink-dex dex-for-trying-second)
