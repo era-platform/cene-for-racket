@@ -1391,8 +1391,8 @@
         (dex-sink-struct csst-nil #/list)
         (dex-sink-struct csst-cons #/list dex-elem dex)))))
 
-(define/contract (cenegetfx-sink-dex-list fault dex-elem)
-  (-> sink-fault? sink-dex? #/cenegetfx/c sink-dex?)
+(define/contract (cenegetfx-sink-dex-list dex-elem)
+  (-> sink-dex? #/cenegetfx/c sink-dex?)
   (dissect dex-elem (sink-dex dex-elem)
   #/cenegetfx-bind (cenegetfx-read-dexed-root-info) #/fn dexed-rinfo
   #/cenegetfx-done
@@ -1716,9 +1716,8 @@
       (sink-authorized-name-get-name unique-name-for-step)
       qualify-for-package)))
 
-(define/contract
-  (sink-extfx-init-essentials root-fault root-unique-name)
-  (-> sink-fault? sink-authorized-name? sink-extfx?)
+(define/contract (sink-extfx-init-essentials root-unique-name)
+  (-> sink-authorized-name? sink-extfx?)
   
   (define init-essentials-steps (list))
   
@@ -2156,7 +2155,7 @@
       ;
       (sink-extfx-tag cssm-assoc #/fn csst-assoc
       #/sink-extfx-run-cenegetfx
-        (cenegetfx-sink-dex-list root-fault
+        (cenegetfx-sink-dex-list
           (sink-dex-struct csst-assoc #/list
             (sink-dex-string)
             (sink-dex-name)))
@@ -4761,7 +4760,7 @@
   (def-func-fault! "dex-list" fault dex-elem
     (expect (sink-dex? dex-elem) #t
       (cenegetfx-cene-err fault "Expected dex-elem to be a dex")
-    #/cenegetfx-sink-dex-list fault dex-elem))
+    #/cenegetfx-sink-dex-list dex-elem))
   
   ; This installs all the built-ins so they're in the appropriate
   ; places for loading code under the given `qualify` function.
@@ -4962,7 +4961,7 @@
   ; Run the prelude code.
   (add-init-essentials-step! #/fn unique-name
     (sink-extfx-read-top-level
-      root-fault
+      (make-fault-internal)
       unique-name
       (sink-qualify cenegetfx-qualify-for-prelude)
       (sink-text-input-stream #/box #/just
