@@ -311,9 +311,11 @@
 (prelude-to-everyone-def-func-blame
   macro-impl body-bl body
   (fn-blame macro-bl
-    unique-name qualify text-input-stream output-stream then
+    expr-bl unique-name qualify text-input-stream output-stream then
     
-    (cast (is-authorized-name unique-name) yep -
+    (cast (is-blame expr-bl) yep -
+      [errb macro-bl /str-prim:Expected expr-bl to be a blame value]
+    /cast (is-authorized-name unique-name) yep -
       [errb macro-bl /str-prim:Expected unique-name to be an authorized name]
     /cast (is-qualify qualify) yep -
       [errb macro-bl /str-prim:Expected qualify to be a qualify value]
@@ -333,7 +335,8 @@
     /fn output-stream extfx-verify-same-output-stream
     /let effects
       (c body
-        macro-bl unique-name qualify text-input-stream output-stream
+        macro-bl expr-bl unique-name qualify text-input-stream
+        output-stream
       /fn unique-name qualify text-input-stream output-stream
       /cast (is-authorized-name unique-name) yep -
         [errb body-bl /str-prim:Expected a macro-impl body's resulting unique name to be an authorized name]
@@ -375,21 +378,21 @@
     [errb body-bl /str-prim:Expected n-args to be a natural number]
   /macro-impl
   /fn
-    macro-bl unique-name qualify text-input-stream output-stream then
+    read-bl expr-bl unique-name qualify text-input-stream
+    output-stream then
     
-    (extfx-read-fault text-input-stream /fn text-input-stream expr-bl
-    /let read-bl (make-blame-read macro-bl expr-bl)
+    (let syntax-error-bl (make-blame-read read-bl expr-bl)
     /extfx-read-bounded-specific-number-of-exprs
-      macro-bl unique-name qualify text-input-stream n-args
+      read-bl unique-name qualify text-input-stream n-args
     /fn unique-name qualify text-input-stream args
     /extfx-expr-write output-stream
-      (c-blame body-bl body read-bl args)
+      (c-blame body-bl body syntax-error-bl args)
     /fn output-stream
     /let effects
-      (c-blame macro-bl then
+      (c-blame read-bl then
         unique-name qualify text-input-stream output-stream)
     /cast (is-extfx effects) yep -
-      [errb macro-bl /str-prim:Expected the return value of a macro-impl-specific-number-of-args callback to be an extfx effectful computation]
+      [errb read-bl /str-prim:Expected the return value of a macro-impl-specific-number-of-args callback to be an extfx effectful computation]
       effects)))
 
 

@@ -1941,7 +1941,7 @@
   #/fn text-input-stream
   #/sink-extfx-read-fault text-input-stream
   #/fn text-input-stream expr-fault
-  #/w- read-fault (make-fault-read read-fault expr-fault)
+  #/w- syntax-error-fault (make-fault-read read-fault expr-fault)
   #/sink-extfx-read-maybe-op-character text-input-stream
   #/fn text-input-stream maybe-identifier
   #/mat maybe-identifier (just identifier)
@@ -1965,12 +1965,12 @@
     |pat "("| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
-    (sink-extfx-cene-err read-fault "The use of ( to delimit a macro name is not yet supported")
+    (sink-extfx-cene-err syntax-error-fault "The use of ( to delimit a macro name is not yet supported")
   #/sink-extfx-optimized-textpat-read-located
     |pat "["| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
-    (sink-extfx-cene-err read-fault "The use of [ to delimit a macro name is not yet supported")
+    (sink-extfx-cene-err syntax-error-fault "The use of [ to delimit a macro name is not yet supported")
   
   #/sink-extfx-read-maybe-identifier
     qualify text-input-stream pre-qualify
@@ -1978,15 +1978,16 @@
   #/mat maybe-name (just #/list located-string name)
     (then text-input-stream name)
   
-  #/sink-extfx-cene-err read-fault "Encountered an unrecognized case of the expression operator syntax"))
+  #/sink-extfx-cene-err syntax-error-fault "Encountered an unrecognized case of the expression operator syntax"))
 
 (define/contract
   (sink-extfx-run-op
-    fault op-impl unique-name qualify text-input-stream output-stream
-    then)
+    read-fault op-impl expr-fault unique-name qualify
+    text-input-stream output-stream then)
   (->
     sink-fault?
     sink?
+    sink-fault?
     sink-authorized-name?
     sink-qualify?
     sink-text-input-stream?
@@ -2012,47 +2013,49 @@
     output-stream
   #/fn output-stream sink-extfx-verify-same-output-stream
   #/sink-extfx-run-cenegetfx
-    (cenegetfx-sink-call fault op-impl
-      unique-name qualify text-input-stream output-stream
+    (cenegetfx-sink-call read-fault op-impl
+      expr-fault unique-name qualify text-input-stream output-stream
     #/sink-fn-curried-fault 4
-    #/fn fault unique-name qualify text-input-stream output-stream
-    ; TODO FAULT: See if we should combine this `fault` with the one
-    ; we had already in the outer scope... maybe not using
+    #/fn
+      read-fault unique-name qualify text-input-stream output-stream
+    ; TODO FAULT: See if we should combine this `read-fault` with the
+    ; one we had already in the outer scope... maybe not using
     ; `make-fault-double-callback`, but using something like that.
     #/cenegetfx-done
     #/expect (sink-authorized-name? unique-name) #t
-      (sink-extfx-cene-err fault "Expected the unique name of a macro's callback results to be an authorized name")
+      (sink-extfx-cene-err read-fault "Expected the unique name of a macro's callback results to be an authorized name")
     #/expect (sink-qualify? qualify) #t
-      (sink-extfx-cene-err fault "Expected the qualify value of macro's callback results to be a qualify value")
+      (sink-extfx-cene-err read-fault "Expected the qualify value of macro's callback results to be a qualify value")
     #/expect (sink-text-input-stream? text-input-stream) #t
-      (sink-extfx-cene-err fault "Expected the text input stream of a macro's callback results to be a text input stream")
+      (sink-extfx-cene-err read-fault "Expected the text input stream of a macro's callback results to be a text input stream")
     #/expect (sink-cexpr-sequence-output-stream? output-stream) #t
-      (sink-extfx-cene-err fault "Expected the expression sequence output stream of a macro's callback results to be an expression sequence output stream")
+      (sink-extfx-cene-err read-fault "Expected the expression sequence output stream of a macro's callback results to be an expression sequence output stream")
     #/sink-extfx-claim-freshen unique-name #/fn unique-name
     #/sink-extfx-sink-text-input-stream-freshen text-input-stream
-      (cenegetfx-cene-err fault "Expected the text input stream of a macro's callback results to be an unspent text input stream")
+      (cenegetfx-cene-err read-fault "Expected the text input stream of a macro's callback results to be an unspent text input stream")
     #/fn text-input-stream
     #/sink-extfx-sink-cexpr-sequence-output-stream-freshen
       output-stream
-      (cenegetfx-cene-err fault "Expected the expression sequence output stream of a macro's callback results to be an unspent expression sequence output stream")
+      (cenegetfx-cene-err read-fault "Expected the expression sequence output stream of a macro's callback results to be an unspent expression sequence output stream")
     #/fn output-stream
     #/sink-extfx-verify-same-text-input-stream text-input-stream
-      (cenegetfx-cene-err fault "Expected the text input stream of a macro's callback results to be a future incarnation of the macro's original input stream")
+      (cenegetfx-cene-err read-fault "Expected the text input stream of a macro's callback results to be a future incarnation of the macro's original input stream")
     #/fn text-input-stream
     #/sink-extfx-verify-same-output-stream output-stream
-      (cenegetfx-cene-err fault "Expected the expression sequence output stream of a macro's callback results to be a future incarnation of the macro's original output stream")
+      (cenegetfx-cene-err read-fault "Expected the expression sequence output stream of a macro's callback results to be a future incarnation of the macro's original output stream")
     #/fn output-stream
     #/then unique-name qualify text-input-stream output-stream)
   #/fn result
   #/expect (sink-extfx? result) #t
-    (sink-extfx-cene-err fault "Expected the return value of a macro to be an effectful computation")
+    (sink-extfx-cene-err read-fault "Expected the return value of a macro to be an effectful computation")
     result))
 
 (define/contract
   (sink-extfx-read-and-run-op
-    fault unique-name qualify text-input-stream output-stream
-    pre-qualify then)
+    read-fault expr-fault unique-name qualify text-input-stream
+    output-stream pre-qualify then)
   (->
+    sink-fault?
     sink-fault?
     sink-authorized-name?
     sink-qualify?
@@ -2074,19 +2077,22 @@
     output-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected output-stream to be an unspent expression sequence output stream")
   #/fn output-stream
-  #/sink-extfx-read-op fault qualify text-input-stream pre-qualify
+  #/sink-extfx-read-op
+    read-fault qualify text-input-stream pre-qualify
   #/fn text-input-stream op-name
   #/sink-extfx-run-sink-getfx
     (sink-getfx-get #/sink-authorized-name-get-name op-name)
   #/fn op-impl
   #/sink-extfx-run-op
-    fault op-impl unique-name qualify text-input-stream output-stream
-    then))
+    read-fault op-impl expr-fault unique-name qualify
+    text-input-stream output-stream then))
 
 (define/contract
   (sink-extfx-read-and-run-freestanding-cexpr-op
-    fault unique-name qualify text-input-stream output-stream then)
+    read-fault expr-fault unique-name qualify text-input-stream
+    output-stream then)
   (->
+    sink-fault?
     sink-fault?
     sink-authorized-name?
     sink-qualify?
@@ -2108,14 +2114,17 @@
     (cenegetfx-cene-err (make-fault-internal) "Expected output-stream to be an unspent expression sequence output stream")
   #/fn output-stream
   #/sink-extfx-read-and-run-op
-    fault unique-name qualify text-input-stream output-stream
+    read-fault expr-fault unique-name qualify text-input-stream
+    output-stream
     sink-name-for-freestanding-cexpr-op
     then))
 
 (define/contract
   (sink-extfx-read-and-run-bounded-cexpr-op
-    fault unique-name qualify text-input-stream output-stream then)
+    read-fault expr-fault unique-name qualify text-input-stream
+    output-stream then)
   (->
+    sink-fault?
     sink-fault?
     sink-authorized-name?
     sink-qualify?
@@ -2137,14 +2146,17 @@
     (cenegetfx-cene-err (make-fault-internal) "Expected output-stream to be an unspent expression sequence output stream")
   #/fn output-stream
   #/sink-extfx-read-and-run-op
-    fault unique-name qualify text-input-stream output-stream
+    read-fault expr-fault unique-name qualify text-input-stream
+    output-stream
     sink-name-for-bounded-cexpr-op
     then))
 
 (define/contract
   (sink-extfx-run-nameless-op
-    fault unique-name qualify text-input-stream output-stream then)
+    read-fault expr-fault unique-name qualify text-input-stream
+    output-stream then)
   (->
+    sink-fault?
     sink-fault?
     sink-authorized-name?
     sink-qualify?
@@ -2174,8 +2186,8 @@
     #/sink-getfx-get #/sink-authorized-name-get-name qualified)
   #/fn op-impl
   #/sink-extfx-run-op
-    fault op-impl unique-name qualify text-input-stream output-stream
-    then))
+    read-fault op-impl expr-fault unique-name qualify
+    text-input-stream output-stream then))
 
 ; TODO: See if we should keep this around. We just use it for
 ; debugging.
@@ -2189,7 +2201,8 @@
 ; in a `cexpr-located`.
 (define/contract
   (sink-extfx-read-cexprs
-    fault unique-name qualify text-input-stream output-stream then)
+    read-fault unique-name qualify text-input-stream output-stream
+    then)
   (->
     sink-fault?
     sink-authorized-name?
@@ -2242,25 +2255,28 @@
   #/if is-eof
     (then unique-name qualify text-input-stream output-stream)
   
+  #/sink-extfx-read-fault text-input-stream
+  #/fn text-input-stream expr-fault
+  #/w- syntax-error-fault (make-fault-read read-fault expr-fault)
+  
   #/sink-extfx-optimized-textpat-read-located
     |pat ")"| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
-    ; TODO FAULT: Make this `fault` more specific.
-    (sink-extfx-cene-err fault "Encountered an unmatched )")
+    (sink-extfx-cene-err syntax-error-fault "Encountered an unmatched )")
   #/sink-extfx-optimized-textpat-read-located
     |pat "]"| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
-    ; TODO FAULT: Make this `fault` more specific.
-    (sink-extfx-cene-err fault "Encountered an unmatched ]")
+    (sink-extfx-cene-err syntax-error-fault "Encountered an unmatched ]")
   
   #/sink-extfx-optimized-textpat-read-located
     |pat "\\"| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     (sink-extfx-read-and-run-freestanding-cexpr-op
-      fault unique-name qualify text-input-stream output-stream then)
+      read-fault expr-fault unique-name qualify text-input-stream
+      output-stream then)
   
   #/sink-extfx-optimized-textpat-read-located
     |pat "("| text-input-stream
@@ -2272,18 +2288,22 @@
           |pat ")"| text-input-stream
         #/fn text-input-stream maybe-str
         #/expect maybe-str (just _)
-          ; TODO FAULT: Make this `fault` more specific.
-          (sink-extfx-cene-err fault "Encountered a syntax that began with ( or (. and did not end with )")
+          ; TODO FAULT: See if this should report the location the
+          ; closing bracket was expected too. Currently it reports the
+          ; location of the opening bracket, which is probably more
+          ; useful.
+          (sink-extfx-cene-err syntax-error-fault "Encountered a syntax that began with ( or (. and did not end with )")
         #/then unique-name qualify text-input-stream output-stream))
     #/sink-extfx-optimized-textpat-read-located
       |pat "."| text-input-stream
     #/fn text-input-stream maybe-str
     #/mat maybe-str (just _)
       (sink-extfx-read-and-run-bounded-cexpr-op
-        fault unique-name qualify text-input-stream output-stream
-        then)
+        read-fault expr-fault unique-name qualify text-input-stream
+        output-stream then)
     #/sink-extfx-run-nameless-op
-      fault unique-name qualify text-input-stream output-stream then)
+      read-fault expr-fault unique-name qualify text-input-stream
+      output-stream then)
   
   #/sink-extfx-optimized-textpat-read-located
     |pat "["| text-input-stream
@@ -2295,18 +2315,22 @@
           |pat "]"| text-input-stream
         #/fn text-input-stream maybe-str
         #/expect maybe-str (just _)
-          ; TODO FAULT: Make this `fault` more specific.
-          (sink-extfx-cene-err fault "Encountered a syntax that began with [ or [. and did not end with ]")
+          ; TODO FAULT: See if this should report the location the
+          ; closing bracket was expected too. Currently it reports the
+          ; location of the opening bracket, which is probably more
+          ; useful.
+          (sink-extfx-cene-err syntax-error-fault "Encountered a syntax that began with [ or [. and did not end with ]")
         #/then unique-name qualify text-input-stream output-stream))
     #/sink-extfx-optimized-textpat-read-located
       |pat "."| text-input-stream
     #/fn text-input-stream maybe-str
     #/mat maybe-str (just _)
       (sink-extfx-read-and-run-bounded-cexpr-op
-        fault unique-name qualify text-input-stream output-stream
-        then)
+        read-fault expr-fault unique-name qualify text-input-stream
+        output-stream then)
     #/sink-extfx-run-nameless-op
-      fault unique-name qualify text-input-stream output-stream then)
+      read-fault expr-fault unique-name qualify text-input-stream
+      output-stream then)
   
   #/sink-extfx-optimized-textpat-read-located
     |pat "/"| text-input-stream
@@ -2317,21 +2341,24 @@
         (sink-extfx-peek-whether-closing-bracket text-input-stream
         #/fn text-input-stream is-closing-bracket
         #/if (not is-closing-bracket)
-          ; TODO FAULT: Make this `fault` more specific.
-          (sink-extfx-cene-err fault "Encountered a syntax that began with /. and did not end at ) or ]")
+          ; TODO FAULT: See if this should report the location the
+          ; closing bracket was expected too. Currently it reports the
+          ; location of the opening bracket, which is probably more
+          ; useful.
+          (sink-extfx-cene-err syntax-error-fault "Encountered a syntax that began with /. and did not end at ) or ]")
         #/then unique-name qualify text-input-stream output-stream))
     #/sink-extfx-optimized-textpat-read-located
       |pat "."| text-input-stream
     #/fn text-input-stream maybe-str
     #/mat maybe-str (just _)
       (sink-extfx-read-and-run-bounded-cexpr-op
-        fault unique-name qualify text-input-stream output-stream
-        then)
+        read-fault expr-fault unique-name qualify text-input-stream
+        output-stream then)
     #/sink-extfx-run-nameless-op
-      fault unique-name qualify text-input-stream output-stream then)
+      read-fault expr-fault unique-name qualify text-input-stream
+      output-stream then)
   
-  ; TODO FAULT: Make this `fault` more specific.
-  #/sink-extfx-cene-err fault "Encountered an unrecognized case of the expression syntax"))
+  #/sink-extfx-cene-err syntax-error-fault "Encountered an unrecognized case of the expression syntax"))
 
 (struct-easy
   (core-sink-struct-metadata

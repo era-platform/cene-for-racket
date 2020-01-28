@@ -1779,6 +1779,7 @@
     (->
       (->
         sink-fault?
+        sink-fault?
         sink-authorized-name?
         sink-qualify?
         sink-text-input-stream?
@@ -1791,25 +1792,26 @@
           sink-extfx?)
         sink-extfx?)
       sink?)
-    (sink-fn-curried-fault 5 #/fn
-      fault unique-name qualify text-input-stream output-stream then
+    (sink-fn-curried-fault 6 #/fn
+      macro-fault expr-fault unique-name qualify text-input-stream
+      output-stream then
       
       (expect (sink-authorized-name? unique-name) #t
-        (cenegetfx-cene-err fault "Expected unique-name to be an authorized name")
+        (cenegetfx-cene-err macro-fault "Expected unique-name to be an authorized name")
       #/expect (sink-qualify? qualify) #t
-        (cenegetfx-cene-err fault "Expected qualify to be a qualify value")
+        (cenegetfx-cene-err macro-fault "Expected qualify to be a qualify value")
       #/expect (sink-text-input-stream? text-input-stream) #t
-        (cenegetfx-cene-err fault "Expected text-input-stream to be a text input stream")
+        (cenegetfx-cene-err macro-fault "Expected text-input-stream to be a text input stream")
       #/expect (sink-cexpr-sequence-output-stream? output-stream) #t
-        (cenegetfx-cene-err fault "Expected output-stream to be an expression sequence output stream")
+        (cenegetfx-cene-err macro-fault "Expected output-stream to be an expression sequence output stream")
       #/cenegetfx-done
         (sink-extfx-claim-freshen unique-name #/fn unique-name
         #/sink-extfx-sink-text-input-stream-freshen text-input-stream
-          (cenegetfx-cene-err fault "Expected text-input-stream to be an unspent text input stream")
+          (cenegetfx-cene-err macro-fault "Expected text-input-stream to be an unspent text input stream")
         #/fn text-input-stream
         #/sink-extfx-sink-cexpr-sequence-output-stream-freshen
           output-stream
-          (cenegetfx-cene-err fault "Expected output-stream to be an unspent expression sequence output stream")
+          (cenegetfx-cene-err macro-fault "Expected output-stream to be an unspent expression sequence output stream")
         #/fn output-stream
         #/sink-extfx-sink-text-input-stream-track-identity
           text-input-stream
@@ -1819,7 +1821,8 @@
           output-stream
         #/fn output-stream sink-extfx-verify-same-output-stream
         #/body
-          fault unique-name qualify text-input-stream output-stream
+          macro-fault expr-fault unique-name qualify text-input-stream
+          output-stream
         #/fn unique-name qualify text-input-stream output-stream
         #/sink-extfx-sink-text-input-stream-freshen text-input-stream
           (cenegetfx-cene-err (make-fault-internal) "Expected a macro-impl body's resulting text input stream to be an unspent text input stream")
@@ -1835,11 +1838,11 @@
           (cenegetfx-cene-err (make-fault-internal) "Expected a macro-impl body's resulting output stream to be a future incarnation of the body's original output stream")
         #/fn output-stream
         #/sink-extfx-run-cenegetfx
-          (cenegetfx-sink-call fault then
+          (cenegetfx-sink-call macro-fault then
             unique-name qualify text-input-stream output-stream)
         #/fn effects
         #/expect (sink-extfx? effects) #t
-          (sink-extfx-cene-err fault "Expected the return value of a macro's callback to be an extfx effectful computation")
+          (sink-extfx-cene-err macro-fault "Expected the return value of a macro's callback to be an extfx effectful computation")
           effects))))
   
   ; This creates a macro implementation function that reads a form
@@ -1851,15 +1854,15 @@
       (-> sink-fault? (listof sink-cexpr?) #/cenegetfx/c sink-cexpr?)
       sink?)
     (macro-impl #/fn
-      fault unique-name qualify text-input-stream output-stream then
+      read-fault expr-fault unique-name qualify text-input-stream
+      output-stream then
       
-      (sink-extfx-read-fault text-input-stream
-      #/fn text-input-stream expr-fault
-      #/w- read-fault (make-fault-read fault expr-fault)
+      (w- syntax-error-fault (make-fault-read read-fault expr-fault)
       #/sink-extfx-read-bounded-specific-number-of-cexprs
-        fault unique-name qualify text-input-stream n-args
+        read-fault unique-name qualify text-input-stream n-args
       #/fn unique-name qualify text-input-stream args
-      #/sink-extfx-run-cenegetfx (body read-fault args) #/fn expr
+      #/sink-extfx-run-cenegetfx (body syntax-error-fault args)
+      #/fn expr
       #/sink-extfx-cexpr-write output-stream expr #/fn output-stream
       #/then unique-name qualify text-input-stream output-stream)))
   
@@ -1948,9 +1951,9 @@
         ; that kind of mistake.
         ;
         (macro-impl-specific-number-of-args n-args
-          (fn read-fault args
+          (fn syntax-error-fault args
             (cenegetfx-done
-              (sink-cexpr-call-list read-fault
+              (sink-cexpr-call-list syntax-error-fault
                 (sink-cexpr-construct main-tag-entry #/list)
                 args)))))
       
@@ -2028,11 +2031,12 @@
         ; special kind of compilation for nullary function calls; it
         ; just has the user pass `(trivial)` explicitly.
         ;
-        (macro-impl-specific-number-of-args 0 #/fn read-fault args
-          (cenegetfx-done
-            (sink-cexpr-call-binary read-fault
-              (sink-cexpr-construct main-tag-entry #/list)
-              (make-sink-cexpr-construct csst-trivial #/list)))))
+        (macro-impl-specific-number-of-args 0
+          (fn syntax-error-fault args
+            (cenegetfx-done
+              (sink-cexpr-call-binary syntax-error-fault
+                (sink-cexpr-construct main-tag-entry #/list)
+                (make-sink-cexpr-construct csst-trivial #/list))))))
       
       ; We define a Cene struct function implementation containing
       ; the function's run time behavior.
@@ -2124,7 +2128,7 @@
         ; against that kind of mistake.
         ;
         #/macro-impl-specific-number-of-args n-projs
-          (fn read-fault proj-cexprs
+          (fn syntax-error-fault proj-cexprs
             (cenegetfx-done
               (sink-cexpr-construct main-tag-entry
                 (map list proj-names proj-cexprs))))))
@@ -2205,6 +2209,7 @@
       immutable-string?
       (->
         sink-fault?
+        sink-fault?
         sink-authorized-name?
         sink-qualify?
         sink-text-input-stream?
@@ -2221,9 +2226,11 @@
       (sink-name-for-bounded-cexpr-op
       #/sink-name-for-string #/sink-string name-string)
       (macro-impl #/fn
-        fault unique-name qualify text-input-stream output-stream then
+        read-fault expr-fault unique-name qualify text-input-stream
+        output-stream then
         
-        (body fault unique-name qualify text-input-stream
+        (body
+          read-fault expr-fault unique-name qualify text-input-stream
         #/fn unique-name qualify text-input-stream cexpr
         #/sink-extfx-cexpr-write output-stream cexpr
         #/fn output-stream
@@ -2235,6 +2242,7 @@
       (-> sink-authorized-name? sink-name? sink? sink-extfx?)
       immutable-string?
       (->
+        sink-fault?
         sink-fault?
         sink-authorized-name?
         sink-qualify?
@@ -2258,6 +2266,7 @@
       immutable-string?
       (->
         sink-fault?
+        sink-fault?
         sink-authorized-name?
         sink-qualify?
         sink-text-input-stream?
@@ -2277,6 +2286,7 @@
     (->
       immutable-string?
       (->
+        sink-fault?
         sink-fault?
         sink-authorized-name?
         sink-qualify?
@@ -2306,11 +2316,12 @@
   ;
   (def-value-for-package! (sink-name-for-nameless-bounded-cexpr-op)
     (macro-impl #/fn
-      fault unique-name qualify text-input-stream output-stream then
+      read-fault expr-fault unique-name qualify text-input-stream
+      output-stream then
       
       (sink-extfx-read-and-run-bounded-cexpr-op
-        fault unique-name qualify text-input-stream output-stream
-        then)))
+        read-fault expr-fault unique-name qualify text-input-stream
+        output-stream then)))
   
   ; This binds the freestanding expression reader macro for `=`. This
   ; implementation is a line comment syntax: It consumes all the
@@ -2323,7 +2334,8 @@
     (sink-name-for-freestanding-cexpr-op
     #/sink-name-for-string #/sink-string "=")
     (macro-impl #/fn
-      fault unique-name qualify text-input-stream output-stream then
+      read-fault expr-fault unique-name qualify text-input-stream
+      output-stream then
       
       (sink-extfx-claim-freshen unique-name #/fn unique-name
       #/sink-extfx-read-non-line-breaks text-input-stream
@@ -2933,9 +2945,10 @@
   
   (define/contract
     (sink-extfx-expand-interleaved-struct-op
-      fault unique-name qualify text-input-stream author-must-be
-      user-must-be then)
+      read-fault expr-fault unique-name qualify text-input-stream
+      author-must-be user-must-be then)
     (->
+      sink-fault?
       sink-fault?
       sink-authorized-name?
       sink-qualify?
@@ -2956,19 +2969,20 @@
     #/sink-extfx-sink-text-input-stream-freshen text-input-stream
       (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
     #/fn text-input-stream
+    #/w- syntax-error-fault (make-fault-read read-fault expr-fault)
     #/sink-extfx-read-bounded-ids-and-exprs
-      fault unique-name qualify text-input-stream
+      read-fault unique-name qualify text-input-stream
       sink-name-for-local-variable
     #/fn unique-name qualify text-input-stream args
     #/expect args (cons main-tag-id-or-expr-id args)
-      ; TODO FAULT: Make this `fault` more specific.
-      (sink-extfx-cene-err fault "Expected an interleaved struct form to have a main tag name")
+      ; TODO FAULT: Make this `syntax-error-fault` more specific.
+      (sink-extfx-cene-err syntax-error-fault "Expected an interleaved struct form to have a main tag name")
     #/expect main-tag-id-or-expr-id
       (id-or-expr-id
         main-tag-name-located-string
         main-tag-name-qualified-name)
-      ; TODO FAULT: Make this `fault` more specific.
-      (sink-extfx-cene-err fault "Expected the main tag name of an interleaved struct form to be an identifier")
+      ; TODO FAULT: Make this `syntax-error-fault` more specific.
+      (sink-extfx-cene-err syntax-error-fault "Expected the main tag name of an interleaved struct form to be an identifier")
     #/w- main-tag-name
       (sink-name-for-string
         (sink-string-from-located-string
@@ -2980,14 +2994,14 @@
       (w-loop next args args rev-projs (list)
         (mat args (list) (cenegetfx-done #/reverse rev-projs)
         #/expect args (list* proj-id-or-expr-id proj-expr args)
-          ; TODO FAULT: Make this `fault` more specific.
-          (cenegetfx-cene-err fault "Expected an interleaved struct form to have a projection expression for every projection name")
+          ; TODO FAULT: Make this `syntax-error-fault` more specific.
+          (cenegetfx-cene-err syntax-error-fault "Expected an interleaved struct form to have a projection expression for every projection name")
         #/expect proj-id-or-expr-id
           (id-or-expr-id
             proj-name-located-string
             proj-name-qualified-name)
-          ; TODO FAULT: Make this `fault` more specific.
-          (cenegetfx-cene-err fault "Expected each projection name of an interleaved struct form to be an identifier")
+          ; TODO FAULT: Make this `syntax-error-fault` more specific.
+          (cenegetfx-cene-err syntax-error-fault "Expected each projection name of an interleaved struct form to be an identifier")
         #/dissect
           (sink-name-for-string
             (sink-string-from-located-string
@@ -3017,10 +3031,10 @@
       (sink-cexpr #/cexpr-dex-struct main-tag-entry projections)))
   
   (def-macro! "dex-struct" #/fn
-    fault unique-name qualify text-input-stream then
+    read-fault expr-fault unique-name qualify text-input-stream then
     
     (sink-extfx-expand-metadata-based-struct-op
-      fault unique-name qualify text-input-stream
+      read-fault unique-name qualify text-input-stream
     #/fn
       unique-name qualify text-input-stream main-tag-entry projections
     #/then unique-name qualify text-input-stream
@@ -3039,10 +3053,10 @@
       (sink-cexpr #/cexpr-cline-struct main-tag-entry projections)))
   
   (def-macro! "cline-struct" #/fn
-    fault unique-name qualify text-input-stream then
+    read-fault expr-fault unique-name qualify text-input-stream then
     
     (sink-extfx-expand-metadata-based-struct-op
-      fault unique-name qualify text-input-stream
+      read-fault unique-name qualify text-input-stream
     #/fn
       unique-name qualify text-input-stream main-tag-entry projections
     #/then unique-name qualify text-input-stream
@@ -3061,10 +3075,10 @@
       (sink-cexpr #/cexpr-merge-struct main-tag-entry projections)))
   
   (def-macro! "merge-struct" #/fn
-    fault unique-name qualify text-input-stream then
+    read-fault expr-fault unique-name qualify text-input-stream then
     
     (sink-extfx-expand-metadata-based-struct-op
-      fault unique-name qualify text-input-stream
+      read-fault unique-name qualify text-input-stream
     #/fn
       unique-name qualify text-input-stream main-tag-entry projections
     #/then unique-name qualify text-input-stream
@@ -3083,10 +3097,10 @@
       (sink-cexpr #/cexpr-fuse-struct main-tag-entry projections)))
   
   (def-macro! "fuse-struct" #/fn
-    fault unique-name qualify text-input-stream then
+    read-fault expr-fault unique-name qualify text-input-stream then
     
     (sink-extfx-expand-metadata-based-struct-op
-      fault unique-name qualify text-input-stream
+      read-fault unique-name qualify text-input-stream
     #/fn
       unique-name qualify text-input-stream main-tag-entry projections
     #/then unique-name qualify text-input-stream
@@ -3133,10 +3147,10 @@
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-macro! "construct" #/fn
-    fault unique-name qualify text-input-stream then
+    read-fault expr-fault unique-name qualify text-input-stream then
     
     (sink-extfx-expand-metadata-based-struct-op
-      fault unique-name qualify text-input-stream
+      read-fault unique-name qualify text-input-stream
     #/fn
       unique-name qualify text-input-stream main-tag-entry projections
     #/then unique-name qualify text-input-stream
@@ -3238,19 +3252,19 @@
     #/then unique-name qualify text-input-stream tags vars))
   
   (def-macro! "case" #/fn
-    fault unique-name qualify text-input-stream then
+    read-fault expr-fault unique-name qualify text-input-stream then
     
     (sink-extfx-read-leading-specific-number-of-cexprs
-      fault unique-name qualify text-input-stream 1
+      read-fault unique-name qualify text-input-stream 1
     #/fn unique-name qualify text-input-stream args-subject
     #/dissect args-subject (list subject-expr)
     
     #/sink-extfx-read-case-pattern
-      fault unique-name qualify text-input-stream
+      read-fault unique-name qualify text-input-stream
     #/fn unique-name qualify text-input-stream tags vars
     
     #/sink-extfx-read-bounded-specific-number-of-cexprs
-      fault unique-name qualify text-input-stream 2
+      read-fault unique-name qualify text-input-stream 2
     #/fn unique-name qualify text-input-stream args-branches
     #/dissect args-branches (list then-expr else-expr)
     
@@ -3258,19 +3272,19 @@
     #/sink-cexpr-case subject-expr tags vars then-expr else-expr))
   
   (def-macro! "cast" #/fn
-    fault unique-name qualify text-input-stream then
+    read-fault expr-fault unique-name qualify text-input-stream then
     
     (sink-extfx-read-leading-specific-number-of-cexprs
-      fault unique-name qualify text-input-stream 1
+      read-fault unique-name qualify text-input-stream 1
     #/fn unique-name qualify text-input-stream args-subject
     #/dissect args-subject (list subject-expr)
     
     #/sink-extfx-read-case-pattern
-      fault unique-name qualify text-input-stream
+      read-fault unique-name qualify text-input-stream
     #/fn unique-name qualify text-input-stream tags vars
     
     #/sink-extfx-read-bounded-specific-number-of-cexprs
-      fault unique-name qualify text-input-stream 2
+      read-fault unique-name qualify text-input-stream 2
     #/fn unique-name qualify text-input-stream args-branches
     #/dissect args-branches (list else-expr then-expr)
     
@@ -3278,26 +3292,26 @@
     #/sink-cexpr-case subject-expr tags vars then-expr else-expr))
   
   (def-macro! "caselet" #/fn
-    fault unique-name qualify text-input-stream then
+    read-fault expr-fault unique-name qualify text-input-stream then
     
     (sink-extfx-read-leading-specific-number-of-identifiers
-      fault unique-name qualify text-input-stream 1
+      read-fault unique-name qualify text-input-stream 1
       sink-name-for-local-variable
     #/fn unique-name qualify text-input-stream args-subject-var
     #/dissect args-subject-var (list #/list _ subject-var)
     #/w- subject-var (sink-authorized-name-get-name subject-var)
     
     #/sink-extfx-read-leading-specific-number-of-cexprs
-      fault unique-name qualify text-input-stream 1
+      read-fault unique-name qualify text-input-stream 1
     #/fn unique-name qualify text-input-stream args-subject-expr
     #/dissect args-subject-expr (list subject-expr)
     
     #/sink-extfx-read-case-pattern
-      fault unique-name qualify text-input-stream
+      read-fault unique-name qualify text-input-stream
     #/fn unique-name qualify text-input-stream tags vars
     
     #/sink-extfx-read-bounded-specific-number-of-cexprs
-      fault unique-name qualify text-input-stream 2
+      read-fault unique-name qualify text-input-stream 2
     #/fn unique-name qualify text-input-stream args-branches
     #/dissect args-branches (list then-expr else-expr)
     
@@ -3325,33 +3339,31 @@
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-macro! "c-blame" #/fn
-    fault unique-name qualify text-input-stream then
+    read-fault expr-fault unique-name qualify text-input-stream then
     
-    (sink-extfx-read-fault text-input-stream
-    #/fn text-input-stream expr-fault
-    #/w- read-fault (make-fault-read fault expr-fault)
+    (w- syntax-error-fault (make-fault-read read-fault expr-fault)
     #/sink-extfx-read-leading-specific-number-of-cexprs
-      fault unique-name qualify text-input-stream 2
+      read-fault unique-name qualify text-input-stream 2
     #/fn unique-name qualify text-input-stream args-func
     #/dissect args-func
       (list (sink-cexpr fault-arg-expr) (sink-cexpr func-expr))
     
     #/sink-extfx-read-bounded-cexprs
-      fault unique-name qualify text-input-stream
+      read-fault unique-name qualify text-input-stream
     #/fn unique-name qualify text-input-stream args-args
     #/w- args-args
       (list-map args-args #/dissectfn (sink-cexpr arg-arg) arg-arg)
     
     #/expect (reverse args-args)
       (cons last-arg-arg rev-past-args-args)
-      ; TODO FAULT: Make this `fault` more specific.
-      (sink-extfx-cene-err fault "Expected a c-blame form to have at least one argument aside from the blame argument and the function to call")
+      ; TODO FAULT: Make this `syntax-error-fault` more specific.
+      (sink-extfx-cene-err syntax-error-fault "Expected a c-blame form to have at least one argument aside from the blame argument and the function to call")
     
     #/then unique-name qualify text-input-stream
-      (sink-cexpr #/cexpr-call-fault read-fault fault-arg-expr
+      (sink-cexpr #/cexpr-call-fault syntax-error-fault fault-arg-expr
         (list-foldl func-expr (reverse rev-past-args-args)
           (fn func arg
-            (cexpr-call read-fault func arg)))
+            (cexpr-call syntax-error-fault func arg)))
         last-arg-arg)))
   
   ; NOTE: In the JavaScript version of Cene, this was known as
@@ -3375,25 +3387,23 @@
     #/cenegetfx-sink-mobile-call-binary fault mobile-func mobile-arg))
   
   (def-macro! "c" #/fn
-    fault unique-name qualify text-input-stream then
+    read-fault expr-fault unique-name qualify text-input-stream then
     
-    (sink-extfx-read-fault text-input-stream
-    #/fn text-input-stream expr-fault
-    #/w- read-fault (make-fault-read fault expr-fault)
+    (w- syntax-error-fault (make-fault-read read-fault expr-fault)
     #/sink-extfx-read-leading-specific-number-of-cexprs
-      fault unique-name qualify text-input-stream 1
+      read-fault unique-name qualify text-input-stream 1
     #/fn unique-name qualify text-input-stream args-func
     #/dissect args-func (list (sink-cexpr func-expr))
     
     #/sink-extfx-read-bounded-cexprs
-      fault unique-name qualify text-input-stream
+      read-fault unique-name qualify text-input-stream
     #/fn unique-name qualify text-input-stream args-args
     #/w- args-args
       (list-map args-args #/dissectfn (sink-cexpr arg-arg) arg-arg)
     
     #/then unique-name qualify text-input-stream
     #/sink-cexpr #/list-foldl func-expr args-args #/fn func arg
-      (cexpr-call read-fault func arg)))
+      (cexpr-call syntax-error-fault func arg)))
   
   ; NOTE BUILTINS: The following built-ins from the JavaScript version
   ; of Cene seem like they're not relevant to the approach we've taken
@@ -3490,13 +3500,13 @@
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-macro! "fn-blame" #/fn
-    fault unique-name qualify text-input-stream then
+    read-fault expr-fault unique-name qualify text-input-stream then
     
     (sink-extfx-read-bounded-ids-and-exprs
-      fault unique-name qualify text-input-stream
+      read-fault unique-name qualify text-input-stream
       sink-name-for-local-variable
     #/fn unique-name qualify text-input-stream args
-    #/sink-extfx-parse-func-body-fault fault args
+    #/sink-extfx-parse-func-body-fault read-fault args
     #/fn fault-param last-param rev-past-params body
     #/then unique-name qualify text-input-stream
       (list-foldl
@@ -3506,13 +3516,13 @@
         (sink-cexpr-opaque-fn param body))))
   
   (def-macro! "fn" #/fn
-    fault unique-name qualify text-input-stream then
+    read-fault expr-fault unique-name qualify text-input-stream then
     
     (sink-extfx-read-bounded-ids-and-exprs
-      fault unique-name qualify text-input-stream
+      read-fault unique-name qualify text-input-stream
       sink-name-for-local-variable
     #/fn unique-name qualify text-input-stream args
-    #/sink-extfx-parse-func-body fault args #/fn rev-params body
+    #/sink-extfx-parse-func-body read-fault args #/fn rev-params body
     #/then unique-name qualify text-input-stream
       (list-foldl body rev-params #/fn body param
         (sink-cexpr-opaque-fn param body))))
@@ -3930,19 +3940,22 @@
     #/cenegetfx-done #/sink-cexpr-let bindings body))
   
   (def-macro! "let" #/fn
-    fault unique-name qualify text-input-stream then
+    read-fault expr-fault unique-name qualify text-input-stream then
     
-    (sink-extfx-read-bounded-ids-and-exprs
-      fault unique-name qualify text-input-stream
+    (w- syntax-error-fault (make-fault-read read-fault expr-fault)
+    #/sink-extfx-read-bounded-ids-and-exprs
+      read-fault unique-name qualify text-input-stream
       sink-name-for-local-variable
     #/fn unique-name qualify text-input-stream args
     #/expect (reverse args) (cons body rev-bindings)
-      (sink-extfx-cene-err fault "Expected a let form to have a body expression")
+      ; TODO FAULT: Make this `syntax-error-fault` more specific.
+      (sink-extfx-cene-err syntax-error-fault "Expected a let form to have a body expression")
     #/sink-extfx-run-cenegetfx
       (w-loop next rest rev-bindings so-far (list)
         (mat rest (list) (cenegetfx-done so-far)
         #/expect rest (list* val var rest)
-          (cenegetfx-cene-err fault "Expected a let form to have an odd number of subforms")
+          ; TODO FAULT: Make this `syntax-error-fault` more specific.
+          (cenegetfx-cene-err syntax-error-fault "Expected a let form to have an odd number of subforms")
         #/next rest (cons (list var val) so-far)))
     #/fn bindings
     #/sink-extfx-run-cenegetfx
@@ -3950,7 +3963,8 @@
       #/dissectfn (list var val)
         (expect var
           (id-or-expr-id var-located-string var-qualified-name)
-          (cenegetfx-cene-err fault "Expected every bound variable of a let form to be an identifier")
+          ; TODO FAULT: Make this `syntax-error-fault` more specific.
+          (cenegetfx-cene-err syntax-error-fault "Expected every bound variable of a let form to be an identifier")
         #/cenegetfx-done
           (list
             (sink-authorized-name-get-name var-qualified-name)
@@ -4081,7 +4095,7 @@
   ; NOTE: The JavaScript version of Cene doesn't have this.
   ;
   (def-macro! "str-prim" #/fn
-    fault unique-name qualify text-input-stream then
+    read-fault expr-fault unique-name qualify text-input-stream then
     
     (sink-extfx-claim-freshen unique-name #/fn unique-name
     #/sink-extfx-optimized-textpat-read-located
@@ -4831,26 +4845,29 @@
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-macro-verbose! sink-extfx-def-value-for-prelude
     "prelude-to-everyone-def-func-blame"
-    (fn fault unique-name qualify text-input-stream then
+    (fn
+      read-fault expr-fault unique-name qualify text-input-stream then
+      
+      (w- syntax-error-fault (make-fault-read read-fault expr-fault)
       ; TODO: See if we can avoid computing `func-name-qualified-name`
       ; since we don't use it.
-      (sink-extfx-read-bounded-ids-and-exprs
-        fault unique-name qualify text-input-stream
+      #/sink-extfx-read-bounded-ids-and-exprs
+        read-fault unique-name qualify text-input-stream
         sink-name-for-local-variable
       #/fn unique-name qualify text-input-stream args
       #/expect args (cons func-name args)
-        ; TODO FAULT: Make this `fault` more specific.
-        (sink-extfx-cene-err fault "Expected a prelude-to-everyone-def-func-blame form to have a name")
+        ; TODO FAULT: Make this `syntax-error-fault` more specific.
+        (sink-extfx-cene-err syntax-error-fault "Expected a prelude-to-everyone-def-func-blame form to have a name")
       #/expect func-name
         (id-or-expr-id
           func-name-located-string
           func-name-qualified-name)
-        ; TODO FAULT: Make this `fault` more specific.
-        (sink-extfx-cene-err fault "Expected the name of a prelude-to-everyone-def-func-blame form to be an identifier")
+        ; TODO FAULT: Make this `syntax-error-fault` more specific.
+        (sink-extfx-cene-err syntax-error-fault "Expected the name of a prelude-to-everyone-def-func-blame form to be an identifier")
       #/dissect
         (sink-string-from-located-string func-name-located-string)
         (sink-string main-tag-string)
-      #/sink-extfx-parse-func-body-fault fault args
+      #/sink-extfx-parse-func-body-fault read-fault args
       #/fn fault-param last-param rev-past-params body
       #/dissect
         (list-foldl
@@ -4860,9 +4877,13 @@
           (sink-cexpr-opaque-fn param body))
         (sink-cexpr func-expr)
       #/expect (cexpr-is-closed? func-expr) #t
-        (sink-extfx-cene-err fault "Expected the function body of a prelude-to-everyone-def-func-blame form to have no free variables")
+        ; TODO FAULT: Make this `syntax-error-fault` more specific.
+        (sink-extfx-cene-err syntax-error-fault "Expected the function body of a prelude-to-everyone-def-func-blame form to have no free variables")
       #/sink-extfx-run-cenegetfx
-        (cenegetfx-cexpr-eval fault func-expr)
+        ; TODO FAULT: See if this `syntax-error-fault` is *the right
+        ; kind of* specific. Maybe we shouldn't build this one out of
+        ; `make-fault-read`.
+        (cenegetfx-cexpr-eval syntax-error-fault func-expr)
       #/fn func
       #/then unique-name qualify text-input-stream
         (sink-cexpr-built-in-call "directive"
@@ -4883,9 +4904,11 @@
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-macro-verbose! sink-extfx-def-value-for-prelude
     "prelude-to-everyone-construct"
-    (fn fault unique-name qualify text-input-stream then
+    (fn
+      read-fault expr-fault unique-name qualify text-input-stream then
+      
       (sink-extfx-expand-interleaved-struct-op
-        fault unique-name qualify text-input-stream
+        read-fault expr-fault unique-name qualify text-input-stream
         (sink-you-must-be-this-lang-impl)
         (sink-you-must-be-someone)
       #/fn
@@ -4897,9 +4920,11 @@
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-macro-verbose! sink-extfx-def-value-for-prelude
     "prelude-to-prelude-construct"
-    (fn fault unique-name qualify text-input-stream then
+    (fn
+      read-fault expr-fault unique-name qualify text-input-stream then
+      
       (sink-extfx-expand-interleaved-struct-op
-        fault unique-name qualify text-input-stream
+        read-fault expr-fault unique-name qualify text-input-stream
         (sink-you-must-be-this-lang-impl)
         (sink-you-must-be-this-lang-impl)
       #/fn
@@ -4911,9 +4936,11 @@
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-macro-verbose! sink-extfx-def-value-for-prelude
     "dex-prelude-to-prelude-struct"
-    (fn fault unique-name qualify text-input-stream then
+    (fn
+      read-fault expr-fault unique-name qualify text-input-stream then
+      
       (sink-extfx-expand-interleaved-struct-op
-        fault unique-name qualify text-input-stream
+        read-fault expr-fault unique-name qualify text-input-stream
         (sink-you-must-be-this-lang-impl)
         (sink-you-must-be-this-lang-impl)
       #/fn
