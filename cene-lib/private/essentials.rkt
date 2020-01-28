@@ -3965,13 +3965,11 @@
       sink-name-for-local-variable
     #/fn unique-name qualify text-input-stream args
     #/expect (reverse args) (cons body rev-bindings)
-      ; TODO FAULT: Make this `syntax-error-fault` more specific.
       (sink-extfx-cene-err syntax-error-fault "Expected a let form to have a body expression")
     #/sink-extfx-run-cenegetfx
       (w-loop next rest rev-bindings so-far (list)
         (mat rest (list) (cenegetfx-done so-far)
         #/expect rest (list* val var rest)
-          ; TODO FAULT: Make this `syntax-error-fault` more specific.
           (cenegetfx-cene-err syntax-error-fault "Expected a let form to have an odd number of subforms")
         #/next rest (cons (list var val) so-far)))
     #/fn bindings
@@ -4406,8 +4404,8 @@
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func-fault! "make-qualify" fault call
     (cenegetfx-done #/sink-qualify #/fn name
-      ; TODO FAULT: See if we should combine this `fault` with the one
-      ; we had already in the outer scope... maybe not using
+      ; TODO FAULT: See if we should combine the fault passed to
+      ; Cene's `qualify-call` and this `fault` here... maybe not using
       ; `make-fault-double-callback`, but using something like that.
       (cenegetfx-bind (cenegetfx-sink-call fault call name)
       #/fn result
@@ -4702,7 +4700,7 @@
                 (cenegetfx-sink-call fault then
                   other-input-stream))))))))
   
-  (def-func-fault! "extfx-read-eof" fault input-stream on-eof then
+  (def-func-fault! "extfx-read-eof" fault input-stream on-eof else
     (expect (sink-text-input-stream? input-stream) #t
       (cenegetfx-cene-err fault "Expected input-stream to be a text input stream")
     #/expect (sink-extfx? on-eof) #t
@@ -4712,7 +4710,7 @@
         (cenegetfx-cene-err fault "Expected input-stream to be an unspent text input stream")
       #/fn input-stream
       #/sink-extfx-read-eof input-stream on-eof #/fn input-stream
-      #/verify-callback-extfx! fault #/cenegetfx-sink-call fault then
+      #/verify-callback-extfx! fault #/cenegetfx-sink-call fault else
         input-stream)))
   
   (def-func-fault! "extfx-text-input-stream-split"
@@ -4873,7 +4871,6 @@
         sink-name-for-local-variable
       #/fn unique-name qualify text-input-stream args
       #/expect args (cons func-name args)
-        ; TODO FAULT: Make this `syntax-error-fault` more specific.
         (sink-extfx-cene-err syntax-error-fault "Expected a prelude-to-everyone-def-func-blame form to have a name")
       #/expect func-name
         (id-or-expr-id
