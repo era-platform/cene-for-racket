@@ -1650,10 +1650,10 @@
       (cenegetfx-cene-err fault "Could not combine the result values")
     #/dissect command
       (unsafe:fuse-fusable-function::getfx-arg-to-method
-        fault-and-arg)
+        (list explicit-fault rinfo arg))
     #/cenegetfx-bind
       (cenegetfx-sink-call
-        fault fault-and-arg-to-method fault-and-arg)
+        fault fault-and-arg-to-method explicit-fault arg)
     #/fn sink-getfx-method
     #/expect (sink-getfx? sink-getfx-method) #t
       (cenegetfx-cene-err fault "Expected the pure result of a fuse-fusable-fn body to be a getfx effectful computation")
