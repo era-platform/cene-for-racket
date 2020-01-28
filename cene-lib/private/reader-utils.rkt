@@ -117,8 +117,10 @@
 ; bracket.
 (define/contract
   (sink-extfx-read-bounded-ids-and-exprs
-    read-fault unique-name qualify text-input-stream pre-qualify then)
+    read-fault expr-fault unique-name qualify text-input-stream
+    pre-qualify then)
   (->
+    sink-fault?
     sink-fault?
     sink-authorized-name?
     sink-qualify?
@@ -135,6 +137,7 @@
   #/sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
   #/fn text-input-stream
+  #/w- syntax-error-fault (make-fault-read read-fault expr-fault)
   #/w-loop next
     unique-name unique-name
     qualify qualify
@@ -146,11 +149,7 @@
     #/sink-extfx-peek-whether-eof text-input-stream
     #/fn text-input-stream is-eof
     #/if is-eof
-      ; TODO FAULT: Make this `read-fault` more specific. We should at
-      ; least associate it with a source location using
-      ; `make-fault-read`, preferably the source location before the
-      ; opening bracket.
-      (sink-extfx-cene-err read-fault "Encountered end of file while expecting any number of identifiers and expressions preceding a closing bracket")
+      (sink-extfx-cene-err syntax-error-fault "Encountered end of file while expecting any number of identifiers and expressions preceding a closing bracket")
     #/sink-extfx-peek-whether-closing-bracket text-input-stream
     #/fn text-input-stream is-closing-bracket
     #/if is-closing-bracket
@@ -165,8 +164,9 @@
 ; This reads cexprs until it gets to a closing bracket.
 (define/contract
   (sink-extfx-read-bounded-cexprs
-    read-fault unique-name qualify text-input-stream then)
+    read-fault expr-fault unique-name qualify text-input-stream then)
   (->
+    sink-fault?
     sink-fault?
     sink-authorized-name?
     sink-qualify?
@@ -183,7 +183,7 @@
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
   #/fn text-input-stream
   #/sink-extfx-read-bounded-ids-and-exprs
-    read-fault unique-name qualify text-input-stream
+    read-fault expr-fault unique-name qualify text-input-stream
     sink-name-for-local-variable
   #/fn unique-name qualify text-input-stream ids-and-exprs
   #/then unique-name qualify text-input-stream
@@ -194,8 +194,10 @@
 ; verifies that there are precisely `n` of them.
 (define/contract
   (sink-extfx-read-bounded-specific-number-of-cexprs
-    read-fault unique-name qualify text-input-stream n then)
+    read-fault expr-fault unique-name qualify text-input-stream n
+    then)
   (->
+    sink-fault?
     sink-fault?
     sink-authorized-name?
     sink-qualify?
@@ -212,22 +214,15 @@
   #/sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
   #/fn text-input-stream
+  #/w- syntax-error-fault (make-fault-read read-fault expr-fault)
   #/sink-extfx-read-bounded-cexprs
-    read-fault unique-name qualify text-input-stream
+    read-fault expr-fault unique-name qualify text-input-stream
   #/fn unique-name qualify text-input-stream cexprs
   #/w- actual-n (length cexprs)
   #/if (< n actual-n)
-    ; TODO FAULT: Make this `read-fault` more specific. We should at
-    ; least associate it with a source location using
-    ; `make-fault-read`, preferably the source location before the
-    ; opening bracket.
-    (sink-extfx-cene-err read-fault "Encountered too many expressions")
+    (sink-extfx-cene-err syntax-error-fault "Encountered too many subexpressions")
   #/if (< actual-n n)
-    ; TODO FAULT: Make this `read-fault` more specific. We should at
-    ; least associate it with a source location using
-    ; `make-fault-read`, preferably the source location before the
-    ; opening bracket.
-    (sink-extfx-cene-err read-fault "Expected another expression")
+    (sink-extfx-cene-err syntax-error-fault "Expected another subexpression")
   #/then unique-name qualify text-input-stream cexprs))
 
 ; This reads precisely `n` identifiers and cexprs, and it causes an

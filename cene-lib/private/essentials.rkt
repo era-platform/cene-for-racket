@@ -1859,7 +1859,8 @@
       
       (w- syntax-error-fault (make-fault-read read-fault expr-fault)
       #/sink-extfx-read-bounded-specific-number-of-cexprs
-        read-fault unique-name qualify text-input-stream n-args
+        read-fault expr-fault unique-name qualify text-input-stream
+        n-args
       #/fn unique-name qualify text-input-stream args
       #/sink-extfx-run-cenegetfx (body syntax-error-fault args)
       #/fn expr
@@ -2911,8 +2912,10 @@
   
   (define/contract
     (sink-extfx-expand-metadata-based-struct-op
-      read-fault unique-name qualify text-input-stream then)
+      read-fault expr-fault unique-name qualify text-input-stream
+      then)
     (->
+      sink-fault?
       sink-fault?
       sink-authorized-name?
       sink-qualify?
@@ -2937,7 +2940,7 @@
       (cons main-tag-entry proj-names)
     
     #/sink-extfx-read-bounded-specific-number-of-cexprs
-      read-fault unique-name qualify text-input-stream
+      read-fault expr-fault unique-name qualify text-input-stream
       (length proj-names)
     #/fn unique-name qualify text-input-stream proj-exprs
     
@@ -2972,7 +2975,7 @@
     #/fn text-input-stream
     #/w- syntax-error-fault (make-fault-read read-fault expr-fault)
     #/sink-extfx-read-bounded-ids-and-exprs
-      read-fault unique-name qualify text-input-stream
+      read-fault expr-fault unique-name qualify text-input-stream
       sink-name-for-local-variable
     #/fn unique-name qualify text-input-stream args
     #/expect args (cons main-tag-id-or-expr-id args)
@@ -3035,7 +3038,7 @@
     read-fault expr-fault unique-name qualify text-input-stream then
     
     (sink-extfx-expand-metadata-based-struct-op
-      read-fault unique-name qualify text-input-stream
+      read-fault expr-fault unique-name qualify text-input-stream
     #/fn
       unique-name qualify text-input-stream main-tag-entry projections
     #/then unique-name qualify text-input-stream
@@ -3057,7 +3060,7 @@
     read-fault expr-fault unique-name qualify text-input-stream then
     
     (sink-extfx-expand-metadata-based-struct-op
-      read-fault unique-name qualify text-input-stream
+      read-fault expr-fault unique-name qualify text-input-stream
     #/fn
       unique-name qualify text-input-stream main-tag-entry projections
     #/then unique-name qualify text-input-stream
@@ -3079,7 +3082,7 @@
     read-fault expr-fault unique-name qualify text-input-stream then
     
     (sink-extfx-expand-metadata-based-struct-op
-      read-fault unique-name qualify text-input-stream
+      read-fault expr-fault unique-name qualify text-input-stream
     #/fn
       unique-name qualify text-input-stream main-tag-entry projections
     #/then unique-name qualify text-input-stream
@@ -3101,7 +3104,7 @@
     read-fault expr-fault unique-name qualify text-input-stream then
     
     (sink-extfx-expand-metadata-based-struct-op
-      read-fault unique-name qualify text-input-stream
+      read-fault expr-fault unique-name qualify text-input-stream
     #/fn
       unique-name qualify text-input-stream main-tag-entry projections
     #/then unique-name qualify text-input-stream
@@ -3151,7 +3154,7 @@
     read-fault expr-fault unique-name qualify text-input-stream then
     
     (sink-extfx-expand-metadata-based-struct-op
-      read-fault unique-name qualify text-input-stream
+      read-fault expr-fault unique-name qualify text-input-stream
     #/fn
       unique-name qualify text-input-stream main-tag-entry projections
     #/then unique-name qualify text-input-stream
@@ -3265,7 +3268,7 @@
     #/fn unique-name qualify text-input-stream tags vars
     
     #/sink-extfx-read-bounded-specific-number-of-cexprs
-      read-fault unique-name qualify text-input-stream 2
+      read-fault expr-fault unique-name qualify text-input-stream 2
     #/fn unique-name qualify text-input-stream args-branches
     #/dissect args-branches (list then-expr else-expr)
     
@@ -3285,7 +3288,7 @@
     #/fn unique-name qualify text-input-stream tags vars
     
     #/sink-extfx-read-bounded-specific-number-of-cexprs
-      read-fault unique-name qualify text-input-stream 2
+      read-fault expr-fault unique-name qualify text-input-stream 2
     #/fn unique-name qualify text-input-stream args-branches
     #/dissect args-branches (list else-expr then-expr)
     
@@ -3312,7 +3315,7 @@
     #/fn unique-name qualify text-input-stream tags vars
     
     #/sink-extfx-read-bounded-specific-number-of-cexprs
-      read-fault unique-name qualify text-input-stream 2
+      read-fault expr-fault unique-name qualify text-input-stream 2
     #/fn unique-name qualify text-input-stream args-branches
     #/dissect args-branches (list then-expr else-expr)
     
@@ -3350,7 +3353,7 @@
       (list (sink-cexpr fault-arg-expr) (sink-cexpr func-expr))
     
     #/sink-extfx-read-bounded-cexprs
-      read-fault unique-name qualify text-input-stream
+      read-fault expr-fault unique-name qualify text-input-stream
     #/fn unique-name qualify text-input-stream args-args
     #/w- args-args
       (list-map args-args #/dissectfn (sink-cexpr arg-arg) arg-arg)
@@ -3396,7 +3399,7 @@
     #/dissect args-func (list (sink-cexpr func-expr))
     
     #/sink-extfx-read-bounded-cexprs
-      read-fault unique-name qualify text-input-stream
+      read-fault expr-fault unique-name qualify text-input-stream
     #/fn unique-name qualify text-input-stream args-args
     #/w- args-args
       (list-map args-args #/dissectfn (sink-cexpr arg-arg) arg-arg)
@@ -3519,7 +3522,7 @@
     read-fault expr-fault unique-name qualify text-input-stream then
     
     (sink-extfx-read-bounded-ids-and-exprs
-      read-fault unique-name qualify text-input-stream
+      read-fault expr-fault unique-name qualify text-input-stream
       sink-name-for-local-variable
     #/fn unique-name qualify text-input-stream args
     #/sink-extfx-parse-func-body-fault read-fault expr-fault args
@@ -3535,7 +3538,7 @@
     read-fault expr-fault unique-name qualify text-input-stream then
     
     (sink-extfx-read-bounded-ids-and-exprs
-      read-fault unique-name qualify text-input-stream
+      read-fault expr-fault unique-name qualify text-input-stream
       sink-name-for-local-variable
     #/fn unique-name qualify text-input-stream args
     #/sink-extfx-parse-func-body read-fault expr-fault args
@@ -3961,7 +3964,7 @@
     
     (w- syntax-error-fault (make-fault-read read-fault expr-fault)
     #/sink-extfx-read-bounded-ids-and-exprs
-      read-fault unique-name qualify text-input-stream
+      read-fault expr-fault unique-name qualify text-input-stream
       sink-name-for-local-variable
     #/fn unique-name qualify text-input-stream args
     #/expect (reverse args) (cons body rev-bindings)
@@ -4867,7 +4870,7 @@
       ; TODO: See if we can avoid computing `func-name-qualified-name`
       ; since we don't use it.
       #/sink-extfx-read-bounded-ids-and-exprs
-        read-fault unique-name qualify text-input-stream
+        read-fault expr-fault unique-name qualify text-input-stream
         sink-name-for-local-variable
       #/fn unique-name qualify text-input-stream args
       #/expect args (cons func-name args)
