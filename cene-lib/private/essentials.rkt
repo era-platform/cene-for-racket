@@ -3449,20 +3449,27 @@
       (nothing)
     #/just #/sink-authorized-name-get-name param-qualified-name))
   
-  (define/contract (sink-extfx-parse-func-body fault args then)
-    (-> sink-fault? (listof id-or-expr?)
+  (define/contract
+    (sink-extfx-parse-func-body read-fault expr-fault args then)
+    (-> sink-fault? sink-fault? (listof id-or-expr?)
       (-> (listof sink-name?) sink-cexpr? sink-extfx?)
       sink-extfx?)
-    (expect (reverse args) (cons body rev-params)
-      (sink-extfx-cene-err fault "Expected a function body to have a body expression")
+    (w- overall-syntax-error-fault
+      (make-fault-read read-fault expr-fault)
+    #/expect (reverse args) (cons body rev-params)
+      (sink-extfx-cene-err overall-syntax-error-fault "Expected a function body to have a body expression")
     #/sink-extfx-run-cenegetfx
       (cenegetfx-list-map #/list-map rev-params #/fn param
         (expect (parse-param param) (just param)
-          (cenegetfx-cene-err fault "Expected every parameter of a function body to be an identifier")
+          ; TODO FAULT: Make this `overall-syntax-error-fault` more
+          ; specific.
+          (cenegetfx-cene-err overall-syntax-error-fault "Expected every parameter of a function body to be an identifier")
         #/cenegetfx-done param))
     #/fn rev-params
     #/if (sink-names-have-duplicate? rev-params)
-      (sink-extfx-cene-err fault "Expected every parameter of a function body to be unique")
+      ; TODO FAULT: Make this `overall-syntax-error-fault` more
+      ; specific.
+      (sink-extfx-cene-err overall-syntax-error-fault "Expected every parameter of a function body to be unique")
     #/then rev-params (id-or-expr->cexpr body)))
   
   ; TODO: See if this should make use of `sink-extfx-parse-func-body`.
@@ -3474,27 +3481,36 @@
   ; `sink-extfx-parse-func-body` doesn't check that there's at least
   ; one parameter.
   ;
-  (define/contract (sink-extfx-parse-func-body-fault fault args then)
-    (-> sink-fault? (listof id-or-expr?)
+  (define/contract
+    (sink-extfx-parse-func-body-fault read-fault expr-fault args then)
+    (-> sink-fault? sink-fault? (listof id-or-expr?)
       (-> sink-name? sink-name? (listof sink-name?) sink-cexpr?
         sink-extfx?)
       sink-extfx?)
-    (expect args (cons fault-param args)
-      (sink-extfx-cene-err fault "Expected a blame-aware function body to have a blame parameter")
+    (w- overall-syntax-error-fault
+      (make-fault-read read-fault expr-fault)
+    #/expect args (cons fault-param args)
+      (sink-extfx-cene-err overall-syntax-error-fault "Expected a blame-aware function body to have a blame parameter")
     #/expect (parse-param fault-param) (just fault-param)
-      (sink-extfx-cene-err fault "Expected the blame parameter of a blame-aware function body to be an identifier")
+      ; TODO FAULT: Make this `overall-syntax-error-fault` more
+      ; specific.
+      (sink-extfx-cene-err overall-syntax-error-fault "Expected the blame parameter of a blame-aware function body to be an identifier")
     #/expect (reverse args) (cons body rev-params)
-      (sink-extfx-cene-err fault "Expected a blame-aware function body to have a body expression")
+      (sink-extfx-cene-err overall-syntax-error-fault "Expected a blame-aware function body to have a body expression")
     #/sink-extfx-run-cenegetfx
       (cenegetfx-list-map #/list-map rev-params #/fn param
         (expect (parse-param param) (just param)
-          (cenegetfx-cene-err fault "Expected every parameter of a blame-aware function body to be an identifier")
+          ; TODO FAULT: Make this `overall-syntax-error-fault` more
+          ; specific.
+          (cenegetfx-cene-err overall-syntax-error-fault "Expected every parameter of a blame-aware function body to be an identifier")
         #/cenegetfx-done param))
     #/fn rev-params
     #/if (sink-names-have-duplicate? #/cons fault-param rev-params)
-      (sink-extfx-cene-err fault "Expected every parameter of a blame-aware function body to be unique, including the blame parameter")
+      ; TODO FAULT: Make this `overall-syntax-error-fault` more
+      ; specific.
+      (sink-extfx-cene-err overall-syntax-error-fault "Expected every parameter of a blame-aware function body to be unique, including the blame parameter")
     #/expect rev-params (cons last-param rev-past-params)
-      (sink-extfx-cene-err fault "Expected a blame-aware function body to have at least one parameter aside from the blame parameter")
+      (sink-extfx-cene-err overall-syntax-error-fault "Expected a blame-aware function body to have at least one parameter aside from the blame parameter")
     #/then fault-param last-param rev-past-params
       (id-or-expr->cexpr body)))
   
@@ -3506,7 +3522,7 @@
       read-fault unique-name qualify text-input-stream
       sink-name-for-local-variable
     #/fn unique-name qualify text-input-stream args
-    #/sink-extfx-parse-func-body-fault read-fault args
+    #/sink-extfx-parse-func-body-fault read-fault expr-fault args
     #/fn fault-param last-param rev-past-params body
     #/then unique-name qualify text-input-stream
       (list-foldl
@@ -3522,7 +3538,8 @@
       read-fault unique-name qualify text-input-stream
       sink-name-for-local-variable
     #/fn unique-name qualify text-input-stream args
-    #/sink-extfx-parse-func-body read-fault args #/fn rev-params body
+    #/sink-extfx-parse-func-body read-fault expr-fault args
+    #/fn rev-params body
     #/then unique-name qualify text-input-stream
       (list-foldl body rev-params #/fn body param
         (sink-cexpr-opaque-fn param body))))
@@ -4867,7 +4884,7 @@
       #/dissect
         (sink-string-from-located-string func-name-located-string)
         (sink-string main-tag-string)
-      #/sink-extfx-parse-func-body-fault read-fault args
+      #/sink-extfx-parse-func-body-fault read-fault expr-fault args
       #/fn fault-param last-param rev-past-params body
       #/dissect
         (list-foldl
