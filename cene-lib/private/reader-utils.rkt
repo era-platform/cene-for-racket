@@ -230,9 +230,10 @@
 ; cexprs in one cexpr read.
 (define/contract
   (sink-extfx-read-leading-specific-number-of-ids-and-exprs
-    read-fault unique-name qualify text-input-stream n pre-qualify
-    then)
+    read-fault expr-fault unique-name qualify text-input-stream n
+    pre-qualify then)
   (->
+    sink-fault?
     sink-fault?
     sink-authorized-name?
     sink-qualify?
@@ -250,6 +251,7 @@
   #/sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
   #/fn text-input-stream
+  #/w- syntax-error-fault (make-fault-read read-fault expr-fault)
   #/w-loop next
     unique-name unique-name
     qualify qualify
@@ -264,26 +266,21 @@
       (then unique-name qualify text-input-stream
         (reverse rev-results))
     #/if (< n #/length rev-results)
-      ; TODO FAULT: Make this `read-fault` more specific. We should at
-      ; least associate it with a source location using
-      ; `make-fault-read`.
-      (sink-extfx-cene-err read-fault "Encountered a single operation that expanded to too many expressions while expecting a specific number of identifiers and expressions")
+      ; TODO FAULT: Make this `syntax-error-fault` more specific.
+      (sink-extfx-cene-err syntax-error-fault "Encountered a single operation that expanded to too many expressions while expecting a specific number of identifiers and expressions")
     #/sink-extfx-read-whitespace text-input-stream
     #/fn text-input-stream whitespace
     #/sink-extfx-peek-whether-eof text-input-stream
     #/fn text-input-stream is-eof
     #/if is-eof
-      ; TODO FAULT: Make this `read-fault` more specific. We should at
-      ; least associate it with a source location using
-      ; `make-fault-read`.
-      (sink-extfx-cene-err read-fault "Encountered end of file while expecting an identifier or an expression")
+      (sink-extfx-cene-err syntax-error-fault "Encountered end of file while expecting an identifier or an expression")
     #/sink-extfx-peek-whether-closing-bracket text-input-stream
     #/fn text-input-stream is-closing-bracket
     #/if is-closing-bracket
-      ; TODO FAULT: Make this `read-fault` more specific. We should at
-      ; least associate it with a source location using
-      ; `make-fault-read`.
-      (sink-extfx-cene-err read-fault "Encountered a closing bracket while expecting an identifier or an expression")
+      ; TODO FAULT: See if we should also report the position of the
+      ; closing bracket. If not, maybe we should rephrase this to say
+      ; something like "Expected another identifier or subexpression".
+      (sink-extfx-cene-err syntax-error-fault "Encountered a closing bracket while expecting an identifier or an expression")
     #/sink-extfx-read-ids-and-exprs-onto
       read-fault unique-name qualify text-input-stream rev-results
       pre-qualify
@@ -295,8 +292,10 @@
 ; one cexpr read.
 (define/contract
   (sink-extfx-read-leading-specific-number-of-cexprs
-    read-fault unique-name qualify text-input-stream n then)
+    read-fault expr-fault unique-name qualify text-input-stream n
+    then)
   (->
+    sink-fault?
     sink-fault?
     sink-authorized-name?
     sink-qualify?
@@ -314,7 +313,7 @@
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
   #/fn text-input-stream
   #/sink-extfx-read-leading-specific-number-of-ids-and-exprs
-    read-fault unique-name qualify text-input-stream n
+    read-fault expr-fault unique-name qualify text-input-stream n
     sink-name-for-local-variable
   #/fn unique-name qualify text-input-stream ids-and-exprs
   #/then unique-name qualify text-input-stream

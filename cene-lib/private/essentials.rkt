@@ -3259,7 +3259,7 @@
     read-fault expr-fault unique-name qualify text-input-stream then
     
     (sink-extfx-read-leading-specific-number-of-cexprs
-      read-fault unique-name qualify text-input-stream 1
+      read-fault expr-fault unique-name qualify text-input-stream 1
     #/fn unique-name qualify text-input-stream args-subject
     #/dissect args-subject (list subject-expr)
     
@@ -3279,7 +3279,7 @@
     read-fault expr-fault unique-name qualify text-input-stream then
     
     (sink-extfx-read-leading-specific-number-of-cexprs
-      read-fault unique-name qualify text-input-stream 1
+      read-fault expr-fault unique-name qualify text-input-stream 1
     #/fn unique-name qualify text-input-stream args-subject
     #/dissect args-subject (list subject-expr)
     
@@ -3306,7 +3306,7 @@
     #/w- subject-var (sink-authorized-name-get-name subject-var)
     
     #/sink-extfx-read-leading-specific-number-of-cexprs
-      read-fault unique-name qualify text-input-stream 1
+      read-fault expr-fault unique-name qualify text-input-stream 1
     #/fn unique-name qualify text-input-stream args-subject-expr
     #/dissect args-subject-expr (list subject-expr)
     
@@ -3347,7 +3347,7 @@
     
     (w- syntax-error-fault (make-fault-read read-fault expr-fault)
     #/sink-extfx-read-leading-specific-number-of-cexprs
-      read-fault unique-name qualify text-input-stream 2
+      read-fault expr-fault unique-name qualify text-input-stream 2
     #/fn unique-name qualify text-input-stream args-func
     #/dissect args-func
       (list (sink-cexpr fault-arg-expr) (sink-cexpr func-expr))
@@ -3394,7 +3394,7 @@
     
     (w- syntax-error-fault (make-fault-read read-fault expr-fault)
     #/sink-extfx-read-leading-specific-number-of-cexprs
-      read-fault unique-name qualify text-input-stream 1
+      read-fault expr-fault unique-name qualify text-input-stream 1
     #/fn unique-name qualify text-input-stream args-func
     #/dissect args-func (list (sink-cexpr func-expr))
     
