@@ -686,7 +686,7 @@
 
 (define/contract
   (sink-extfx-read-struct-metadata-authorized-as-user
-    fault unique-name qualify text-input-stream then)
+    read-fault unique-name qualify text-input-stream then)
   (->
     sink-fault?
     sink-authorized-name?
@@ -706,17 +706,18 @@
   #/sink-extfx-read-whitespace text-input-stream
   #/fn text-input-stream whitespace
   #/sink-extfx-read-leading-specific-number-of-identifiers
-    fault unique-name qualify text-input-stream 1
+    read-fault unique-name qualify text-input-stream 1
     sink-name-for-struct-metadata
   #/fn unique-name qualify text-input-stream metadata-names
-  #/dissect metadata-names (list #/list located-string metadata-name)
+  #/dissect metadata-names
+    (list #/list expr-fault located-string metadata-name)
+  #/w- syntax-error-fault (make-fault-read read-fault expr-fault)
   #/sink-extfx-run-sink-getfx
     (sink-getfx-get #/sink-authorized-name-get-name metadata-name)
   #/fn metadata
-  ; TODO FAULT: Make this `fault` more specific.
   #/sink-extfx-run-cenegetfx
     (cenegetfx-verify-sink-struct-metadata-authorized-as-user
-      fault metadata)
+      syntax-error-fault metadata)
   #/fn metadata
   #/then unique-name qualify text-input-stream metadata))
 
@@ -3211,7 +3212,7 @@
   
   (define/contract
     (sink-extfx-read-case-pattern
-      fault unique-name qualify text-input-stream then)
+      read-fault unique-name qualify text-input-stream then)
     (->
       sink-fault?
       sink-authorized-name?
@@ -3233,21 +3234,21 @@
       (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
     #/fn text-input-stream
     #/sink-extfx-read-struct-metadata-authorized-as-user
-      fault unique-name qualify text-input-stream
+      read-fault unique-name qualify text-input-stream
     #/fn unique-name qualify text-input-stream metadata
     #/w- tags (struct-metadata-tags metadata)
     #/w- n-projs (struct-metadata-n-projs metadata)
     
     #/sink-extfx-read-leading-specific-number-of-identifiers
-      fault unique-name qualify text-input-stream n-projs
+      read-fault unique-name qualify text-input-stream n-projs
       sink-name-for-local-variable
     #/fn unique-name qualify text-input-stream vars
     #/w- vars
-      (list-map vars #/dissectfn (list located-string var)
+      (list-map vars #/dissectfn (list expr-fault located-string var)
         (sink-authorized-name-get-name var))
     #/if (sink-names-have-duplicate? vars)
-      ; TODO FAULT: Make this `fault` more specific.
-      (sink-extfx-cene-err fault "Expected the variables of a case pattern to be mutually unique")
+      ; TODO FAULT: Make this `read-fault` more specific.
+      (sink-extfx-cene-err read-fault "Expected the variables of a case pattern to be mutually unique")
     
     #/then unique-name qualify text-input-stream tags vars))
   
@@ -3298,7 +3299,7 @@
       read-fault unique-name qualify text-input-stream 1
       sink-name-for-local-variable
     #/fn unique-name qualify text-input-stream args-subject-var
-    #/dissect args-subject-var (list #/list _ subject-var)
+    #/dissect args-subject-var (list #/list _ _ subject-var)
     #/w- subject-var (sink-authorized-name-get-name subject-var)
     
     #/sink-extfx-read-leading-specific-number-of-cexprs

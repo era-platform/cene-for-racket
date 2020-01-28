@@ -344,7 +344,10 @@
       sink-authorized-name?
       sink-qualify?
       sink-text-input-stream?
-      (listof #/list/c sink-located-string? sink-authorized-name?)
+      (listof #/list/c
+        sink-fault?
+        sink-located-string?
+        sink-authorized-name?)
       sink-extfx?)
     sink-extfx?)
   (sink-extfx-claim-freshen unique-name #/fn unique-name
@@ -363,12 +366,15 @@
         (reverse rev-results))
     #/sink-extfx-read-whitespace text-input-stream
     #/fn text-input-stream whitespace
+    #/sink-extfx-read-fault text-input-stream
+    #/fn text-input-stream expr-fault
     #/sink-extfx-read-maybe-identifier
       qualify text-input-stream pre-qualify
     #/fn text-input-stream maybe-id
-    #/mat maybe-id (just id)
+    #/mat maybe-id (just #/list located-string qualified-name)
       (next unique-name qualify text-input-stream next-n
-        (cons id rev-results))
+        (cons (list expr-fault located-string qualified-name)
+          rev-results))
     
     ; We skip comments, and if there's a closing bracket, we cause an
     ; error. We do this by calling `sink-extfx-read-cexprs` with an
