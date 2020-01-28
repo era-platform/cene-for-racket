@@ -2562,7 +2562,7 @@
 ; reads and performs side effects.
 (define/contract
   (sink-extfx-read-top-level
-    fault unique-name qualify text-input-stream)
+    read-fault unique-name qualify text-input-stream)
   (->
     sink-fault?
     sink-authorized-name?
@@ -2593,40 +2593,42 @@
       #/expect cexpr (sink-cexpr cexpr)
         ; TODO: Test that we can actually get this error. We might
         ; already be checking for this condition elsewhere.
-        ; TODO FAULT: Make this `fault` more specific.
-        (sink-extfx-cene-err fault "Encountered a top-level expression that compiled to a non-expression value")
+        ; TODO FAULT: Make this `read-fault` more specific.
+        (sink-extfx-cene-err read-fault "Encountered a top-level expression that compiled to a non-expression value")
       #/expect (cexpr-has-free-vars? cexpr #/table-empty) #f
-        ; TODO FAULT: Make this `fault` more specific.
-        (sink-extfx-cene-err fault "Encountered a top-level expression with at least one free variable")
+        ; TODO FAULT: Make this `read-fault` more specific.
+        (sink-extfx-cene-err read-fault "Encountered a top-level expression with at least one free variable")
       #/sink-extfx-fuse (then unique-name-rest)
-      #/sink-extfx-run-cenegetfx (cenegetfx-cexpr-eval fault cexpr)
-      #/expectfn (sink-directive directive)
-        ; TODO FAULT: Make this `fault` more specific.
-        (sink-extfx-cene-err fault "Expected every top-level expression to evaluate to a directive")
       #/sink-extfx-run-cenegetfx
-        (cenegetfx-sink-call fault directive
+        (cenegetfx-cexpr-eval read-fault cexpr)
+      #/expectfn (sink-directive directive)
+        ; TODO FAULT: Make this `read-fault` more specific.
+        (sink-extfx-cene-err read-fault "Expected every top-level expression to evaluate to a directive")
+      #/sink-extfx-run-cenegetfx
+        (cenegetfx-sink-call read-fault directive
           unique-name-first qualify)
       #/fn effects
       #/expect (sink-extfx? effects) #t
-        ; TODO FAULT: Make this `fault` more specific.
-        (sink-extfx-cene-err fault "Expected every top-level expression to evaluate to a directive made from a callable value that takes two arguments and returns extfx side effects")
+        ; TODO FAULT: Make this `read-fault` more specific.
+        (sink-extfx-cene-err read-fault "Expected every top-level expression to evaluate to a directive made from a callable value that takes two arguments and returns extfx side effects")
         effects))
   #/fn output-stream unwrap
   #/sink-extfx-read-cexprs
-    fault unique-name-main qualify text-input-stream output-stream
+    read-fault unique-name-main qualify text-input-stream
+    output-stream
   #/fn unique-name-main qualify text-input-stream output-stream
   #/unwrap output-stream #/fn unique-name-writer
   #/sink-extfx-claim-and-split unique-name-writer 0 #/dissectfn (list)
   #/sink-extfx-read-top-level
-    fault unique-name-main qualify text-input-stream))
+    read-fault unique-name-main qualify text-input-stream))
 
 (define/contract
-  (sink-extfx-run-string fault unique-name qualify string)
+  (sink-extfx-run-string read-fault unique-name qualify string)
   (->
     sink-fault?
     sink-authorized-name?
     sink-qualify?
     immutable-string?
     sink-extfx?)
-  (sink-extfx-read-top-level fault unique-name qualify
+  (sink-extfx-read-top-level read-fault unique-name qualify
     (sink-text-input-stream #/box #/just #/open-input-string string)))
