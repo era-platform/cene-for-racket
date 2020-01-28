@@ -1249,7 +1249,7 @@
       #/cenegetfx-bind
         (cenegetfx-list-map #/list-map projs
         #/dissectfn (list proj-name proj-cexpr)
-          (-eval-in-env proj-cexpr env))
+          (-eval-in-env fault proj-cexpr env))
       #/fn vals
       #/cenegetfx-map
         (sink-fuse #/unsafe:fuse #/furge-internals-sink-struct
