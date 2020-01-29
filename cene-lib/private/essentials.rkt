@@ -4981,8 +4981,7 @@
       (make-fault-internal)
       unique-name
       (sink-qualify cenegetfx-qualify-for-prelude)
-      (sink-text-input-stream #/box #/just
-        (open-input-file prelude-path))))
+      (sink-text-input-stream-for-file prelude-path)))
   
   
   (sink-extfx-run-init-essentials-steps root-unique-name))

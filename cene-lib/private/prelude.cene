@@ -216,7 +216,8 @@
 \= This reads expressions until it gets to a closing bracket.
 (prelude-to-everyone-def-func-blame
   extfx-read-bounded-exprs
-  implicit-bl explicit-bl unique-name qualify text-input-stream then
+  implicit-bl read-bl expr-bl unique-name qualify text-input-stream
+  then
   
   \= TODO: Implement this.
   (nil))
@@ -225,10 +226,13 @@
 \= verifies that there are precisely `n` of them.
 (prelude-to-everyone-def-func-blame
   extfx-read-bounded-specific-number-of-exprs
-  implicit-bl explicit-bl unique-name qualify text-input-stream n then
+  implicit-bl read-bl expr-bl unique-name qualify text-input-stream n
+  then
   
-  (cast (is-blame explicit-bl) yep -
-    [errb implicit-bl /str-prim:Expected explicit-bl to be a blame value]
+  (cast (is-blame read-bl) yep -
+    [errb implicit-bl /str-prim:Expected read-bl to be a blame value]
+  /cast (is-blame expr-bl) yep -
+    [errb implicit-bl /str-prim:Expected expr-bl to be a blame value]
   /cast (is-authorized-name unique-name) yep -
     [errb implicit-bl /str-prim:Expected unique-name to be an authorized name]
   /cast (is-qualify qualify) yep -
@@ -240,16 +244,15 @@
   /extfx-text-input-stream-freshen text-input-stream
     [fn - /errb implicit-bl /str-prim:Expected text-input-stream to be an unspent text input stream]
   /fn text-input-stream
+  /let syntax-error-bl (make-blame-read read-bl expr-bl)
   /extfx-read-bounded-exprs
-    explicit-bl unique-name qualify text-input-stream
+    read-bl expr-bl unique-name qualify text-input-stream
   /fn unique-name qualify text-input-stream exprs
   /let actual-n (list-length exprs)
   /case (pure-is-lt (cline-int) n actual-n) yep -
-    \= TODO FAULT: Make this `explicit-bl` more specific.
-    [errb explicit-bl /str-prim:Encountered too many expressions]
+    [errb syntax-error-bl /str-prim:Encountered too many subexpressions]
   /case (pure-is-lt (cline-int) actual-n n) yep -
-    \= TODO FAULT: Make this `explicit-bl` more specific.
-    [errb explicit-bl /str-prim:Expected another expression]
+    [errb syntax-error-bl /str-prim:Expected another subexpression]
   /let effects
     (c-blame implicit-bl then
       unique-name qualify text-input-stream exprs)

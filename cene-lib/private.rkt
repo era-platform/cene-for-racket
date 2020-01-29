@@ -21,7 +21,7 @@
 
 
 (require #/for-syntax racket/base)
-(require #/for-syntax #/only-in syntax/parse expr)
+(require #/for-syntax #/only-in syntax/parse syntax-parse)
 
 ; NOTE: The Racket documentation says `get/build-late-neg-projection`
 ; is in `racket/contract/combinator`, but it isn't. It's in
@@ -38,7 +38,6 @@
 (require #/only-in racket/generic define/generic define-generics)
 (require #/only-in racket/math natural?)
 (require #/only-in racket/port filter-read-input-port)
-(require #/only-in syntax/parse/define define-simple-macro)
 
 (require #/only-in lathe-comforts
   dissect dissectfn expect expectfn fn mat w- w-loop)
@@ -270,16 +269,14 @@
 ; how much information we retain in each fault object.
 ;
 (define-imitation-simple-struct
-  (cene-fault-rep-continuation-marks?
-    cene-fault-rep-continuation-marks-continuation-marks)
-  cene-fault-rep-continuation-marks
-  'cene-fault-rep-continuation-marks (current-inspector) (auto-write))
-; TODO: Somehow include the filename in this.
+  (cene-fault-rep-internal-srcloc?
+    cene-fault-rep-internal-srcloc-srcloc
+    cene-fault-rep-internal-srcloc-continuation-marks)
+  cene-fault-rep-internal-srcloc
+  'cene-fault-rep-internal-srcloc (current-inspector) (auto-write))
 (define-imitation-simple-struct
   (cene-fault-rep-srcloc?
-    cene-fault-rep-srcloc-line
-    cene-fault-rep-srcloc-column
-    cene-fault-rep-srcloc-position)
+    cene-fault-rep-srcloc-srcloc)
   cene-fault-rep-srcloc
   'cene-fault-rep-srcloc (current-inspector) (auto-write))
 ; A fault object that blames an error on a call site that calls a
@@ -321,14 +318,20 @@
 
 (define/contract (error-definer-from-fault-and-message fault message)
   (-> sink-fault? immutable-string? error-definer?)
+  ; NOTE: The behavior of `srcloc->string` has side effects. Namely,
+  ; it looks up the value of `current-directory-for-user` to display
+  ; the path in a more friendly way.
   (dissect fault (sink-fault rep)
-  #/mat rep (cene-fault-rep-continuation-marks marks)
-    (error-definer-from-exn #/exn:fail message marks)
-  #/mat rep (cene-fault-rep-srcloc line column position)
-    ; TODO FAULT: See if we can incorporate more of the information we
-    ; have into the error message.
+  #/mat rep (cene-fault-rep-internal-srcloc srcloc marks)
     (error-definer-from-exn
-      (exn:fail message (current-continuation-marks)))
+      (exn:fail
+        (format "~a: ~a" (srcloc->string srcloc) message)
+        marks))
+  #/mat rep (cene-fault-rep-srcloc srcloc)
+    (error-definer-from-exn
+      (exn:fail
+        (format "~a: ~a" (srcloc->string srcloc) message)
+        (current-continuation-marks)))
   #/mat rep
     (cene-fault-rep-double-callback founder-fault callback-fault)
     ; TODO FAULT: See if we can incorporate more of the information we
@@ -1306,10 +1309,16 @@
     #/sink-opaque-fn #/fn arg
       (cenegetfx-done #/next n-args-after-next #/cons arg rev-args))))
 
-(define/contract (make-fault-internal)
-  (-> sink-fault?)
-  (sink-fault #/cene-fault-rep-continuation-marks
-    (current-continuation-marks)))
+(define-syntax (make-fault-internal stx)
+  (syntax-parse stx #/ (_)
+    #`(sink-fault #/cene-fault-rep-internal-srcloc
+        (srcloc
+          #,(syntax-source stx)
+          #,(syntax-line stx)
+          #,(syntax-column stx)
+          #,(syntax-position stx)
+          #,(syntax-span stx))
+        (current-continuation-marks))))
 
 (define/contract
   (make-fault-double-callback founder-fault callback-fault)
@@ -1605,6 +1614,22 @@
   #/then #/sink-cexpr-sequence-output-stream #/box #/just #/list
     id state on-cexpr))
 
+(define/contract (sink-text-input-stream-for-string string)
+  (-> immutable-string? sink-text-input-stream?)
+  (w- input-port (open-input-string string)
+  ; TODO FAULT: See if we really need to call `port-count-lines!`
+  ; here.
+  #/begin (port-count-lines! input-port)
+  ; TODO: See if we really want to represent the path as the symbol
+  ; `'string` here.
+  #/sink-text-input-stream #/box #/just #/list 'string input-port))
+
+(define/contract (sink-text-input-stream-for-file path)
+  (-> (and/c path? complete-path?) sink-text-input-stream?)
+  (w- input-port (open-input-file path)
+  #/begin (port-count-lines! input-port)
+  #/sink-text-input-stream #/box #/just #/list path input-port))
+
 (define/contract
   (sink-extfx-sink-text-input-stream-freshen
     text-input-stream on-err then)
@@ -1615,23 +1640,26 @@
   #/sink-extfx-later #/fn
   #/begin (assert-can-mutate!)
   ; TODO: See if this should be more thread-safe in some way.
-  #/expect (unbox b) (just input-port)
+  #/expect (unbox b) (just path-and-input-port)
     (sink-extfx-run-cenegetfx on-err)
   #/begin (set-box! b (nothing))
-  #/then #/sink-text-input-stream #/box #/just input-port))
+  #/then #/sink-text-input-stream #/box #/just path-and-input-port))
 
 (define/contract
   (sink-extfx-sink-text-input-stream-spend text-input-stream then)
-  (-> sink-text-input-stream? (-> input-port? sink-extfx?)
+  (-> sink-text-input-stream?
+    (->
+      (list/c (or/c 'string (and/c path? complete-path?)) input-port?)
+      sink-extfx?)
     sink-extfx?)
   (dissect text-input-stream (sink-text-input-stream b)
   #/sink-extfx-later #/fn
   #/begin (assert-can-mutate!)
   ; TODO: See if this should be more thread-safe in some way.
-  #/expect (unbox b) (just input-port)
+  #/expect (unbox b) (just path-and-input-port)
     (error "Tried to spend a text input stream that was already spent")
   #/begin (set-box! b (nothing))
-  #/then input-port))
+  #/then path-and-input-port))
 
 (define/contract
   (sink-extfx-sink-text-input-stream-track-identity
@@ -1648,9 +1676,9 @@
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
   #/fn text-input-stream
   #/sink-extfx-sink-text-input-stream-spend text-input-stream
-  #/fn input-port
+  #/dissectfn (list path input-port)
   #/then
-    (sink-text-input-stream #/box #/just input-port)
+    (sink-text-input-stream #/box #/just #/list path input-port)
     (fn other-text-input-stream on-err then
       (sink-extfx-sink-text-input-stream-freshen
         other-text-input-stream
@@ -1658,11 +1686,13 @@
       #/fn other-text-input-stream
       #/sink-extfx-sink-text-input-stream-spend
         other-text-input-stream
-      #/fn other-input-port
+      #/dissectfn (list other-path other-input-port)
       #/expect (eq? input-port other-input-port) #t
         (sink-extfx-run-cenegetfx on-err)
       #/then
-        (sink-text-input-stream #/box #/just other-input-port)))))
+        (sink-text-input-stream #/box #/just #/list
+          other-path
+          other-input-port)))))
 
 (define/contract (sink-extfx-read-fault text-input-stream then)
   (-> sink-text-input-stream?
@@ -1671,10 +1701,14 @@
   (sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
   #/fn text-input-stream
-  #/sink-extfx-sink-text-input-stream-spend text-input-stream #/fn in
-  #/let-values ([(line column position) (port-next-location in)])
-  #/then (sink-text-input-stream #/box #/just in)
-    (sink-fault #/cene-fault-rep-srcloc line column position)))
+  #/sink-extfx-sink-text-input-stream-spend text-input-stream
+  #/dissectfn (list path input-port)
+  #/let-values
+    ([(line column position) (port-next-location input-port)])
+  #/w- span #f
+  #/then (sink-text-input-stream #/box #/just #/list path input-port)
+    (sink-fault #/cene-fault-rep-srcloc #/srcloc
+      path line column position span)))
 
 (define/contract (sink-extfx-read-eof text-input-stream on-eof else)
   (->
@@ -1685,11 +1719,13 @@
   (sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
   #/fn text-input-stream
-  #/sink-extfx-sink-text-input-stream-spend text-input-stream #/fn in
-  #/if (eof-object? #/peek-byte in)
-    (begin (close-input-port in)
+  #/sink-extfx-sink-text-input-stream-spend text-input-stream
+  #/dissectfn (list path input-port)
+  #/if (eof-object? #/peek-byte input-port)
+    (begin (close-input-port input-port)
       on-eof)
-  #/else #/sink-text-input-stream #/box #/just in))
+  #/else
+    (sink-text-input-stream #/box #/just #/list path input-port)))
 
 (define/contract
   (sink-extfx-optimized-textpat-read-located
@@ -1701,20 +1737,23 @@
   (sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
   #/fn text-input-stream
-  #/sink-extfx-sink-text-input-stream-spend text-input-stream #/fn in
+  #/sink-extfx-sink-text-input-stream-spend text-input-stream
+  #/dissectfn (list path input-port)
   #/let-values
     (
       [
         (start-line start-column start-position)
-        (port-next-location in)])
-  #/expect (optimized-textpat-read! pattern in) (just text)
-    (then (sink-text-input-stream #/box #/just in) (nothing))
+        (port-next-location input-port)])
+  #/expect (optimized-textpat-read! pattern input-port) (just text)
+    (then
+      (sink-text-input-stream #/box #/just #/list path input-port)
+      (nothing))
   #/let-values
     (
       [
         (stop-line stop-column stop-position)
-        (port-next-location in)])
-  #/then (sink-text-input-stream #/box #/just in)
+        (port-next-location input-port)])
+  #/then (sink-text-input-stream #/box #/just #/list path input-port)
     (just
     #/mat (string-length text) 0
       (sink-located-string #/list)
@@ -1742,10 +1781,19 @@
   #/sink-extfx-sink-text-input-stream-track-identity
     text-input-stream
   #/fn text-input-stream sink-extfx-verify-same-text-input-stream
-  #/sink-extfx-sink-text-input-stream-spend text-input-stream #/fn in
+  #/sink-extfx-sink-text-input-stream-spend text-input-stream
+  #/dissectfn (list path input-port)
+  #/let-values
+    ([(line column position) (port-next-location input-port)])
   #/let-values ([(pipe-in pipe-out) (make-pipe)])
-  #/w- original-monitored-in
-    (filter-read-input-port in
+  ; TODO FAULT: See if we really need to call `port-count-lines!`
+  ; here.
+  #/begin (port-count-lines! pipe-in)
+  ; TODO FAULT: See if we really need to call
+  ; `set-port-next-location!` here.
+  #/begin (set-port-next-location! pipe-in line column position)
+  #/w- original-monitored-input-port
+    (filter-read-input-port input-port
       ; read-wrap
       (fn storage result
         (begin0 result
@@ -1753,7 +1801,10 @@
             (write-bytes storage pipe-out 0 result))))
       ; peek-wrap
       (fn storage result result))
-  #/body (sink-text-input-stream #/box #/just original-monitored-in)
+  #/body
+    (sink-text-input-stream #/box #/just #/list
+      path
+      original-monitored-input-port)
   #/fn text-input-stream then
   #/sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected the updated text input stream to be an unspent text input stream")
@@ -1762,11 +1813,11 @@
     (cenegetfx-cene-err (make-fault-internal) "Expected the resulting text input stream of a sink-extfx-sink-text-input-stream-split body to be a future incarnation of the body's original stream")
   #/fn text-input-stream
   #/sink-extfx-sink-text-input-stream-spend text-input-stream
-  #/fn modified-monitored-in
+  #/dissectfn _
   #/begin (close-output-port pipe-out)
   #/then
-    (sink-text-input-stream #/box #/just pipe-in)
-    (sink-text-input-stream #/box #/just in)))
+    (sink-text-input-stream #/box #/just #/list path pipe-in)
+    (sink-text-input-stream #/box #/just #/list path input-port)))
 
 (define sink-extfx-peek-whether-eof-pat
   (optimize-textpat #/textpat-lookahead #/textpat-one))
@@ -2194,8 +2245,8 @@
 (define/contract (sink-text-input-stream-summary text-input-stream)
   (-> sink-text-input-stream? #/or/c eof-object? any/c)
   (dissect text-input-stream (sink-text-input-stream b)
-  #/dissect (unbox b) (just in)
-  #/peek-string 1000 0 in))
+  #/dissect (unbox b) (just #/list path input-port)
+  #/peek-string 1000 0 input-port))
 
 ; TODO CEXPR-LOCATED: For every cexpr read this way, wrap that cexpr
 ; in a `cexpr-located`.
@@ -2631,4 +2682,4 @@
     immutable-string?
     sink-extfx?)
   (sink-extfx-read-top-level read-fault unique-name qualify
-    (sink-text-input-stream #/box #/just #/open-input-string string)))
+    (sink-text-input-stream-for-string string)))
