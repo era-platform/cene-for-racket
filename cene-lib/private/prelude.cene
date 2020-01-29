@@ -386,7 +386,7 @@
     
     (let syntax-error-bl (make-blame-read read-bl expr-bl)
     /extfx-read-bounded-specific-number-of-exprs
-      read-bl unique-name qualify text-input-stream n-args
+      read-bl expr-bl unique-name qualify text-input-stream n-args
     /fn unique-name qualify text-input-stream args
     /extfx-expr-write output-stream
       (c-blame body-bl body syntax-error-bl args)
