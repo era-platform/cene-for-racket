@@ -23,7 +23,7 @@ To facilitate local *macros* in Cene (like Scheme's `let-syntax`), the Cene macr
 
 That helps for something like Racket's `let-syntax`, but it doesn't get us to local definitions that are quite as convenient as they are in those other languages, because it means we have to know what names *will* be locally bound before we begin to expand the definitions. Fortunately, a local definition block syntax that required forward declarations for all the local bindings would still be rather useful both for refactoring and for metaprogramming, so the `qualify` function is probably already sufficient for this purpose.
 
-Nevertheless, if we do want to be more ambitious, we may be able to make use of Interconfection's closed-world assumption extensibility features to forego forward declarations. Specifically, a call to the `qualify` function would block until either the name was determined to have a local definition or all the familiarity tickets that could have registered local definitions have already been spent. This implies most top-level declaration forms would have to receive familiarity tickets from the macroexpander, and most of them would have to very quickly either dispose of the ticket or use the ticket to register some local definitions.
+Nevertheless, if we do want to be more ambitious, we may be able to make use of Interconfection's closed-world assumption extensibility features to forgo forward declarations. Specifically, a call to the `qualify` function would block until either the name was determined to have a local definition or all the familiarity tickets that could have registered local definitions have already been spent. This implies most top-level declaration forms would have to receive familiarity tickets from the macroexpander, and most of them would have to very quickly either dispose of the ticket or use the ticket to register some local definitions.
 
 This is something we will be taking into account in the design of definition forms for lexical units.
 
@@ -102,13 +102,22 @@ Let's do this like so: First we introduce a concept of "unceremonious expression
 
 If we treat top-level declarations the same way as expressions, there's a design problem. How can the macroexpander begin even one top-level expression's macro call if it still doesn't know if that macro will be rebound by one of the definitions?
 
-Here's what we'll do: Forget that the top-level declarations are expressions. They're now "declarations," and their macro calls use "bounded declaration operations" instead of "bounded expression operations." These operations have a slightly different interface, taking in a  "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket from the macroexpander.
+Here's what we'll do: Forget that the top-level declarations are expressions. They're now "declarations," and their macro calls use "bounded declaration operations" instead of "bounded expression operations." These operations can have a slightly different interface.
 
 The way this helps is that we can have the declaration operations take in two qualify functions instead of one. One qualify function (the "outer" one) can be used for reading subforms where the lexical unit's definitions aren't in scope, and the other (the "inner" one) can be used for reading subforms where they are. The top-level declarations themselves will be expanded using the outer qualify function, so we don't have to worry about whether those macros will be locally shadowed. Most of the declarations' subexpressions will be expanded in the inner scope, so they can be mutually recursive.
 
 We'll do something a little different than actually passing in the two functions separately: We'll set up a binding (named by `name-for-local-qualify`) in the outer qualify function that maps via `extfx-get` to a maybe containing the inner qualify function. Most other qualify functions will be set up to bind this to `(nothing)`.
 
 If someone needs to define a definition form and then use it right away, this approach makes that nontrivial to do. They'll need to use it from within a lexical unit where the outer scope includes the definition form. Just for this purpose, we'll design a top-level declaration named `importing-as-nonlocal` that processes a local block of declarations within an outer scope where part of the original outer scope is shadowed.
+
+
+### Using familiarity tickets for declarations
+
+We've mentioned using familiarity tickets to manage exports. We've mentioned using "bounded declaration operations" instead of "bounded expression operations" for declarations. Specifically, a declaration operation will not receive an expression sequence output stream from the macroexpander or give one back; instead, it will receive two familiarity tickets from the macroexpander, which we will call the "interface familiarity ticket" and the "implementation familiarity ticket."
+
+The interface familiarity ticket's contributions decide what this lexical unit defines, what it exports, and what struct tag export circumstances it determines. When all these contributions are available, we know what definitions and struct tag export circumstances from the outer scope are _not_ shadowed.
+
+The implementation familiarity ticket's contributions decide the set of `directive` expressions which can be executed to compute the actual definitions of the lexical unit's exports. When all these contributions are available, we can compile the lexical unit by compiling its complete set of `directive` expressions.
 
 
 ---
@@ -289,11 +298,11 @@ Pre-reads its lexical extent to find matching brackets. Returns control to the m
 
 Processes the given declaration (which may perform multiple declarations using `declare`) as its own lexical unit, using nearly the same outer scope as the current lexical unit's outer scope, but with the inner scope binding changed so as to refer to this inner lexical unit's definitions.
 
-Reads the given export metadata terms using the inner lexical unit's outer scope, and spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it defines each of the things listed by each of those export metadata operations.
+Reads the given export metadata terms using the inner lexical unit's outer scope, and spends its interface familiarity ticket to say that it defines each of the things listed by each of those export metadata operations.
 
-Concurrently looks up each of the things it promised to define and defines it.
+Concurrently looks up each of the things it promised to define and defines it using its implementation familiarity ticket.
 
-Note that there may be interdependencies between the declaration and the surrounding lexical unit, so there may be a nontrivial chain of logical dependency in between spending the familiarity ticket to say what definitions will be imported and finally propagating those definitions.
+Note that there may be interdependencies between the declaration and the surrounding lexical unit, so there may be a nontrivial chain of logical dependency in between spending the interface familiarity ticket to say what definitions will be imported and finally spending the implementation familiarity ticket to propagate those definitions.
 
 
 ---
@@ -312,11 +321,11 @@ Reads an expression (`input-file`) using the current lexical unit's outer scope.
 
 Causes that located input file handle to be instantiated if it hasn't been instantiated yet. To instantiate it, first we create an outer scope that's nearly the same as that handle's file registry's outer scope, but with the inner scope binding changed so as to refer to the file's own definitions and with the self-referential file handle binding changed so as to refer to the handle being instantiated. We write that outer scope to the handle's file registry, and we obtain and process the file's located input stream as its own lexical unit which may consist of multiple declarations which use the derived outer scope.
 
-Concurrently, this operation reads the given export metadata terms using the derived outer scope, and it spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it defines each of the things listed by each of those export metadata operations.
+Concurrently, this operation reads the given export metadata terms using the derived outer scope, and it spends its interface familiarity ticket to say that it defines each of the things listed by each of those export metadata operations.
 
-Concurrently, it looks up each of the things it promised to define and defines it.
+Concurrently, it looks up each of the things it promised to define and defines it using its implementation familiarity ticket.
 
-Note that there may be interdependencies between the declaration and the surrounding lexical unit, so there may be a nontrivial chain of logical dependency in between spending the familiarity ticket to say what definitions will be imported and finally propagating those definitions.
+Note that there may be interdependencies between the declaration and the surrounding lexical unit, so there may be a nontrivial chain of logical dependency in between spending the interface familiarity ticket to say what definitions will be imported and finally spending the implementation familiarity ticket to propagate those definitions.
 
 
 ---
@@ -331,7 +340,9 @@ A bounded declaration operation.
 
 Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and does the rest of its work concurrently with that.
 
-Spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it exports each of the things listed by each of the given export metadata entries. The export metadata terms are read using the current lexical unit's outer scope.
+Spends its interface familiarity ticket to say that it exports each of the things listed by each of the given export metadata entries. The export metadata terms are read using the current lexical unit's outer scope.
+
+Spends its implementation familiarity ticket without defining anything.
 
 
 ---
@@ -346,17 +357,17 @@ A bounded declaration operation.
 
 (In short: Defines a struct using inferred export conditions, and defines its function implementation so that it causes an error when called.)
 
-Spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it defines an unceremonious export metadata operation, a struct metadata operation, and a bounded expression operation, each with its name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`. For the sake of assisting with debug printouts, the declarations that this defines a struct metadata operation and a bounded expression operation each come with metadata to express that the operations are capable of being used for constructing structs.
+Spends its interface familiarity ticket to say that it defines an unceremonious export metadata operation, a struct metadata operation, and a bounded expression operation, each with its name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`. For the sake of assisting with debug printouts, the declarations that this defines a struct metadata operation and a bounded expression operation each come with metadata to express that the operations are capable of being used for constructing structs.
 
 Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and does the rest of its work concurrently with that.
 
-Writes a first `directive` expression that defines something with a name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
+Contributes a first `directive` expression that defines something with a name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
 
 * An unceremonious export metadata operation that exports this unceremonious export metadata operation as well as the struct metadata operation and the bounded expression operation defined below.
 
 Determines the export conditions of the struct tag. These may depend on declarations in this lexical unit.
 
-Writes a second `directive` expression that defines three more things, the first two of which have names based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
+Contributes a second `directive` expression that defines three more things, the first two of which have names based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
 
 * A struct metadata operation with automatically determined struct export conditions, with a main tag name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`, and with projection names based on the given `proj-tag` identifiers.
 
@@ -381,9 +392,9 @@ A bounded declaration operation.
 
 Pre-reads its lexical extent to find matching brackets. Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and concurrently does the rest of its work by expanding a modified copy of its input stream where the stream ends after the closing paren.
 
-Spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it defines an unceremonious export metadata operation, a struct metadata operation, and a bounded expression operation, each with its name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`. For the sake of assisting with debug printouts, the declaration that this defines a struct metadata operation comes with metadata to express that the operation is capable of being used for constructing structs.
+Spends its interface familiarity ticket to say that it defines an unceremonious export metadata operation, a struct metadata operation, and a bounded expression operation, each with its name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`. For the sake of assisting with debug printouts, the declaration that this defines a struct metadata operation comes with metadata to express that the operation is capable of being used for constructing structs.
 
-Writes a first `directive` expression that defines something with a name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
+Contributes a first `directive` expression that defines something with a name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
 
 * An unceremonious export metadata operation that exports this unceremonious export metadata operation as well as the struct metadata operation and the bounded expression operation defined below.
 
@@ -391,7 +402,7 @@ Reads `body` as an expression in the lexical unit's inner scope, but while augme
 
 Determines the export conditions of the struct tag. These may depend on declarations in this lexical unit.
 
-Writes a second `directive` expression that defines three more things, the first two of which have names based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
+Contributes a second `directive` expression that defines three more things, the first two of which have names based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
 
 * A struct metadata operation with automatically determined struct export conditions, with a main tag name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`, and with projection names based on the metadata of the free variables of the wrapped `body` expression.
 
@@ -405,7 +416,8 @@ Writes a second `directive` expression that defines three more things, the first
 ```
 (def-bounded-expr-op
   export-metadata-op-and-bounded-expr-op
-  blame-arg
+  read-blame-arg
+  expression-blame-arg
   definition-site-unique-name-arg
   definition-site-qualify-arg
   call-site-unique-name-arg
@@ -422,24 +434,39 @@ A bounded declaration operation.
 
 Pre-reads its lexical extent to find matching brackets. Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and concurrently does the rest of its work by expanding a modified copy of its input stream where the stream ends after the closing paren.
 
-Spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it defines an unceremonious export metadata operation and a bounded expression operation, each with its name based on `export-metadata-op-and-bounded-expr-op`.
+Spends its interface familiarity ticket to say that it defines an unceremonious export metadata operation and a bounded expression operation, each with its name based on `export-metadata-op-and-bounded-expr-op`.
 
-Writes a first `directive` expression that defines something with a name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
+Contributes a first `directive` expression that defines something with a name based on `export-metadata-op-and-struct-medatata-op-and-bounded-expr-op-and-main-tag`:
 
 * An unceremonious export metadata operation that exports this defined operation as well as a bounded expression operation defined below.
 
-Reads `body` as an expression in the lexical unit's inner scope, but while augmenting that scope with unceremonious expression operations for each of the `...-arg` identifiers that associate them with local variables. Wraps the result in a blamed lambda expression which binds `blame-arg` as its blame argument and `expression-sequence-output-stream-arg` as its primary argument. Wraps this again in function expressions that bind the other arguments. Verifies that the expression that results from all this wrapping has no free variables.
+Reads `body` as an expression in the lexical unit's inner scope, but while augmenting that scope with unceremonious expression operations for each of the `...-arg` identifiers that associate them with local variables. Wraps the result in a blamed lambda expression which binds `read-blame-arg` as its blame argument and `expression-sequence-output-stream-arg` as its primary argument. Wraps this again in function expressions that bind the other arguments. Verifies that the expression that results from all this wrapping has no free variables.
 
-Writes a second `directive` expression that defines another thing with a name based on `export-metadata-op-and-bounded-expr-op`:
+Contributes a second `directive` expression that defines another thing with a name based on `export-metadata-op-and-bounded-expr-op`:
 
-* A bounded expression operation. The definition of this operation incorporates the wrapped function expression, passing its result some specific values for `definition-site-unique-name-arg` and `definition-site-qualify-arg` based on the `directive`'s unique name and qualify function and otherwise passing it the same arguments the operation receives from the macroexpander.
+* A bounded expression operation. The definition of this operation incorporates the wrapped function expression, passing its result some specific values for `definition-site-unique-name-arg` and `definition-site-qualify-arg` based on the `directive`'s unique name and qualify function and otherwise passing it the same arguments the operation receives from the macroexpander. The expected result is an extfx effectful computation, just as the macroexpander would need. The arguments corresponding to the ones received from the macroexpander are:
+
+  * `read-blame-arg`: A blame value that indicates the call site of the operation that invoked the macroexpander.
+
+  * `expression-blame-arg`: A blame value that indicates the source location of the brackets surrounding this bounded expression operation.
+
+  * `call-site-unique-name-arg`: A authorized name that hasn't yet been claimed as unique, which represents the unique identity of the call site.
+
+  * `call-site-qualify-arg`: A qualify function which represents the way names are qualified at the call site.
+
+  * `text-input-stream-arg`: An unspent text input stream which can be used to read the body of this bounded expression operation.
+
+  * `expression-sequence-output-stream-arg`: An unspent expression sequence output stream which can be used to write the sequence of expressions that this bounded expression operation expands into. Typically, an expression operation that represents a comment will write precisely zero expressions, and an expression operation that represents an expression will write precisely one.
+  
+  * `extfx-then-arg`: A function that produces an extfx effectful computation given updated versions of `call-site-unique-name`, `call-site-qualify-arg`, `text-input-stream-arg`, and `expression-sequence-output-stream-arg`. The updated versions of the streams must be future incarnations of the same streams that were supplied originally. The updated unique name can be any authorized name that hasn't yet been claimed as unique. The qualify function can be any qualify function, and it will typically be used for code that follows this bounded expression operation's closing bracket.
 
 
 ---
 
 ```
 (def-unexportable-nameless-bounded-expr-op
-  blame-arg
+  read-blame-arg
+  expression-blame-arg
   definition-site-unique-name-arg
   definition-site-qualify-arg
   call-site-unique-name-arg
@@ -462,7 +489,8 @@ A named bounded expression operation `foo` is typically called with the syntax `
 ```
 (def-freestanding-expr-op
   export-metadata-op-and-freestanding-expr-op
-  blame-arg
+  read-blame-arg
+  expression-blame-arg
   definition-site-unique-name-arg
   definition-site-qualify-arg
   call-site-unique-name-arg
@@ -483,7 +511,8 @@ Defines a freestanding expression operation, which is a kind of macro. This work
 ```
 (def-unceremonious-expr-op
   export-metadata-op-and-unceremonious-expr-op
-  blame-arg
+  read-blame-arg
+  expression-blame-arg
   definition-site-unique-name-arg
   definition-site-qualify-arg
   call-site-unique-name-arg
@@ -495,7 +524,7 @@ Defines a freestanding expression operation, which is a kind of macro. This work
 
 A bounded declaration operation.
 
-Defines an unceremonious expression operation, which is a kind of macro. This works just like `def-bounded-expr-op` except for the kind of macro it defines and the fact that this kind of macro receives no `text-input-stream-arg`. Unlike a bounded expression operation, which is typically called with syntax like `(foo ...)`, an unceremonious expression operation is typically called with syntax like `foo` -- which is to say, just an identifier by itself.
+Defines an unceremonious expression operation, which is a kind of macro. This works just like `def-bounded-expr-op` except for the kind of macro it defines and the fact that this kind of macro neither receives an `text-input-stream-arg` nor passes along an updated text input stream to its `extfx-then-arg`. Unlike a bounded expression operation, which is typically called with syntax like `(foo ...)`, an unceremonious expression operation is typically called with syntax like `foo` -- which is to say, just an identifier by itself.
 
 
 ---
@@ -503,63 +532,69 @@ Defines an unceremonious expression operation, which is a kind of macro. This wo
 ```
 (def-bounded-decl-op
   export-metadata-op-and-bounded-decl-op
-  blame-arg
+  read-blame-arg
+  expression-blame-arg
   definition-site-unique-name-arg
   definition-site-qualify-arg
   call-site-unique-name-arg
   call-site-qualify-arg
-  lexical-unit-familiarity-ticket
+  interface-familiarity-ticket-arg
+  implementation-familiarity-ticket-arg
   text-input-stream-arg
-  expression-sequence-output-stream-arg
   extfx-then-arg
   body)
 (def-unexportable-nameless-bounded-decl-op
-  blame-arg
+  read-blame-arg
+  expression-blame-arg
   definition-site-unique-name-arg
   definition-site-qualify-arg
   call-site-unique-name-arg
   call-site-qualify-arg
-  lexical-unit-familiarity-ticket
+  interface-familiarity-ticket-arg
+  implementation-familiarity-ticket-arg
   text-input-stream-arg
-  expression-sequence-output-stream-arg
   extfx-then-arg
   body)
 (def-freestanding-decl-op
   export-metadata-op-and-freestanding-decl-op
-  blame-arg
+  read-blame-arg
+  expression-blame-arg
   definition-site-unique-name-arg
   definition-site-qualify-arg
   call-site-unique-name-arg
   call-site-qualify-arg
-  lexical-unit-familiarity-ticket
+  interface-familiarity-ticket-arg
+  implementation-familiarity-ticket-arg
   text-input-stream-arg
-  expression-sequence-output-stream-arg
   extfx-then-arg
   body)
 (def-unceremonious-decl-op
   export-metadata-op-and-unceremonious-decl-op
-  blame-arg
+  read-blame-arg
+  expression-blame-arg
   definition-site-unique-name-arg
   definition-site-qualify-arg
   call-site-unique-name-arg
   call-site-qualify-arg
-  lexical-unit-familiarity-ticket
-  expression-sequence-output-stream-arg
+  interface-familiarity-ticket-arg
+  implementation-familiarity-ticket-arg
   extfx-then-arg
   body)
 ```
 
 Bounded declaration operations.
 
-These work just like `def-bounded-expr-op`, `def-nameless-bounded-expr-op`, `def-freestanding-expr-op`, and `def-unceremonious-expr-op`, except that instead of defining expression operations, they define declaration operations. Each kind of declaration operation is similar to the corresponding kind of expression operation except that it receives an additional argument:
+These work just like `def-bounded-expr-op`, `def-nameless-bounded-expr-op`, `def-freestanding-expr-op`, and `def-unceremonious-expr-op`, except that instead of defining expression operations, they define declaration operations. Each kind of declaration operation is similar to the corresponding kind of expression operation except that it does not receive an expression sequence output stream, it does not pass an expression sequence output stream to its `extfx-then-arg`, and instead it receives an additional two arguments:
 
-* The operation receives a `lexical-unit-familiarity-ticket`, a familiarity ticket which it can spend to contribute information about what this lexical unit defines, what it exports, and what struct tag export circumstances it determines.
+* The operation receives an `interface-familiarity-ticket-arg`, a familiarity ticket which it can spend to contribute information about what this lexical unit defines, what it exports, and what struct tag export circumstances it determines.
 
-The operation's `call-site-qualify-arg` is specifically the qualify function for the *outer scope* of the lexical unit, which is for looking things up in the scope surrounding the lexical unit this operation's call occurs in. The inner qualify function, which is for the scope where the lexical unit's definitions are visible, can be obtained from this one using `name-for-local-qualify`. and the value of that binding will usually be a maybe of a function that represents the inner scope where the lexical unit's definitions are in force. Calls made to the inner/local qualify function will tend to block until all the lexical unit's declarations' familiarity tickets have been spent.
+* The operation receives an `implementation-familiarity-ticket-arg`, a familiarity ticket which it can spend to contribute `directive` expressions that serve to compute the actual definitions of the things this lexical unit defines.
+
+The operation's `call-site-qualify-arg` is specifically the qualify function for the *outer scope* of the lexical unit, which is for looking things up in the scope surrounding the lexical unit this operation's call occurs in. The inner qualify function, which is for the scope where the lexical unit's definitions are visible, can be obtained from this one using `name-for-local-qualify`. and the value of that binding will usually be a maybe of a function that represents the inner scope where the lexical unit's definitions are in force. Calls made to the inner/local qualify function will tend to block until all the lexical unit's declarations' interface familiarity tickets have been spent.
 
 Likewise, the `extfx-then-arg` callback is specifically to be passed an *outer* qualify function; the inner qualify function will be passed along by nature of the fact that the outer one carries it.
 
-The expressions a declaration operation writes to the `expression-sequence-output-stream-arg` will be evaluated to obtain `directive` values, which will be used to perform the actual definitions promised when the the familiarity ticket was spent.
+The expressions a declaration operation contributes to its `implementation-familiarity-ticket-arg` will be evaluated to obtain `directive` values, which will be used to perform the actual definitions promised when the `interface-familiarity-ticket-arg` was spent.
 
 
 ---
@@ -575,11 +610,11 @@ A bounded declaration operation.
 
 Pre-reads its lexical extent to find matching brackets. Returns control to the macroexpander to continue expanding the portion of the stream that follows the closing paren, and concurrently does the rest of its work by expanding a modified copy of its input stream where the stream ends after the closing paren.
 
-Spends its "what does this lexical unit define, what does it export, and what struct tag export circumstances does it determine?" familiarity ticket to say that it defines an unceremonious export metadata operation with a name based on `unceremonious-export-metadata-op`.
+Spends its interface familiarity ticket to say that it defines an unceremonious export metadata operation with a name based on `unceremonious-export-metadata-op`.
 
 Reads `original-export-metadata` as an export metadata term in the lexical unit's outer scope to obtain an export metadata entry.
 
-Writes a `directive` expression that defines something with a name based on `unceremonious-export-metadata-op`:
+Contributes a `directive` expression that defines something with a name based on `unceremonious-export-metadata-op`:
 
 * An unceremonious export metadata operation that expands to the export metadata entry that was obtained from `original-export-metadata`.
 
