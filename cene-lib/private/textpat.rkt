@@ -23,13 +23,14 @@
 
 
 (require #/only-in racket/contract/base
-  -> ->* any/c contract-out listof)
+  -> ->* any/c contract-out ->i listof)
 (require #/only-in racket/contract/region define/contract)
 (require #/only-in racket/math natural?)
+(require #/only-in racket/port peeking-input-port)
 (require #/only-in racket/string string-contains?)
 
 (require #/only-in lathe-comforts dissect expect fn mat w- w-loop)
-(require #/only-in lathe-comforts/list list-foldl)
+(require #/only-in lathe-comforts/list list-foldl list-foldr)
 (require #/only-in lathe-comforts/maybe
   just maybe-bind maybe/c maybe-map nothing)
 (require #/only-in lathe-comforts/string immutable-string?)
@@ -48,6 +49,7 @@
     [textpat-result-failed? (-> any/c boolean?)]
     [textpat-result-passed-end? (-> any/c boolean?)]
     [textpat? (-> any/c boolean?)]
+    [productive-textpat? (-> any/c boolean?)]
     [optimized-textpat? (-> any/c boolean?)])
   textpat-result?
   
@@ -107,8 +109,37 @@
   textpat 'textpat (current-inspector) (auto-write))
 (define-imitation-simple-struct
   (textpat-data?
-    textpat-data-maybe-optional
+    
+    ; A maybe of an immutable string containing the code to a regular
+    ; expression. This regular expression should match if and only if
+    ; the text pattern should report `(textpat-result-passed-end)`,
+    ; assuming the end of the string the regex is applied to is the
+    ; end of the stream so far (and not necessarily the end of the
+    ; stream altogether).
+    ;
+    textpat-data-maybe-incomplete
+    
+    ; A maybe of an immutable string containing the code to a regular
+    ; expression. This regular expression should fail if and only if
+    ; the text pattern should report `(textpat-result-failed)`. When
+    ; it succeeds, and when a `(textpat-result-passed-end)` result
+    ; isn't possible (either because `textpat-data-maybe-incomplete`
+    ; failed to match or the input given is a complete stream
+    ; (`optimized-textpat-read!`) rather than a potentially incomplete
+    ; segment of a stream (`optimized-textpat-match`)), then the place
+    ; its match ends should be the appropriate place to report in a
+    ; `(textpat-result-matched ...)` result.
+    ;
+    ; TODO: Right now the only way we distinguish whether the input is
+    ; complete or not is by the choice of whether to use
+    ; `optimized-textpat-read!` or `optimized-textpat-match`. Perhaps
+    ; we should split `optimized-textpat-match` into two utilities
+    ; that each take strings, one of which treats the string as the
+    ; complete input and one of which treats it as incomplete. Perhaps
+    ; we should split `optimized-textpat-read!` the same way.
+    ;
     textpat-data-maybe-necessary
+    
     textpat-data-make-optimized)
   textpat-data 'textpat-data (current-inspector) (auto-write))
 (define-imitation-simple-struct
@@ -136,6 +167,10 @@
   (auto-write)
   (auto-equal))
 
+(define (productive-textpat? v)
+  (expect v (textpat has-empty get-data) #f
+  #/not has-empty))
+
 (define/contract (textpat-result? v)
   (-> any/c boolean?)
   (mat v (textpat-result-matched stop) (natural? stop)
@@ -143,23 +178,13 @@
   #/mat v (textpat-result-passed-end) #t
     #f))
 
-(define/contract (textpat-trivial has-empty necessary)
-  (-> boolean? immutable-string? textpat?)
-  (textpat has-empty #/fn #/textpat-data
-    (just #/fn next
-      (string->immutable-string #/string-append necessary next))
-    (just necessary)
-    (fn
-      (error "Internal error: Expected the regexp to be small enough to compile"))))
-
-(define/contract
-  (textpat-optional-trivial has-empty necessary maybe-make-optimized)
-  (-> boolean? immutable-string? (maybe/c #/-> optimized-textpat?)
+(define/contract (textpat-one-trivial necessary maybe-make-optimized)
+  (->
+    immutable-string?
+    (maybe/c #/-> optimized-textpat?)
     textpat?)
-  (textpat has-empty #/fn #/textpat-data
-    (just #/fn next
-      (string->immutable-string #/string-append
-        "(?:" necessary next "|$)"))
+  (textpat #f #/fn #/textpat-data
+    (just "$")
     (just necessary)
     (mat maybe-make-optimized (just make-optimized)
       make-optimized
@@ -168,22 +193,35 @@
 
 (define/contract (textpat-give-up)
   (-> textpat?)
-  (textpat-trivial #f ".^"))
+  (textpat #f #/fn #/textpat-data
+    (just ".^")
+    (just ".^")
+    (fn
+      (error "Internal error: Expected the regexp to be small enough to compile"))))
 
 (define/contract (textpat-empty)
   (-> textpat?)
-  (textpat-trivial #t ""))
+  (textpat #t #/fn #/textpat-data
+    (just ".^")
+    (just "")
+    (fn
+      (error "Internal error: Expected the regexp to be small enough to compile"))))
 
 (define/contract (textpat-from-string str)
   (-> immutable-string? textpat?)
   (w- n (string-length str)
   #/textpat (= 0 n) #/fn #/textpat-data
-    (just #/fn next
-      (string->immutable-string #/string-append
-        (regexp-replace* #rx"." str #/fn scalar-string
-          (string-append "(?:" (regexp-quote scalar-string)))
-        next
-        (regexp-replace* #rx"." str "|$)")))
+    
+    ; NOTE: We `regexp-quote` the last Unicode scalar of the string
+    ; (if it exists) and include it in the "incomplete" regex. The
+    ; regex can technically be simplified by removing it, but only at
+    ; the price of complicating this code.
+    (just #/string->immutable-string #/string-append
+      (regexp-replace* #rx"." str #/fn scalar-string
+        (string-append "(?>$|" (regexp-quote scalar-string)))
+      ".^"
+      (regexp-replace* #rx"." str ")"))
+    
     (just #/regexp-quote str)
     (fn
       (optimized-textpat
@@ -204,9 +242,9 @@
 
 (define/contract (textpat-one-in-string example-str)
   (-> immutable-string? textpat?)
-  (textpat-optional-trivial #f
+  (textpat-one-trivial
     (string->immutable-string #/string-append
-      "(?:.^"
+      "(?>.^"
       (regexp-replace* #rx"." example-str #/fn scalar-string
         (string-append "|" (regexp-quote scalar-string)))
       ")")
@@ -218,7 +256,7 @@
           #/w- potential-stop (add1 start)
           #/if
             (string-contains? example-str
-            #/substring str start potential-stop)
+              (substring str start potential-stop))
             (textpat-result-matched potential-stop)
           #/textpat-result-failed))
         (fn in
@@ -234,18 +272,21 @@
 
 (define/contract (textpat-one)
   (-> textpat?)
-  (textpat-optional-trivial #f "." (nothing)))
+  (textpat-one-trivial "." (nothing)))
 
 (define/contract (compile-textpat-data data)
   (-> textpat-data? textpat-data?)
   (dissect data
-    (textpat-data maybe-optional maybe-necessary make-optimized)
-  #/textpat-data maybe-optional maybe-necessary #/fn
-    (expect maybe-optional (just optional) (make-optimized)
+    (textpat-data maybe-incomplete maybe-necessary make-optimized)
+  #/textpat-data maybe-incomplete maybe-necessary #/fn
+    (expect maybe-incomplete (just incomplete) (make-optimized)
     #/expect maybe-necessary (just necessary) (make-optimized)
     #/expect
       (regexp-maybe #/string-append
-        "(?:" necessary "()|" (optional "") "())?")
+        ; NOTE: We can put a "^" at the beginning of this, but it
+        ; doesn't matter since this regex always matches in the first
+        ; position it's attempted (thanks to the empty case).
+        "(?>" incomplete "()|" necessary "()|)")
       (just compiled-match-string)
       (make-optimized)
     #/expect (regexp-maybe #/string-append "^" necessary)
@@ -258,10 +299,10 @@
             compiled-match-string str start stop)
           (list
             (cons matched-start matched-stop)
-            matched-nec
-            matched-opt)
+            matched-inc
+            matched-nec)
         #/if matched-nec (textpat-result-matched matched-stop)
-        #/if matched-opt (textpat-result-passed-end)
+        #/if matched-inc (textpat-result-passed-end)
         #/textpat-result-failed))
       (fn in
         (expect (regexp-try-match compiled-read-stream in)
@@ -269,6 +310,12 @@
           (nothing)
         #/just #/bytes->string/utf-8 bytes)))))
 
+; NOTE SMALL REGEX: This generates regexes that may be up to three
+; times as long as its inputs' regexes and up to twice as long as its
+; continuation regex in terms of source code. Because of this, we
+; prefer not to use it to derive other textpats even if that would be
+; very convenient.
+;
 (define/contract (textpat-if condition then else)
   (-> textpat? textpat? textpat? textpat?)
   (dissect condition (textpat c-has-empty c-get-data)
@@ -276,33 +323,31 @@
   #/dissect else (textpat e-has-empty e-get-data)
   #/textpat (or (and c-has-empty t-has-empty) e-has-empty) #/fn
     (dissect (compile-textpat-data #/c-get-data)
-      (textpat-data c-opt c-nec c-make-optimized)
+      (textpat-data c-inc c-nec c-make-optimized)
     #/dissect (compile-textpat-data #/t-get-data)
-      (textpat-data t-opt t-nec t-make-optimized)
+      (textpat-data t-inc t-nec t-make-optimized)
     #/dissect (compile-textpat-data #/e-get-data)
-      (textpat-data e-opt e-nec e-make-optimized)
+      (textpat-data e-inc e-nec e-make-optimized)
     #/textpat-data
       (maybe-bind c-nec #/fn c-nec
-      #/maybe-bind c-opt #/fn c-opt
-      #/maybe-bind t-opt #/fn t-opt
-      #/maybe-bind e-opt #/fn e-opt
-      #/just #/fn next
-        (string->immutable-string #/string-append
-          "(?:"
-            "(?!" c-nec ")(?:"
-              ; We may run out of room matching the condition.
-              (c-opt "") "|"
-              ; We may match the else clause.
-              (e-opt next)
-            ")|"
-            ; We may match the then clause.
-            c-nec (t-opt next) ""
-          ")"))
+      #/maybe-bind c-inc #/fn c-inc
+      #/maybe-bind t-inc #/fn t-inc
+      #/maybe-bind e-inc #/fn e-inc
+      #/just #/string->immutable-string #/string-append
+        "(?>"
+          ; We may run out of room matching the condition.
+          c-inc "|"
+          ; We may run out of room matching the then clause.
+          c-nec t-inc "|"
+          ; We may run out of room matching the else clause.
+          "(?!" c-nec ")" e-inc
+        ")")
       (maybe-bind c-nec #/fn c-nec
+      #/maybe-bind c-inc #/fn c-inc
       #/maybe-bind t-nec #/fn t-nec
       #/maybe-bind e-nec #/fn e-nec
       #/just #/string->immutable-string #/string-append
-        "(?:"
+        "(?>"
           ; We may match the then clause.
           c-nec t-nec "|"
           ; We may match the else clause.
@@ -327,6 +372,9 @@
           (fn in
             (expect (c-read-stream! in) (just c-result)
               (e-read-stream! in)
+            ; TODO READ-STREAM PEEKING: Whoops, if `t-read-stream!`
+            ; fails, we need to "unread" the things `c-read-stream!`
+            ; read. We need to use peeking.
             #/maybe-map (t-read-stream! in) #/fn t-result
             ; TODO: Figure out if there's a more efficient approach
             ; than `string-append` for these `read-stream!`
@@ -334,41 +382,45 @@
             #/string->immutable-string #/string-append
               c-result t-result)))))))
 
+; NOTE SMALL REGEX: This generates regexes that may be up to four
+; times as long as its inputs' regexes. Because of this, we prefer not
+; to use it to derive other textpats even if that would be very
+; convenient.
+;
 (define/contract (textpat-while condition body)
-  (-> textpat? textpat? textpat?)
+  (->i ([condition textpat?] [body textpat?])
+    
+    ; NOTE: When the concatenation of `c-nec` and `b-nec` can match
+    ; the empty string, Racket doesn't let us use the * operator on
+    ; it. But we don't allow that case.
+    #:pre (condition body)
+    (or (productive-textpat? condition) (productive-textpat? body))
+    
+    [_ textpat?])
   (dissect condition (textpat c-has-empty c-get-data)
   #/dissect body (textpat b-has-empty b-get-data)
-  ; NOTE: When the concatenation of `c-nec` and `b-nec` can match the
-  ; empty string, Racket doesn't let us use the * operator on it. But
-  ; we don't allow that case.
-  #/if (and c-has-empty b-has-empty)
-    (error "Did not expect both condition and body to match the empty string")
   #/textpat #t #/fn
     (dissect (compile-textpat-data #/c-get-data)
-      (textpat-data c-opt c-nec c-make-optimized)
+      (textpat-data c-inc c-nec c-make-optimized)
     #/dissect (compile-textpat-data #/b-get-data)
-      (textpat-data b-opt b-nec b-make-optimized)
+      (textpat-data b-inc b-nec b-make-optimized)
     #/textpat-data
       (maybe-bind c-nec #/fn c-nec
-      #/maybe-bind c-opt #/fn c-opt
+      #/maybe-bind c-inc #/fn c-inc
       #/maybe-bind b-nec #/fn b-nec
-      #/maybe-bind b-opt #/fn b-opt
-      #/just #/fn next
-        (string->immutable-string #/string-append
-          "(?:" c-nec b-nec ")*(?:"
-            "(?!" c-nec ")(?:"
-              ; We may run out of room matching the condition.
-              (c-opt "") "|"
-              ; We may have a complete match.
-              next
-            ")|"
-            ; We may run out of room matching the body.
-            c-nec "(?!" b-nec ")" (b-opt "") ""
-          ")"))
+      #/maybe-bind b-inc #/fn b-inc
+      #/just #/string->immutable-string #/string-append
+        "(?>(?:(?!" c-inc ")" c-nec "(?!" b-inc ")" b-nec ")*)(?>"
+          ; We may run out of room matching the condition.
+          c-inc "|"
+          ; We may run out of room matching the body.
+          c-nec b-inc
+        ")")
       (maybe-bind c-nec #/fn c-nec
+      #/maybe-bind c-inc #/fn c-inc
       #/maybe-bind b-nec #/fn b-nec
       #/just #/string->immutable-string #/string-append
-        "(?:" c-nec b-nec ")*(?!" c-nec ")")
+        "(?>(?:" c-nec b-nec ")*)(?!" c-nec ")")
       (fn
         (dissect (c-make-optimized)
           (optimized-textpat c-match-string c-read-stream!)
@@ -393,6 +445,9 @@
             (w-loop next so-far ""
               (expect (c-read-stream! in) (just c-result)
                 (just #/string->immutable-string so-far)
+              ; TODO READ-STREAM PEEKING: Whoops, if `b-read-stream!`
+              ; fails, we need to "unread" all the things we've read.
+              ; We need to use peeking.
               #/maybe-bind (b-read-stream! in) #/fn b-result
               #/if (= 0 #/+ (length c-result) (length b-result))
                 (error "Internal error: It turns out condition and body can both match the empty string after all")
@@ -401,42 +456,43 @@
               ; operations.
               #/next #/string-append so-far c-result b-result))))))))
 
+; NOTE SMALL REGEX: This generates regexes that may be up to four
+; times as long as its inputs' regexes. Because of this, we prefer not
+; to use it to derive other textpats even if that would be very
+; convenient.
+;
 (define/contract (textpat-until body condition)
-  (-> textpat? textpat? textpat?)
-  (dissect condition (textpat c-has-empty c-get-data)
-  #/dissect body (textpat b-has-empty b-get-data)
+  
   ; NOTE: When `b-nec` can match the empty string, Racket doesn't let
   ; us use the * operator on it. But we don't allow that case.
-  #/if b-has-empty
-    (error "Did not expect body to match the empty string")
+  (-> productive-textpat? textpat? textpat?)
+  
+  (dissect condition (textpat c-has-empty c-get-data)
+  #/dissect body (textpat b-has-empty b-get-data)
   #/textpat c-has-empty #/fn
     (dissect (compile-textpat-data #/b-get-data)
-      (textpat-data b-opt b-nec b-make-optimized)
+      (textpat-data b-inc b-nec b-make-optimized)
     #/dissect (compile-textpat-data #/c-get-data)
-      (textpat-data c-opt c-nec c-make-optimized)
+      (textpat-data c-inc c-nec c-make-optimized)
     #/textpat-data
       (maybe-bind b-nec #/fn b-nec
-      #/maybe-bind b-opt #/fn b-opt
+      #/maybe-bind b-inc #/fn b-inc
       #/maybe-bind c-nec #/fn c-nec
-      #/maybe-bind c-opt #/fn c-opt
-      #/just #/fn next
-        (string->immutable-string #/string-append
-          "(?:"
-            "(?!" (c-opt "") ")" b-nec
-          ")*(?:"
-            "(?!" c-nec ")(?:"
-              ; We may run out of room matching the condition.
-              (c-opt "") "|"
-              ; We may run out of room matching the body.
-              "(?!" b-nec ")" (b-opt "") ""
-            "}|"
-            ; We may have a complete match.
-            c-nec next
-          ")"))
+      #/maybe-bind c-inc #/fn c-inc
+      #/just #/string->immutable-string #/string-append
+        "(?>(?:"
+          "(?!" c-inc "|" c-nec ")" b-nec
+        ")*)(?>"
+          ; We may run out of room matching the condition.
+          c-inc "|"
+          ; We may run out of room matching the body.
+          "(?!" c-nec ")" b-inc
+        ")")
       (maybe-bind b-nec #/fn b-nec
       #/maybe-bind c-nec #/fn c-nec
+      #/maybe-bind c-inc #/fn c-inc
       #/just #/string->immutable-string #/string-append
-        "(?:(?!" c-nec ")" b-nec ")*" c-nec)
+        "(?>(?:(?!" c-nec ")" b-nec ")*)" c-nec)
       (fn
         (dissect (b-make-optimized)
           (optimized-textpat b-match-string b-read-stream!)
@@ -461,14 +517,60 @@
               (mat (c-read-stream! in) (just c-result)
                 (just #/string->immutable-string #/string-append
                   so-far c-result)
+              ; TODO READ-STREAM PEEKING: Whoops, if `b-read-stream!`
+              ; fails, we need to "unread" all the things we've read.
+              ; We need to use peeking.
               #/maybe-bind (b-read-stream! in) #/fn b-result
               #/if (= 0 #/length b-result)
                 (error "Internal error: It turns out body can match the empty string after all")
               #/next #/string-append so-far b-result))))))))
 
+; NOTE SMALL REGEX: We could implement this in a much more concise
+; way, but to keep the regexes small, we define it longhand.
+;
+; TODO BUILTINS: Add this to Cene since the performance
+; characteristics make it more expressive.
+;
+#;
 (define/contract (textpat-or-binary a b)
   (-> textpat? textpat? textpat?)
   (textpat-if a (textpat-empty) b))
+(define/contract (textpat-or-binary a b)
+  (-> textpat? textpat? textpat?)
+  (dissect a (textpat a-has-empty a-get-data)
+  #/dissect b (textpat b-has-empty b-get-data)
+  #/textpat (or a-has-empty b-has-empty) #/fn
+    (dissect (compile-textpat-data #/a-get-data)
+      (textpat-data a-inc a-nec a-make-optimized)
+    #/dissect (compile-textpat-data #/b-get-data)
+      (textpat-data b-inc b-nec b-make-optimized)
+    #/textpat-data
+      (maybe-bind a-inc #/fn a-inc
+      #/maybe-bind b-inc #/fn b-inc
+      #/just #/string->immutable-string #/string-append
+        "(?>" a-inc "|" b-inc ")")
+      (maybe-bind a-nec #/fn a-nec
+      #/maybe-bind b-nec #/fn b-nec
+      #/just #/string->immutable-string #/string-append
+        "(?>" a-nec "|" b-nec ")")
+      (fn
+        (dissect (a-make-optimized)
+          (optimized-textpat a-match-string a-read-stream!)
+        #/dissect (b-make-optimized)
+          (optimized-textpat b-match-string b-read-stream!)
+        #/optimized-textpat
+          (fn str start stop
+            (w- a-result (a-match-string str start stop)
+            #/mat a-result (textpat-result-matched a-stop)
+              (textpat-result-matched a-stop)
+            #/mat a-result (textpat-result-failed)
+              (b-match-string str start stop)
+            #/dissect a-result (textpat-result-passed-end)
+              (textpat-result-passed-end)))
+          (fn in
+            (mat (a-read-stream! in) (just a-result)
+              (just a-result)
+            #/b-read-stream! in)))))))
 
 (define/contract (textpat-one-in-range a b)
   (-> char? char? textpat?)
@@ -484,7 +586,7 @@
   #/if (string-contains? special-range-chars b-str)
     (textpat-or-binary (textpat-one-in-string b-str)
     #/textpat-one-in-range (integer->char #/add1 an) b)
-  #/textpat-optional-trivial #f
+  #/textpat-one-trivial
     (string->immutable-string #/string-append
       "[" a-str "-" b-str "]")
     (nothing)))
@@ -493,7 +595,7 @@
   (-> textpat? optimized-textpat?)
   (dissect t (textpat has-empty get-data)
   #/dissect (compile-textpat-data #/get-data)
-    (textpat-data opt nec make-optimized)
+    (textpat-data inc nec make-optimized)
   #/make-optimized))
 
 (define/contract (optimized-textpat-match ot str start stop)
@@ -524,39 +626,318 @@
   (->* () #:rest (listof textpat?) textpat?)
   (textpat-or-list ts))
 
+; NOTE SMALL REGEX: We could implement this in a much more concise
+; way, but to keep the regexes small, we define it longhand.
+;
+; NOTE SMALL REGEX: This generates regexes that may be up to twice as
+; long as its inputs' regexes. Because of this, we prefer not to use
+; it to derive other textpats even if that would be very convenient.
+;
+; TODO BUILTINS: Add this to Cene since the performance
+; characteristics make it more expressive.
+;
+#;
 (define/contract (textpat-append-binary a b)
   (-> textpat? textpat? textpat?)
   (textpat-if a b #/textpat-give-up))
+(define/contract (textpat-append-binary a b)
+  (-> textpat? textpat? textpat?)
+  (dissect a (textpat a-has-empty a-get-data)
+  #/dissect b (textpat b-has-empty b-get-data)
+  #/textpat (and a-has-empty b-has-empty) #/fn
+    (dissect (compile-textpat-data #/a-get-data)
+      (textpat-data a-inc a-nec a-make-optimized)
+    #/dissect (compile-textpat-data #/b-get-data)
+      (textpat-data b-inc b-nec b-make-optimized)
+    #/textpat-data
+      (maybe-bind a-nec #/fn a-nec
+      #/maybe-bind a-inc #/fn a-inc
+      #/maybe-bind b-inc #/fn b-inc
+      #/just #/string->immutable-string #/string-append
+        "(?>"
+          ; We may run out of room matching the first part.
+          a-inc "|"
+          ; We may run out of room matching the second part.
+          a-nec b-inc
+        ")")
+      (maybe-bind a-nec #/fn a-nec
+      #/maybe-bind b-nec #/fn b-nec
+      #/just #/string->immutable-string #/string-append
+        a-nec b-nec)
+      (fn
+        (dissect (a-make-optimized)
+          (optimized-textpat a-match-string a-read-stream!)
+        #/dissect (b-make-optimized)
+          (optimized-textpat b-match-string b-read-stream!)
+        #/optimized-textpat
+          (fn str start stop
+            (w- a-result (a-match-string str start stop)
+            #/mat a-result (textpat-result-matched a-stop)
+              (b-match-string str a-stop stop)
+            #/mat a-result (textpat-result-failed)
+              (textpat-result-failed)
+            #/dissect a-result (textpat-result-passed-end)
+              (textpat-result-passed-end)))
+          (fn in
+            (maybe-bind (a-read-stream! in) #/fn a-result
+            ; TODO READ-STREAM PEEKING: Whoops, if `b-read-stream!`
+            ; fails, we need to "unread" the things `a-read-stream!`
+            ; read. We need to use peeking.
+            #/maybe-bind (b-read-stream! in) #/fn b-result
+            ; TODO: Figure out if there's a more efficient approach
+            ; than `string-append` for these `read-stream!`
+            ; operations.
+            #/just #/string->immutable-string #/string-append
+              a-result b-result)))))))
 
+; NOTE SMALL REGEX: To keep the regexes small, we're using
+; `list-foldr` here instead of `list-foldl`. The behavior of
+; `textpat-append-binary` can double the length of the first part's
+; regexes but not the second part's, so this keeps us from doubling
+; any of our parts more than once.
+;
+; NOTE SMALL REGEX: This generates regexes that may be up to twice as
+; long as its inputs' regexes. Because of this, we prefer not to use
+; it to derive other textpats even if that would be very convenient.
+;
 (define/contract (textpat-append-list ts)
   (-> (listof textpat?) textpat?)
-  (list-foldl (textpat-empty) ts #/fn a b
+  (list-foldr ts (textpat-empty) #/fn a b
     (textpat-append-binary a b)))
 
+; NOTE SMALL REGEX: This generates regexes that may be up to twice as
+; long as its inputs' regexes. Because of this, we prefer not to use
+; it to derive other textpats even if that would be very convenient.
+;
 (define/contract (textpat-append . ts)
   (->* () #:rest (listof textpat?) textpat?)
   (textpat-append-list ts))
 
+; NOTE SMALL REGEX: We could implement this in a much more concise
+; way, but to keep the regexes small, we define it longhand.
+;
+; TODO BUILTINS: Add this to Cene since the performance
+; characteristics make it more expressive.
+;
+#;
 (define/contract (textpat-not t)
   (-> textpat? textpat?)
   (textpat-if t (textpat-give-up) (textpat-empty)))
+(define/contract (textpat-not t)
+  (-> textpat? textpat?)
+  (dissect t (textpat t-has-empty t-get-data)
+  #/textpat #t #/fn
+    (dissect (compile-textpat-data #/t-get-data)
+      (textpat-data t-inc t-nec t-make-optimized)
+    #/textpat-data
+      t-inc
+      (maybe-bind t-nec #/fn t-nec
+      #/just #/string->immutable-string #/string-append
+        "(?!" t-nec ")")
+      (fn
+        (dissect (t-make-optimized)
+          (optimized-textpat t-match-string t-read-stream!)
+        #/optimized-textpat
+          (fn str start stop
+            (w- t-result (t-match-string str start stop)
+            #/mat t-result (textpat-result-matched t-stop)
+              (textpat-result-failed)
+            #/mat t-result (textpat-result-failed)
+              (textpat-result-matched start)
+            #/dissect t-result (textpat-result-passed-end)
+              (textpat-result-passed-end)))
+          (fn in
+            ; TODO READ-STREAM PEEKING: See if we need to close
+            ; `peeking-input-port` values.
+            (mat (t-read-stream! #/peeking-input-port in)
+              (just t-result)
+              (nothing)
+              (just ""))))))))
 
 (define/contract (textpat-lookahead t)
   (-> textpat? textpat?)
   (textpat-not #/textpat-not t))
 
+; NOTE SMALL REGEX: We could implement this in a much more concise
+; way, but to keep the regexes small, we define it longhand.
+;
+; TODO BUILTINS: Add this to Cene since the performance
+; characteristics make it more expressive.
+;
+#;
 (define/contract (textpat-one-not t)
   (-> textpat? textpat?)
   (textpat-append (textpat-not t) (textpat-one)))
+(define/contract (textpat-one-not t)
+  (-> textpat? textpat?)
+  (dissect t (textpat t-has-empty t-get-data)
+  #/textpat #f #/fn
+    (dissect (compile-textpat-data #/t-get-data)
+      (textpat-data t-inc t-nec t-make-optimized)
+    #/textpat-data
+      (maybe-bind t-inc #/fn t-inc
+      #/just #/string->immutable-string #/string-append
+        "(?>$|" t-inc ")")
+      (maybe-bind t-nec #/fn t-nec
+      #/just #/string->immutable-string #/string-append
+        "(?!" t-nec ").")
+      (fn
+        (dissect (t-make-optimized)
+          (optimized-textpat t-match-string t-read-stream!)
+        #/optimized-textpat
+          (fn str start stop
+            (w- t-result (t-match-string str start stop)
+            #/if (= start stop)
+              (textpat-result-passed-end)
+            #/mat t-result (textpat-result-matched t-stop)
+              (textpat-result-failed)
+            #/mat t-result (textpat-result-passed-end)
+              (textpat-result-passed-end)
+            #/dissect t-result (textpat-result-failed)
+              (textpat-result-matched #/add1 start)))
+          (fn in
+            ; TODO READ-STREAM PEEKING: See if we need to close
+            ; `peeking-input-port` values.
+            (mat (t-read-stream! #/peeking-input-port in)
+              (just t-result)
+              (nothing)
+            #/w- ch (peek-char in)
+            #/if (eof-object? ch)
+              (nothing)
+            #/just #/string->immutable-string #/string ch)))))))
 
 (define/contract (textpat-one-not-in-string str)
   (-> immutable-string? textpat?)
   (textpat-one-not #/textpat-one-in-string str))
 
+; NOTE SMALL REGEX: We could implement this in a much more concise
+; way, but to keep the regexes small and to report good error
+; messages, we define it longhand.
+;
+; NOTE SMALL REGEX: This generates regexes that may be up to three
+; times as long as its inputs' regexes. Because of this, we prefer not
+; to use it to derive other textpats even if that would be very
+; convenient.
+;
+; TODO BUILTINS: Add this to Cene since the performance
+; characteristics make it more expressive.
+;
+#;
 (define/contract (textpat-star t)
-  (-> textpat? textpat?)
+  (-> productive-textpat? textpat?)
   (textpat-while t #/textpat-empty))
+(define/contract (textpat-star t)
+  
+  ; NOTE: When `b-nec` can match the empty string, Racket doesn't let
+  ; us use the * operator on it. But we don't allow that case.
+  (-> productive-textpat? textpat?)
+  
+  (dissect t (textpat t-has-empty t-get-data)
+  #/textpat #t #/fn
+    (dissect (compile-textpat-data #/t-get-data)
+      (textpat-data t-inc t-nec t-make-optimized)
+    #/textpat-data
+      (maybe-bind t-nec #/fn t-nec
+      #/maybe-bind t-inc #/fn t-inc
+      #/just #/string->immutable-string #/string-append
+        "(?>(?:(?!" t-inc ")" t-nec ")*)" t-inc)
+      (maybe-bind t-nec #/fn t-nec
+      #/maybe-bind t-inc #/fn t-inc
+      #/just #/string->immutable-string #/string-append
+        "(?>(?:" t-nec ")*)")
+      (fn
+        (dissect (t-make-optimized)
+          (optimized-textpat t-match-string t-read-stream!)
+        #/optimized-textpat
+          (fn str start stop
+            (w-loop next start start
+              (w- t-result (t-match-string str start stop)
+              #/mat t-result (textpat-result-failed)
+                (textpat-result-matched start)
+              #/mat t-result (textpat-result-passed-end)
+                (textpat-result-passed-end)
+              #/dissect t-result (textpat-result-matched t-stop)
+              #/if (= start t-stop)
+                (error "Internal error: It turns out the given textpat can match the empty string after all")
+              #/next t-stop)))
+          (fn in
+            (w-loop next so-far ""
+              (expect (t-read-stream! in) (just t-result)
+                (just #/string->immutable-string so-far)
+              #/if (= 0 #/length t-result)
+                (error "Internal error: It turns out the given textpat can match the empty string after all")
+              ; TODO: Figure out if there's a more efficient approach
+              ; than `string-append` for these `read-stream!`
+              ; operations.
+              #/next #/string-append so-far t-result))))))))
 
+; NOTE SMALL REGEX: We could implement this in a much more concise
+; way, but to keep the regexes small, we define it longhand.
+;
+; NOTE SMALL REGEX: This generates regexes that may be up to three
+; times as long as its inputs' regexes. Because of this, we prefer not
+; to use it to derive other textpats even if that would be very
+; convenient.
+;
+; TODO BUILTINS: Add this to Cene since the performance
+; characteristics make it more expressive.
+;
+#;
 (define/contract (textpat-once-or-more t)
-  (-> textpat? textpat?)
+  (-> productive-textpat? textpat?)
   (textpat-append t #/textpat-star t))
+(define/contract (textpat-once-or-more t)
+  
+  ; NOTE: When `b-nec` can match the empty string, Racket doesn't let
+  ; us use the * and + operators on it. But we don't allow that case.
+  (-> productive-textpat? textpat?)
+  
+  (dissect t (textpat t-has-empty t-get-data)
+  #/textpat #t #/fn
+    (dissect (compile-textpat-data #/t-get-data)
+      (textpat-data t-inc t-nec t-make-optimized)
+    #/textpat-data
+      (maybe-bind t-nec #/fn t-nec
+      #/maybe-bind t-inc #/fn t-inc
+      #/just #/string->immutable-string #/string-append
+        "(?>(?:(?!" t-inc ")" t-nec ")*)" t-inc)
+      (maybe-bind t-nec #/fn t-nec
+      #/maybe-bind t-inc #/fn t-inc
+      #/just #/string->immutable-string #/string-append
+        "(?>(?:" t-nec ")+)")
+      (fn
+        (dissect (t-make-optimized)
+          (optimized-textpat t-match-string t-read-stream!)
+        #/optimized-textpat
+          (fn str start stop
+            (w- t-result (t-match-string str start stop)
+            #/mat t-result (textpat-result-failed)
+              (textpat-result-failed)
+            #/mat t-result (textpat-result-passed-end)
+              (textpat-result-passed-end)
+            #/dissect t-result (textpat-result-matched t-stop)
+            #/w-loop next start t-stop
+              (w- t-result (t-match-string str start stop)
+              #/mat t-result (textpat-result-failed)
+                (textpat-result-matched start)
+              #/mat t-result (textpat-result-passed-end)
+                (textpat-result-passed-end)
+              #/dissect t-result (textpat-result-matched t-stop)
+              #/if (= start t-stop)
+                (error "Internal error: It turns out the given textpat can match the empty string after all")
+              #/next t-stop)))
+          (fn in
+            (w- read!
+              (fn
+                (maybe-bind (t-read-stream! in) #/fn t-result
+                #/if (= 0 #/length t-result)
+                  (error "Internal error: It turns out the given textpat can match the empty string after all")
+                #/just t-result))
+            #/maybe-bind (read!) #/fn t-result
+            #/w-loop next so-far t-result
+              (expect (read!) (just t-result)
+                (just #/string->immutable-string so-far)
+              ; TODO: Figure out if there's a more efficient approach
+              ; than `string-append` for these `read-stream!`
+              ; operations.
+              #/next #/string-append so-far t-result))))))))

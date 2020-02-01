@@ -104,10 +104,10 @@
 ; accessors. This also includes `textpat-one-not-in-string` and
 ; `textpat-star`.
 (require #/only-in cene/private/textpat
-  textpat? textpat-empty textpat-from-string textpat-give-up
-  textpat-has-empty? textpat-if textpat-one textpat-one-in-range
-  textpat-one-in-string textpat-one-not-in-string textpat-result?
-  textpat-result-failed textpat-result-matched
+  productive-textpat? textpat? textpat-empty textpat-from-string
+  textpat-give-up textpat-has-empty? textpat-if textpat-one
+  textpat-one-in-range textpat-one-in-string textpat-one-not-in-string
+  textpat-result? textpat-result-failed textpat-result-matched
   textpat-result-passed-end textpat-star textpat-until textpat-while
   optimized-textpat? optimized-textpat-match optimize-textpat)
 
@@ -4179,6 +4179,12 @@
     (racket-boolean->cenegetfx-sink #/sink-textpat? v))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func! "is-productive-textpat" v
+    (racket-boolean->cenegetfx-sink
+      (expect v (sink-textpat v) #f
+      #/productive-textpat? v)))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-func! "is-optimized-textpat" v
     (racket-boolean->cenegetfx-sink #/sink-optimized-textpat? v))
   
@@ -4202,11 +4208,17 @@
       (cenegetfx-cene-err fault "Expected condition to be a text pattern")
     #/expect body (sink-textpat body)
       (cenegetfx-cene-err fault "Expected body to be a text pattern")
+    #/expect
+      (and (productive-textpat? condition) (productive-textpat? body))
+      #t
+      (cenegetfx-cene-err fault "Expected condition or body to be a productive text pattern")
     #/cenegetfx-done #/sink-textpat #/textpat-while condition body))
   
   (def-func-fault! "textpat-until" fault body condition
     (expect body (sink-textpat body)
       (cenegetfx-cene-err fault "Expected body to be a text pattern")
+    #/expect (productive-textpat? body) #t
+      (cenegetfx-cene-err fault "Expected body to be a productive text pattern")
     #/expect condition (sink-textpat condition)
       (cenegetfx-cene-err fault "Expected condition to be a text pattern")
     #/cenegetfx-done #/sink-textpat #/textpat-until body condition))
