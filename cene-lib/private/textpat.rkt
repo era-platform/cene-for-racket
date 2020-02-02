@@ -23,7 +23,7 @@
 
 
 (require #/only-in racket/contract/base
-  -> ->* any/c contract-out ->i listof)
+  -> ->* any/c contract-out ->i listof or/c)
 (require #/only-in racket/contract/region define/contract)
 (require #/only-in racket/math natural?)
 (require #/only-in racket/port peeking-input-port)
@@ -100,6 +100,86 @@
         (fn e
           (nothing))])
     (just #/regexp code)))
+
+(define/contract (port-next-position in)
+  (-> input-port? #/or/c #f exact-positive-integer?)
+  (define-values (line column position) (port-next-location in))
+  position)
+
+(define/contract (peeking-input-port-counting-bytes in)
+  (-> input-port? input-port?)
+  (peeking-input-port in))
+
+; Calls the given `read-stream!` procedure (a concept from the
+; implementation of `optimized-textpat?` values) with an input stream
+; that's modified from the given one. When the `read-stream!`
+; procedure reads from the stream it's given, these reads aren't
+; actually consumed from the original input stream. Instead, when the
+; `read-stream!` procedure would return `#t` (indicating a textpat
+; match success), this returns `(just n)`, where `n` is the number of
+; bytes that were read from the modified input stream.
+;
+(define/contract (read-stream-monitored read-stream! in)
+  (-> (-> input-port? boolean?) input-port? #/maybe/c natural?)
+  
+  ; NOTE: We get two properties we need from `peeking-input-port`: The
+  ; reads won't be committed to the original stream, and the modified
+  ; stream will count bytes. The latter property isn't a prominently
+  ; described feature of the `peeking-input-port` interface, and it's
+  ; plausible that someday `peeking-input-port` could be updated to
+  ; inherit its location information from the original stream.
+  ;
+  ; TODO: Write a unit test so that if `peeking-input-port` changes
+  ; that way, we can notice it. Better yet, perhaps there's something
+  ; more explicit we can do here to ensure the port counts bytes.
+  ;
+  ; Note that if we do need to change this use of `peeking-input-port`
+  ; someday, we may also need to change the other places we use it in
+  ; the implementation of `read-stream!` procedures. On the other
+  ; hand, those places are creating streams with counting behavior
+  ; similar to the streams they're starting with, so they probably
+  ; aren't as volatile.
+  ;
+  (w- monitored-in (peeking-input-port in)
+  
+  #/w- original-position (port-next-position monitored-in)
+  #/expect (read-stream! monitored-in) #t (nothing)
+  #/just #/- (port-next-position monitored-in) original-position))
+
+; Calls the given `read-stream!` procedure (a concept from the
+; implementation of `optimized-textpat?` values) with an input stream
+; that's modified from the given one. When the `read-stream!`
+; procedure reads from the stream it's given, these reads aren't
+; actually consumed from the original input stream *unless* the
+; `read-stream!` procedure returns `#t` (indicating a textpat match
+; success).
+;
+; This suits a common case where `read-stream!` procedures make calls
+; to other `read-stream!` procedures. Namely, it's used in places
+; where a match failure in the callee isn't necessarily promoted to a
+; match failure in the caller, and a match success's stream
+; consumption does indeed get promoted to stream consumption in the
+; caller.
+;
+; In calls where failure in the callee is promoted to failure in the
+; caller, we simply call the `read-stream!` callee directly. This
+; essentially promotes the stream consumption in both the success case
+; *and the failure case*, but since the failure is being promoted,
+; logic in the caller's caller will discard that stream consumption
+; already.
+;
+; In recursion cases where even a match success's stream consumption
+; is discarded, we simply call the `read-stream!` callee directly and
+; pass it a `peeking-input-port`.
+;
+(define/contract (read-stream-if-match read-stream! in)
+  (-> (-> input-port? boolean?) input-port? boolean?)
+  (expect (read-stream-monitored read-stream! in) (just n) #f
+  ; TODO: Since we don't use the result of `read-bytes`, see if
+  ; there's an alternative way to advance the stream without
+  ; allocating the storage.
+  #/begin (read-bytes n in)
+    #t))
 
 
 ; ===== Essential operations =========================================
@@ -233,12 +313,7 @@
             (textpat-result-matched potential-stop)
             (textpat-result-failed)))
         (fn in
-          (w- potential-result (peek-string n 0 in)
-          #/if (equal? str potential-result)
-            (begin
-              (read-string n in)
-              (just str))
-            (nothing)))))))
+          (equal? str #/read-string n 0 in))))))
 
 (define/contract (textpat-one-in-string example-str)
   (-> immutable-string? textpat?)
@@ -260,15 +335,11 @@
             (textpat-result-matched potential-stop)
           #/textpat-result-failed))
         (fn in
-          (w- ch (peek-char in)
+          (w- ch (read-char in)
           #/if (eof-object? ch)
-            (nothing)
-          #/w- potential-result (string->immutable-string #/string ch)
-          #/if (string-contains? example-str potential-result)
-            (begin
-              (read-char in)
-              (just potential-result))
-            (nothing)))))))
+            #f
+          #/string-contains? example-str
+            (string->immutable-string #/string ch)))))))
 
 (define/contract (textpat-one)
   (-> textpat?)
@@ -305,10 +376,7 @@
         #/if matched-inc (textpat-result-passed-end)
         #/textpat-result-failed))
       (fn in
-        (expect (regexp-try-match compiled-read-stream in)
-          (list bytes)
-          (nothing)
-        #/just #/bytes->string/utf-8 bytes)))))
+        (list? #/regexp-match compiled-read-stream in)))))
 
 ; NOTE SMALL REGEX: This generates regexes that may be up to three
 ; times as long as its inputs' regexes and up to twice as long as its
@@ -370,17 +438,9 @@
             #/dissect c-result (textpat-result-passed-end)
               (textpat-result-passed-end)))
           (fn in
-            (expect (c-read-stream! in) (just c-result)
-              (e-read-stream! in)
-            ; TODO READ-STREAM PEEKING: Whoops, if `t-read-stream!`
-            ; fails, we need to "unread" the things `c-read-stream!`
-            ; read. We need to use peeking.
-            #/maybe-map (t-read-stream! in) #/fn t-result
-            ; TODO: Figure out if there's a more efficient approach
-            ; than `string-append` for these `read-stream!`
-            ; operations.
-            #/string->immutable-string #/string-append
-              c-result t-result)))))))
+            (if (read-stream-if-match c-read-stream! in)
+              (t-read-stream! in)
+              (e-read-stream! in))))))))
 
 ; NOTE SMALL REGEX: This generates regexes that may be up to four
 ; times as long as its inputs' regexes. Because of this, we prefer not
@@ -442,19 +502,13 @@
                 (error "Internal error: It turns out condition and body can both match the empty string after all")
               #/next b-stop)))
           (fn in
-            (w-loop next so-far ""
-              (expect (c-read-stream! in) (just c-result)
-                (just #/string->immutable-string so-far)
-              ; TODO READ-STREAM PEEKING: Whoops, if `b-read-stream!`
-              ; fails, we need to "unread" all the things we've read.
-              ; We need to use peeking.
-              #/maybe-bind (b-read-stream! in) #/fn b-result
-              #/if (= 0 #/+ (length c-result) (length b-result))
+            (w-loop next position (port-next-position in)
+              (or (not #/read-stream-if-match c-read-stream! in)
+              #/and (b-read-stream! in)
+              #/w- new-position (port-next-position in)
+              #/if (= position new-position)
                 (error "Internal error: It turns out condition and body can both match the empty string after all")
-              ; TODO: Figure out if there's a more efficient approach
-              ; than `string-append` for these `read-stream!`
-              ; operations.
-              #/next #/string-append so-far c-result b-result))))))))
+              #/next new-position))))))))
 
 ; NOTE SMALL REGEX: This generates regexes that may be up to four
 ; times as long as its inputs' regexes. Because of this, we prefer not
@@ -510,20 +564,13 @@
                 (error "Internal error: It turns out body can match the empty string after all")
               #/next b-stop)))
           (fn in
-            ; TODO: Figure out if there's a more efficient approach
-            ; than `string-append` for these `read-stream!`
-            ; operations.
-            (w-loop next so-far ""
-              (mat (c-read-stream! in) (just c-result)
-                (just #/string->immutable-string #/string-append
-                  so-far c-result)
-              ; TODO READ-STREAM PEEKING: Whoops, if `b-read-stream!`
-              ; fails, we need to "unread" all the things we've read.
-              ; We need to use peeking.
-              #/maybe-bind (b-read-stream! in) #/fn b-result
-              #/if (= 0 #/length b-result)
+            (w-loop next position (port-next-position in)
+              (or (read-stream-if-match c-read-stream! in)
+              #/and (b-read-stream! in)
+              #/w- new-position (port-next-position in)
+              #/if (= position new-position)
                 (error "Internal error: It turns out body can match the empty string after all")
-              #/next #/string-append so-far b-result))))))))
+              #/next new-position))))))))
 
 ; NOTE SMALL REGEX: We could implement this in a much more concise
 ; way, but to keep the regexes small, we define it longhand.
@@ -568,8 +615,7 @@
             #/dissect a-result (textpat-result-passed-end)
               (textpat-result-passed-end)))
           (fn in
-            (mat (a-read-stream! in) (just a-result)
-              (just a-result)
+            (or (read-stream-if-match a-read-stream! in)
             #/b-read-stream! in)))))))
 
 (define/contract (textpat-one-in-range a b)
@@ -599,7 +645,8 @@
   #/make-optimized))
 
 (define/contract (optimized-textpat-match ot str start stop)
-  (-> optimized-textpat? string? natural? natural? textpat-result?)
+  (-> optimized-textpat? immutable-string? natural? natural?
+    textpat-result?)
   (dissect ot (optimized-textpat match-string read-stream!)
   #/w- n (string-length str)
   #/expect (<= start n) #t
@@ -611,9 +658,19 @@
   #/match-string str start stop))
 
 (define/contract (optimized-textpat-read! ot in)
-  (-> optimized-textpat? input-port? #/maybe/c string?)
+  (-> optimized-textpat? input-port? #/maybe/c immutable-string?)
   (dissect ot (optimized-textpat match-string read-stream!)
-  #/read-stream! in))
+  
+  ; The `read-stream!` procedure expects a stream where
+  ; `port-next-position` counts bytes and where none of the reads will
+  ; ultimately be committed unless the textpat matches. We construct
+  ; that using `read-stream-monitored`, which gives us a number of
+  ; bytes we can read using `read-bytes` when we want to commit the
+  ; reads.
+  ;
+  #/maybe-map (read-stream-monitored read-stream! in) #/fn n
+    (string->immutable-string
+      (bytes->string/utf-8 #/read-bytes n in))))
 
 
 ; ===== Derived operations ===========================================
@@ -679,16 +736,7 @@
             #/dissect a-result (textpat-result-passed-end)
               (textpat-result-passed-end)))
           (fn in
-            (maybe-bind (a-read-stream! in) #/fn a-result
-            ; TODO READ-STREAM PEEKING: Whoops, if `b-read-stream!`
-            ; fails, we need to "unread" the things `a-read-stream!`
-            ; read. We need to use peeking.
-            #/maybe-bind (b-read-stream! in) #/fn b-result
-            ; TODO: Figure out if there's a more efficient approach
-            ; than `string-append` for these `read-stream!`
-            ; operations.
-            #/just #/string->immutable-string #/string-append
-              a-result b-result)))))))
+            (and (a-read-stream! in) (b-read-stream! in))))))))
 
 ; NOTE SMALL REGEX: To keep the regexes small, we're using
 ; `list-foldr` here instead of `list-foldl`. The behavior of
@@ -747,12 +795,7 @@
             #/dissect t-result (textpat-result-passed-end)
               (textpat-result-passed-end)))
           (fn in
-            ; TODO READ-STREAM PEEKING: See if we need to close
-            ; `peeking-input-port` values.
-            (mat (t-read-stream! #/peeking-input-port in)
-              (just t-result)
-              (nothing)
-              (just ""))))))))
+            (not #/t-read-stream! #/peeking-input-port in)))))))
 
 (define/contract (textpat-lookahead t)
   (-> textpat? textpat?)
@@ -796,15 +839,8 @@
             #/dissect t-result (textpat-result-failed)
               (textpat-result-matched #/add1 start)))
           (fn in
-            ; TODO READ-STREAM PEEKING: See if we need to close
-            ; `peeking-input-port` values.
-            (mat (t-read-stream! #/peeking-input-port in)
-              (just t-result)
-              (nothing)
-            #/w- ch (peek-char in)
-            #/if (eof-object? ch)
-              (nothing)
-            #/just #/string->immutable-string #/string ch)))))))
+            (and (not #/t-read-stream! #/peeking-input-port in)
+            #/not #/eof-object? #/read-char in)))))))
 
 (define/contract (textpat-one-not-in-string str)
   (-> immutable-string? textpat?)
@@ -861,15 +897,12 @@
                 (error "Internal error: It turns out the given textpat can match the empty string after all")
               #/next t-stop)))
           (fn in
-            (w-loop next so-far ""
-              (expect (t-read-stream! in) (just t-result)
-                (just #/string->immutable-string so-far)
-              #/if (= 0 #/length t-result)
+            (w-loop next position (port-next-position in)
+              (or (not #/read-stream-if-match t-read-stream! in)
+              #/w- new-position (port-next-position in)
+              #/if (= position new-position)
                 (error "Internal error: It turns out the given textpat can match the empty string after all")
-              ; TODO: Figure out if there's a more efficient approach
-              ; than `string-append` for these `read-stream!`
-              ; operations.
-              #/next #/string-append so-far t-result))))))))
+              #/next new-position))))))))
 
 ; NOTE SMALL REGEX: We could implement this in a much more concise
 ; way, but to keep the regexes small, we define it longhand.
@@ -927,17 +960,14 @@
                 (error "Internal error: It turns out the given textpat can match the empty string after all")
               #/next t-stop)))
           (fn in
-            (w- read!
-              (fn
-                (maybe-bind (t-read-stream! in) #/fn t-result
-                #/if (= 0 #/length t-result)
+            (w- get-new-position
+              (fn position
+                (w- new-position (port-next-position in)
+                #/if (= position new-position)
                   (error "Internal error: It turns out the given textpat can match the empty string after all")
-                #/just t-result))
-            #/maybe-bind (read!) #/fn t-result
-            #/w-loop next so-far t-result
-              (expect (read!) (just t-result)
-                (just #/string->immutable-string so-far)
-              ; TODO: Figure out if there's a more efficient approach
-              ; than `string-append` for these `read-stream!`
-              ; operations.
-              #/next #/string-append so-far t-result))))))))
+                  new-position))
+            #/w- position (port-next-position in)
+            #/and (t-read-stream! in)
+            #/w-loop next position (get-new-position position)
+              (or (not #/read-stream-if-match t-read-stream! in)
+              #/next #/get-new-position position))))))))
