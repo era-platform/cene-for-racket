@@ -1,0 +1,145 @@
+Cene syntax:
+
+
+To consume whitespace with a known wrap-up pattern:
+
+- We match the text repeatedly against the following cases until no match is found:
+
+- - If we get the text \' we invoke the nameless freestanding whitespace macro.
+
+- - If we get the text [' we invoke the nameless bounded whitespace macro with a wrap-up pattern consisting of the text ] and then expect to read that pattern afterwards. If we can't, that's an error.
+
+- - If we get the text (' we invoke the nameless bounded whitespace macro with a wrap-up pattern consisting of the text ) and then expect to read that pattern afterwards. If we can't, that's an error.
+
+- - If we get the text /' we invoke the nameless bounded whitespace macro with a wrap-up pattern consisting of peeking the current wrap-up pattern and then expect to peek the current wrap-up pattern afterwards. If we can't, that's an error.
+
+- - If we get a nonempty span of Unicode whitespace, we do nothing.
+
+- We have finished consuming whitespace.
+
+
+To read an optional identifier with a known wrap-up pattern:
+
+- We consume whitespace.
+
+- We match the text against the following cases:
+
+- - (Note that the text \' [' (' and /' cannot be encountered since we already consumed whitespace.)
+
+- - If we get the text \@ we invoke the nameless freestanding identifier macro. We've found that identifier.
+
+- - If we get the text [@ we invoke the nameless bounded identifier macro with a wrap-up pattern consisting of the text ] and then expect to read that pattern afterwards. If we can't, that's an error. If we can, we've found that identifier.
+
+- - If we get the text (@ we invoke the nameless bounded identifier macro with a wrap-up pattern consisting of the text ) and then expect to read that pattern afterwards. If we can't, that's an error. If we can, we've found that identifier.
+
+- - If we get the text /@ we invoke the nameless bounded identifier macro with a wrap-up pattern consisting of peeking the current wrap-up pattern and then expect to peek the current wrap-up pattern afterwards. If we can't, that's an error. If we can, we've found that identifier.
+
+- - If we get a Unicode identifier (with certain not-yet-fully-determined customizations, like allowing - as an identifier character), then we've found an identifier with that text (normalized somehow) as its string name.
+
+- - Otherwise, we've found that there is no identifier here.
+
+
+To read a mandatory identifier with a known wrap-up pattern:
+
+- We read an optional identifier with the current wrap-up pattern. If we don't get one, that's an error.
+
+
+To read a mandatory identifier prefix with a known wrap-up pattern:
+
+- We read a mandatory identifier with the current wrap-up pattern. That's the result.
+
+- Before we finish, we consume the text : if it's the next text available.
+
+
+To read an optional DSL-expression of some macro DSL with a known wrap-up pattern:
+
+- We read an optional identifier with the current wrap-up pattern. If we get one:
+
+- - We invoke the glossary DSL-expression macro for the current macro DSL.
+
+- Otherwise, we match the text against the following cases:
+
+- - (Note that the text \' [' (' /' \@ [@ (@ and /@ cannot be encountered since we already tried to read an identifier.)
+
+- - If we get the text \ we invoke the nameless freestanding DSL-expression macro for the current macro DSL. We've found that DSL-expression.
+
+- - If we get the text [ we invoke the nameless bounded DSL-expression macro for the current macro DSL with a wrap-up pattern consisting of the text ] and then expect to read that pattern afterwards. If we can't, that's an error. If we can, we've found that DSL-expression.
+
+- - If we get the text ( we invoke the nameless bounded DSL-expression macro for the current macro DSL with a wrap-up pattern consisting of the text ) and then expect to read that pattern afterwards. If we can't, that's an error. If we can, we've found that DSL-expression.
+
+- - If we get the text / we invoke the nameless bounded DSL-expression macro for the current macro DSL with a wrap-up pattern consisting of peeking the current wrap-up pattern and then expect to peek the current wrap-up pattern afterwards. If we can't, that's an error. If we can, we've found that DSL-expression.
+
+- - Otherwise, we've found that there is no DSL-expression here.
+
+
+To read a mandatory DSL-expression of some macro DSL with a known wrap-up pattern:
+
+- We read an optional DSL-expression of the current macro DSL with the current wrap-up pattern. If we don't get one, that's an error.
+
+
+Usual macros for whitespace and identifiers:
+
+- The nameless freestanding whitespace macro:
+
+- - We match the text against the following cases:
+
+- - - If we get the text . we read a mandatory identifier prefix with the current wrap-up pattern, and we invoke the named freestanding whitespace macro named after it with the current wrap-up pattern.
+
+- - - Otherwise, we read and discard a line of Unicode text, up to but not including the line break or end-of-file.
+
+- The nameless bounded whitespace macro:
+
+- - We match the text against the following cases:
+
+- - - If we get the text . we read a mandatory identifier prefix with the current wrap-up pattern, and we invoke the named bounded whitespace macro named after it with the current wrap-up pattern.
+
+- - - If we get the text < > or = that's an error. (See "NOTE HYPERSNIPPETS" below.)
+
+- - - Otherwise, that's an error. (In the future, we might have this case read some text with maching brackets and ignore it all, or something like that.)
+
+- The nameless freestanding identifier macro:
+
+- - We match the text against the following cases:
+
+- - - If we get the text . we read a mandatory identifier prefix with the current wrap-up pattern, and we invoke the named freestanding identifier macro named after it with the current wrap-up pattern.
+
+- - - Otherwise, that's an error. (In the future, we might come up with something to do here.)
+
+- The nameless bounded identifier macro:
+
+- - We match the text against the following cases:
+
+- - - If we get the text . we read a mandatory identifier prefix with the current wrap-up pattern, and we invoke the named bounded identifier macro named after it with the current wrap-up pattern.
+
+- - - If we get the text < > or = that's an error. (See "NOTE HYPERSNIPPETS" below.)
+
+- - - Otherwise, that's an error. (In the future, we might have this case read some text according to a whitespace-normalizing string DSL and use that as the identifier name, or something like that.)
+
+
+Usual macros for most macro DSLs:
+
+- The nameless freestanding DSL-expression macro:
+
+- - We match the text against the following cases:
+
+- - - If we get the text . we read a mandatory identifier prefix with the current wrap-up pattern, and we invoke the named freestanding DSL-expression macro named after it for the current macro DSL with the current wrap-up pattern.
+
+- - - Otherwise, the behavior may vary according to the macro DSL.
+
+- The nameless bounded DSL-expression macro:
+
+- - We match the text against the following cases:
+
+- - - If we get the text . we read a mandatory identifier prefix with the current wrap-up pattern, and we invoke the named bounded DSL-expression macro named after it for the current macro DSL with the current wrap-up pattern.
+
+- - - If we get the text < > or = that's an error. (See "NOTE HYPERSNIPPETS" below.)
+
+- - - Otherwise, the behavior may vary according to the macro DSL.
+
+- The glossary DSL-expression macro:
+
+- - We invoke the unceremonious DSL-expression macro for the current macro DSL for the given identifier.
+
+
+
+NOTE HYPERSNIPPETS: In the future, we might use bounded macro syntaxes with < > and = sigils to represent hypersnippet-bounded macro calls. The < would concisely denote the opening of a hypersnippet shape (possibly represented as a hypernest bump), the > would concisely denote one of the closing holes of such a shape, and the = would be a catch-all for less concise situations which are distinguished by identifier names. For instance, we might use = and a certain identifier to close several concentric shapes all at once. Note that by the time we support this, our calling convention for macros may change to have a stack of contexts, so that a span of whitespace that encounters a closing bracket can resume a hypersnippet-shaped comment already in progress. Hypersnippets are a concept explored in the Punctaffy project.
