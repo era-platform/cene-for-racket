@@ -5,7 +5,7 @@
 ; An assortment of utilities for parsing Cene reader macro bodies
 ; (implementation details).
 
-;   Copyright 2018, 2019 The Era Authors
+;   Copyright 2018-2020 The Era Authors
 ;
 ;   Licensed under the Apache License, Version 2.0 (the "License");
 ;   you may not use this file except in compliance with the License.
