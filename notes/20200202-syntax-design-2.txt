@@ -34,7 +34,7 @@ To read an optional identifier with a known wrap-up pattern:
 
 - - If we get the text /@ we invoke the nameless bounded identifier macro with a wrap-up pattern consisting of peeking the current wrap-up pattern and then expect to peek the current wrap-up pattern afterwards. If we can't, that's an error. If we can, we've found that identifier.
 
-- - If we get a Unicode identifier (with certain not-yet-fully-determined customizations, like allowing - as an identifier character), then we've found an identifier with that text (normalized somehow) as its string name.
+- - If we get a nonempty span of non-whitespace text other than \ [ ] ( ) / : . and end-of-file that normalizes to be a valid identifier, then we've found an identifier with that normalized text. The way we check that text "normalizes to be a valid identifier" should roughly follow the Unicode identifier rules, but we allow - and decimal digits anywhere in an identifier.
 
 - - Otherwise, we've found that there is no identifier here.
 
