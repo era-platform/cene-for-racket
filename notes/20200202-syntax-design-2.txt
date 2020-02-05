@@ -1,119 +1,157 @@
 Cene syntax:
 
 
-To consume whitespace with a known wrap-up pattern:
+An optimized opening bracket entry consists of:
 
-- We match the text repeatedly against the following cases until no match is found:
-
-- - If we get the text \' we invoke the nameless freestanding comment macro.
-
-- - If we get the text [' we invoke the nameless bounded comment macro with a wrap-up pattern consisting of the text ] and then expect to read that pattern afterwards. If we can't, that's an error.
-
-- - If we get the text (' we invoke the nameless bounded comment macro with a wrap-up pattern consisting of the text ) and then expect to read that pattern afterwards. If we can't, that's an error.
-
-- - If we get the text /' we invoke the nameless bounded comment macro with a wrap-up pattern consisting of peeking the current wrap-up pattern and then expect to peek the current wrap-up pattern afterwards. If we can't, that's an error.
-
-- - If we get a nonempty span of Unicode whitespace, we do nothing.
-
-- We have finished consuming whitespace.
+- A string for the opening bracket, as well as well as the optimized textpat that matches it.
 
 
-To read an optional identifier with a known wrap-up pattern:
+An optimized closing bracket entry consists of:
 
-- We consume whitespace.
+- A string for the closing bracket, an unoptimized textpat for peeking beyond the closing bracket, the optimized textpat that matches the sequence of the string and the peeking obligation, and the the optimized textpat that peeks the same sequence.
+
+
+A partial optimized bracket entry consists of:
+
+- An optimized opening bracket entry.
+
+- A maybe of an optimized closing bracket entry. If this maybe is populated, this bracket entry is called "complete."
+
+
+In places where we refer simply to an "optimized bracket entry" or "bracket entry," we mean a partial optimized bracket entry which is complete.
+
+
+An optimized bracket set is a list of partial optimized bracket entries.
+
+
+An optimized macro sigil set is an optimized bracket set along with:
+
+- An unoptimized textpat for the DSL sigil.
+
+- Confidence: A boolean representing the confidence that a nameless bounded invocation is really intended to be an invocation. (This is helpful because while [. (. and /. (with or without the ' and @ DSL sigils afterwards) may be uncommon in strings other than Cene code, some of the corresponding versions without dots are rather common. We consider \ to be sufficiently uncommon within a string even without the dot, since it's so widely used as an escape character in other languages.)
+
+- The nameless freestanding opener: The optimized textpat that starts by matching a \ that isn't followed by . and continues by matching the DSL sigil.
+
+- The named freestanding opener: The optimized textpat for matching a sequence of \. and the DSL sigil.
+
+- The nameless bounded openers: For each opening bracket, the optimized textpat that starts by matching an occurrence of the opening bracket that isn't followed by . < > or ^ and continues by matching the DSL sigil. If this sigil set isn't confident, this optimized textpat is replaced by one that always fails instead.
+
+- The named bounded openers: For each opening bracket, the optimized textpat for matching a sequence of the opening bracket followed by . and the DSL sigil.
+
+- The concise opening hyperbracket openers: For each opening bracket, the optimized textpat for matching a sequence of the opening bracket followed by < and the DSL sigil.
+
+- The concise closing hyperbracket openers: For each opening bracket, the optimized textpat for matching a sequence of the opening bracket followed by > and the DSL sigil.
+
+- The custom hyperbracket openers: For each opening bracket, the optimized textpat for matching a sequence of the opening bracket followed by ^ and the DSL sigil.
+
+
+The stock bracket set is an optimized bracket set with three entries, namely the entry consiting of [ and ] with no peeking obligation, the entry consisting of ( and ) with no peeking obligation, and the entry consisting of / and no closing bracket entry.
+
+
+The confident/unconfident stock macro sigil set for a given DSL sigil is a confident/unconfident optimized macro sigil set whose bracket set is the stock bracket set and whose DSL sigil is the given one.
+
+
+To read an optional called macro for some macro DSL, some optimized sigil set, and some surrounding bracket entry:
 
 - We match the text against the following cases:
 
-- - (Note that the text \' [' (' and /' cannot be encountered since we already handled comments when we consumed whitespace.)
+- - If we get the sigil set's named freestanding opener:
 
-- - If we get the text \@ we invoke the nameless freestanding identifier macro. We've found that identifier.
+- - - We read a mandatory identifier prefix with the current surrounding bracket entry.
 
-- - If we get the text [@ we invoke the nameless bounded identifier macro with a wrap-up pattern consisting of the text ] and then expect to read that pattern afterwards. If we can't, that's an error. If we can, we've found that identifier.
+- - - We invoke the named freestanding DSL-expression macro named after that identifier for the current macro DSL with the current surrounding bracket entry.
 
-- - If we get the text (@ we invoke the nameless bounded identifier macro with a wrap-up pattern consisting of the text ) and then expect to read that pattern afterwards. If we can't, that's an error. If we can, we've found that identifier.
+- - - We've found that macro call's result.
 
-- - If we get the text /@ we invoke the nameless bounded identifier macro with a wrap-up pattern consisting of peeking the current wrap-up pattern and then expect to peek the current wrap-up pattern afterwards. If we can't, that's an error. If we can, we've found that identifier.
+- - If we get the sigil set's nameless freestanding opener:
+
+- - - We invoke the nameless freestanding DSL-expression macro for the current macro DSL.
+
+- - - We've found that macro call's result.
+
+- - If we get one of the sigil set's named bounded openers:
+
+- - - We choose a bracket entry to refer to as the "interior bracket entry": If the opener's corresponding partial optimized bracket entry is complete, we choose that. Otherwise, we choose the current bracket entry.
+
+- - - We read a mandatory identifier prefix with the interior bracket entry.
+
+- - - We invoke the named bounded DSL-expression macro named after that identifier for the current macro DSL with the interior bracket entry.
+
+- - - If the opener's corresponding partial optimized bracket entry is complete, we read its closing bracket. Otherwise, we peek the surrounding bracket entry's closing bracket. If either of those actions fails to match, that's an error.
+
+- - - We've found the result we got from the macro call.
+
+- - If we get one of the sigil set's nameless bounded openers:
+
+- - - We choose a bracket entry to refer to as the "interior bracket entry": If the opener's corresponding partial optimized bracket entry is complete, we choose that. Otherwise, we choose the current bracket entry.
+
+- - - We invoke the nameless bounded DSL-expression macro named after that identifier for the current macro DSL with the interior bracket entry.
+
+- - - If the opener's corresponding partial optimized bracket entry is complete, we read its closing bracket. Otherwise, we peek the surrounding bracket entry's closing bracket. If either of those actions fails to match, that's an error.
+
+- - - We've found the result we got from the macro call.
+
+- - If we get one of the sigil set's concise opening hyperbracket openers, concise closing hyperbracket openers, or custom hyperbracket openers, that's an error. (We might use this in the future for hypersnippet delimiters. See NOTE HYPERSNIPPETS.)
+
+- - Otherwise, we've found that there is no called macro here.
+
+
+To consume whitespace with a known surrounding bracket entry:
+
+- We match the text repeatedly against the following cases:
+
+- - If we get a called macro for the comment macro DSL and the confident stock macro sigil set based on the DSL sigil ' and the current surrounding bracket entry, we continue.
+
+- - If we get a nonempty span of Unicode whitespace, we continue.
+
+- - Otherwise, we have finished consuming whitespace.
+
+
+To read an optional identifier with a known surrounding bracket entry:
+
+- We consume whitespace with the current surrounding bracket entry.
+
+- We match the text against the following cases:
+
+- - (Note that the text \.' [.' (.' \' [' (' and /' cannot be encountered since we already handled comments when we consumed whitespace.)
+
+- - If we get a called macro for the identifier macro DSL and the confident stock macro sigil set based on the DSL sigil @ and the current surrounding bracket entry, we've found that macro result.
 
 - - If we get a nonempty span of non-whitespace text other than \ [ ] ( ) / : . and end-of-file that normalizes to be a valid identifier, then we've found an identifier with that normalized text. The way we check that text "normalizes to be a valid identifier" should roughly follow the Unicode identifier rules, but we allow - and decimal digits anywhere in an identifier.
 
 - - Otherwise, we've found that there is no identifier here.
 
 
-To read a mandatory identifier with a known wrap-up pattern:
+To read a mandatory identifier with a known surrounding bracket entry:
 
-- We read an optional identifier with the current wrap-up pattern. If we don't get one, that's an error.
-
-
-To read a mandatory identifier prefix with a known wrap-up pattern:
-
-- We read a mandatory identifier with the current wrap-up pattern. That's the result.
-
-- Before we finish, we consume whitespace, and then we consume the text : if it's the next text available.
+- We read an optional identifier with the current surrounding bracket entry. If we don't get one, that's an error.
 
 
-To read an optional DSL-expression of some macro DSL with a known wrap-up pattern:
+To read a mandatory identifier prefix with a known surrounding bracket entry:
 
-- We read an optional identifier with the current wrap-up pattern. If we get one:
+- We read a mandatory identifier with the current surrounding bracket entry. That's the result.
+
+- Before we finish, we consume whitespace with the current surrounding bracket entry, and then we consume the text : if it's the next text available.
+
+
+To read an optional DSL-expression of some macro DSL with a known surrounding bracket entry:
+
+- We read an optional identifier with the current surrounding bracket entry. If we get one:
 
 - - We invoke the glossary DSL-expression macro for the current macro DSL.
 
 - Otherwise, we match the text against the following cases:
 
-- - (Note that the text \' [' (' /' \@ [@ (@ and /@ cannot be encountered since we already tried to read an identifier.)
+- - (Note that the text \.' [.' (.' /.' \' [' (' /' \.@ [.@ (.@ /.@ \@ [@ (@ and /@ cannot be encountered since we already tried to read an identifier.)
 
-- - If we get the text \ we invoke the nameless freestanding DSL-expression macro for the current macro DSL. We've found that DSL-expression.
-
-- - If we get the text [ we invoke the nameless bounded DSL-expression macro for the current macro DSL with a wrap-up pattern consisting of the text ] and then expect to read that pattern afterwards. If we can't, that's an error. If we can, we've found that DSL-expression.
-
-- - If we get the text ( we invoke the nameless bounded DSL-expression macro for the current macro DSL with a wrap-up pattern consisting of the text ) and then expect to read that pattern afterwards. If we can't, that's an error. If we can, we've found that DSL-expression.
-
-- - If we get the text / we invoke the nameless bounded DSL-expression macro for the current macro DSL with a wrap-up pattern consisting of peeking the current wrap-up pattern and then expect to peek the current wrap-up pattern afterwards. If we can't, that's an error. If we can, we've found that DSL-expression.
+- - If we get a called macro for the current macro DSL and the confident stock macro sigil set based on a DSL sigil textpat that peeks that neither ' nor @ is present and the current surrounding bracket entry, we've found that macro result.
 
 - - Otherwise, we've found that there is no DSL-expression here.
 
 
-To read a mandatory DSL-expression of some macro DSL with a known wrap-up pattern:
+To read a mandatory DSL-expression of some macro DSL with a known surrounding bracket entry:
 
-- We read an optional DSL-expression of the current macro DSL with the current wrap-up pattern. If we don't get one, that's an error.
-
-
-Usual macros for comments and identifiers:
-
-- The nameless freestanding comment macro:
-
-- - We match the text against the following cases:
-
-- - - If we get the text . we read a mandatory identifier prefix with the current wrap-up pattern, and we invoke the named freestanding comment macro named after it with the current wrap-up pattern.
-
-- - - Otherwise, we read and discard a line of Unicode text, up to but not including the line break or end-of-file.
-
-- The nameless bounded comment macro:
-
-- - We match the text against the following cases:
-
-- - - If we get the text . we read a mandatory identifier prefix with the current wrap-up pattern, and we invoke the named bounded comment macro named after it with the current wrap-up pattern.
-
-- - - If we get the text < > or = that's an error. (See "NOTE HYPERSNIPPETS" below.)
-
-- - - Otherwise, that's an error. (In the future, we might have this case read some text with maching brackets and ignore it all, or something like that.)
-
-- The nameless freestanding identifier macro:
-
-- - We match the text against the following cases:
-
-- - - If we get the text . we read a mandatory identifier prefix with the current wrap-up pattern, and we invoke the named freestanding identifier macro named after it with the current wrap-up pattern.
-
-- - - Otherwise, that's an error. (In the future, we might come up with something to do here.)
-
-- The nameless bounded identifier macro:
-
-- - We match the text against the following cases:
-
-- - - If we get the text . we read a mandatory identifier prefix with the current wrap-up pattern, and we invoke the named bounded identifier macro named after it with the current wrap-up pattern.
-
-- - - If we get the text < > or = that's an error. (See "NOTE HYPERSNIPPETS" below.)
-
-- - - Otherwise, that's an error. (In the future, we might have this case read some text according to a whitespace-normalizing string DSL and use that as the identifier name, or something like that.)
+- We read an optional DSL-expression of the current macro DSL with the current surrounding bracket entry. If we don't get one, that's an error.
 
 
 Usual macros for most macro DSLs:
@@ -122,116 +160,110 @@ Usual macros for most macro DSLs:
 
 - - We invoke the unceremonious DSL-expression macro for the current macro DSL for the given identifier.
 
-- The nameless freestanding DSL-expression macro:
+- The nameless freestanding DSL-expression macro and namless bounded DSL-expression macro behaviors may vary according to the macro DSL, but a few common behaviors are as follows:
 
-- - We match the text against the following cases:
+- - It's always an error. This is the usual design when there's likely going to be a single named macro that will be most prominent but we don't know what it is yet.
 
-- - - If we get the text ' or @ it's an error. (The only way we can get these is if the macro isn't invoked by the "read an optional DSL-expression" logic, which first attempts to read an identifier (ruling out the @ sigil for identifiers), which first attempts to consume whitespace (ruling out the ' sigil for comments). It doesn't seem important yet to cater to other ways of invoking one of these macros, so we simply treat this as an error.)
+- - We emulate a named call instead, by reading a mandatory identifier prefix and invoking the named macro corresponding to that identifier. This is the usual design when invoking several different named macros _is_ the most common thing to do.
 
-- - - If we get the text . we read a mandatory identifier prefix with the current wrap-up pattern, and we invoke the named freestanding DSL-expression macro named after it for the current macro DSL with the current wrap-up pattern.
-
-- - - Otherwise, the behavior may vary according to the macro DSL. A few common behaviors are as follows:
-
-- - - - It's an error. This is the usual behavior when there's likely going to be a single named freestanding macro that will be most prominent but we don't know what it is yet.
-
-- - - - We proceed as though we got the text . anyway. This is the usual behavior when invoking several different named freestanding macros _is_ the most common thing to do.
-
-- - - - We emulate a behavior similar to having no macro call at all, where the \ that originally started this freestanding macro call is instead reinterpreted as miscellaneous text (e.g. an identifier). This may be the usual behavior in certain string literal DSLs where \ is expected to occur often in the string data.
-
-- The nameless bounded DSL-expression macro:
-
-- - We match the text against the following cases:
-
-- - - If we get the text ' or @ it's an error. (The only way we can get these is if the macro isn't invoked by the "read an optional DSL-expression" logic, which first attempts to read an identifier (ruling out the @ sigil for identifiers), which first attempts to consume whitespace (ruling out the ' sigil for comments). It doesn't seem important yet to cater to other ways of invoking one of these macros, so we simply treat this as an error.)
-
-- - - If we get the text . we read a mandatory identifier prefix with the current wrap-up pattern, and we invoke the named bounded DSL-expression macro named after it for the current macro DSL with the current wrap-up pattern.
-
-- - - If we get the text < > or = that's an error. (See "NOTE HYPERSNIPPETS" below.)
-
-- - - Otherwise, the behavior may vary according to the macro DSL. A few common behaviors are as follows:
-
-- - - - It's an error. This is the usual behavior when there's likely going to be a single named bounded macro that will be most prominent but we don't know what it is yet.
-
-- - - - We proceed as though we got the text . anyway. This is the usual behavior when invoking several different named bounded macros _is_ the most common thing to do.
-
-- - - - We emulate a behavior similar to having no macro call at all, where the [ ] ( ) and/or / that originally delimited this bounded macro call are instead interpreted as miscellaneous text (e.g. identifiers). This may be the usual behavior in certain string literal DSLs where matched sets of [ ] ( ) and / are expected to occur often in the string data.
+- - We emulate a behavior similar to having no macro call at all, where the delimiters that originally started this macro call are instead reinterpreted as miscellaneous text (e.g. identifiers). This may be the usual design in certain string literal DSLs where the delimiters are expected to occur often in the string data.
 
 
 Specific macro DSLs:
 
-- In some sense, comments. However, these use the sigil ' and we treat them as a special case.
+- Comments.
 
-- - As described above, if the nameless freestanding comment macro doesn't find its . we read and discard a line of Unicode text, up to but not including the line break or end-of-file.
+- - For the nameless freestanding DSL-expression macro for this DSL, we read and discard a line of Unicode text, up to but not including the line break or end-of-file.
 
-- - As described above, if the nameless bounded comment macro doesn't find its . that's an error.
+- - The nameless freestanding DSL-expression macro for this DSL:
 
-- In some sense, identifiers. However, these use the sigil @ and we treat them as a special case.
+- - - We read and discard a line of Unicode text, up to but not including the line break or end-of-file.
 
-- - As described above, if the nameless freestanding identifier macro doesn't find its . that's an error.
+- - The nameless bounded DSL-expression macro for this DSL:
 
-- - As described above, if the nameless bounded identifier macro doesn't find its . that's an error.
+- - - It's always an error. (In the future, we might have this case read some text with maching brackets and ignore it all, or something like that.)
+
+- - Instead of having an operation that reads an optional comment, we have an operation that consumes whitespace, as described above. This operation can encounter comment macro calls that use ' as a DSL sigil.
+
+- Identifiers.
+
+- - The nameless freestanding DSL-expression macro for this DSL:
+
+- - - It's always an error. (In the future, we might come up with something to do here.)
+
+- - The nameless bounded DSL-expression macro for this DSL:
+
+- - - It's always an error. (In the future, we might have this read some text according to a whitespace-normalizing string DSL and use that as the identifier name, or something like that.)
+
+- - The operation that reads an optional identifier is different. As described above, it consumes whitespace, tries to encounter a macro call that uses @ as a DSL sigil, then tries finding a nonempty span of a certain kind of text.
 
 - Sink expressions: Expressions that evaluate to sink values and which may have free variables that can be bound to sink values. (More ambitious expression DSLs may have type systems, may have the ability to compile to various specific platforms, may have the ability to be traversed, etc.)
 
-- - If the nameless freestanding DSL-expression macro for this DSL doesn't find its . that's an error. (It's unclear what kind of expression we would need to write using a backslash. Perhaps numeric literal syntaxes?)
+- - The nameless freestanding DSL-expression macro for this DSL:
 
-- - If the nameless bounded DSL-expression macro for this DSL doesn't find its . it behaves as though it found it anyway.
+- - - It's always an error. (It's unclear what kind of expression we would need to write using a backslash. Perhaps numeric literal syntaxes?)
+
+- - The nameless bounded DSL-expression macro for this DSL:
+
+- - - We read a mandatory identifier prefix and imitate a named macro call.
 
 - Sink binding sites: Sets of variables that should be lexically bound to an incoming sink value, along with the source location information to blame for each variable in case we need to cause an error relating to duplicate variables. (More ambitious binding site DSLs may have binding sites that have type annotations or that apply patterns to destructure their values.)
 
-- - If the nameless freestanding DSL-expression macro for this DSL doesn't find its . it behaves as though it found it anyway. (Bracketless syntaxes are precious for binding sites, since binding syntaxes are often designed with the expectation their binding sites will be consise enough to squeeze in on the same line as several other things, and brackets tend to push both themselves and the following expressions onto individual lines. One named macro would likely be the most prominent of all here, namely a macro that binds its input to zero variables (ignoring it), but it seems like the syntax \- or \unused is plenty concise, so we don't need to go quite as far as reserving \ for that exclusive purpose.)
+- - The nameless freestanding DSL-expression macro for this DSL:
 
-- - If the nameless bounded DSL-expression macro for this DSL doesn't find its . it behaves as though it found it anyway. (There is likely going to be a most prominent operation, namely taking the disjoint union of multiple binding sites. However, that's not a call-like operation, so the indentation would work out better if it were written with an explicit operator name like (conflate a b) rather than (a b).)
+- - - We read a mandatory identifier prefix and imitate a named macro call. (Bracketless syntaxes are precious for binding sites, since binding syntaxes are often designed with the expectation their binding sites will be consise enough to squeeze in on the same line as several other things, and brackets tend to push both themselves and the following expressions onto individual lines. One named macro would likely be the most prominent of all here, namely a macro that binds its input to zero variables (ignoring it), but it seems like the syntax \- or \unused is plenty concise, so we don't need to go quite as far as reserving \ for that exclusive purpose.)
+
+- - The nameless bounded DSL-expression macro for this DSL:
+
+- - - We read a mandatory identifier prefix and imitate a named macro call. (There is likely going to be a most prominent operation, namely taking the disjoint union of multiple binding sites. However, that's not a call-like operation, so the indentation would work out better if it were written with an explicit operator name like (conflate a b) rather than (a b).)
 
 - Declarations in a lexical unit: Functions that take an "interface" familiarity ticket and an "implementation" familiarity ticket and return an extfx computation that spends its "interface" ticket to describe what things the current lexical unit defines, what things it exports, and what struct export conditions it determines, then eventually spends its "interface" ticket to describe what directive expressions can be used to compute those definitions.
 
-- - If the nameless freestanding DSL-expression macro for this DSL doesn't find its . that's an error. (It's unclear what other behavior we might like here.)
+- - The nameless freestanding DSL-expression macro for this DSL:
 
-- - If the nameless bounded DSL-expression macro for this DSL doesn't find its . it behaves as though it found it anyway.
+- - - It's always an error. (It's unclear what other behavior we might like here.)
+
+- - The nameless bounded DSL-expression macro for this DSL:
+
+- - - We read a mandatory identifier prefix and imitate a named macro call.
 
 - Fragments of whitespace-normalizable interpolated string literals.
 
-- - If the nameless freestanding DSL-expression macro for this DSL doesn't find its . it behaves as though it found it anyway. (In string literals, various \ syntaxes are important as escape sequences.)
+- - The nameless freestanding DSL-expression macro for this DSL:
 
-- - If the nameless bounded DSL-expression macro for this DSL doesn't find its . it reads any number of whitespace-normalizing string fragments and surrounds them with the current opening delimiter and the current closing delimiter (imitating what would have happened if the delimiters were treated as miscellaneous text rather than a bounded macro call).
+- - - We read a mandatory identifier prefix and imitate a named macro call. (In string literals, various \ syntaxes are important as escape sequences.)
 
-- - The operation that reads an optional fragment of a whitespace-normalizable interpolated string literal is different. When it finds a nonempty span of Unicode whitespace, it creates a fragment that carries that whitespace with the explicit knowledge that it is whitespace that might be normalized. When it finds a nonempty span of any non-Unicode-whitespace text other than \ [ ] ( ) and / it creates a fragment that carries that non-whitespace text. When it finds \' [' (' or /' it invokes the appropriate comment macro and finds a whitespace fragment containing the text that was consumed this way. When it finds \@ [@ (@ or /@ it invokes the appropriate identifier macro, then invokes the glossary DSL-expression macro for this macro DSL and finds the fragment resulting from that. When it encounters ] or ) or end-of-file, it finds no fragment (not even an empty one).
+- - The nameless bounded DSL-expression macro for this DSL:
 
-- - - TODO: Some sequences like [' and (' or even ['. and ('. seem like they'll be common in quoted non-Cene code. See if we should redesign these to be [.' and (.' or something like that. This might involve redesigning our other DSLs as well.
+- - - We read any number of whitespace-normalizable string fragments and surround them with the text of the current opening delimiter and the current closing delimiter (imitating what would have happened if the delimiters were treated as miscellaneous text rather than a bounded macro call).
 
-- - - TODO: See if we're right to think of a \' [' (' or /' comment as a form of "whitespace" here. Perhaps these cases should find empty fragments rather than whitespace fragments, or perhaps they should find a distinct kind of "comment" fragment so the user may normalize comments at their own discretion.
+- - The operation that reads an optional fragment of a whitespace-normalizable interpolated string literal is different. When it finds a nonempty span of Unicode whitespace, it creates a fragment that carries that whitespace with the explicit knowledge that it is whitespace that might be normalized. When it finds a nonempty span of any non-Unicode-whitespace text other than \ [ ] ( ) and / it creates a fragment that carries that non-whitespace text. When it finds a called macro for the comment macro DSL and the unconfident stock macro sigil set based on the DSL sigil ' and the current surrounding bracket entry, it finds a whitespace fragment containing the text that was consumed this way. When it finds a called macro for the identifier macro DSL and the unconfident stock macro sigil set based on the DSL sigil @ and the current surrounding bracket entry, it invokes the glossary DSL-expression macro for this macro DSL and finds the fragment resulting from that. When it encounters ] or ) or end-of-file, it finds no fragment (not even an empty one).
+
+- - - TODO: See if we're right to think of a \' [.' (.' or /.' comment as a form of "whitespace" here. Perhaps these cases should find empty fragments rather than whitespace fragments, or perhaps they should find a distinct kind of "comment" fragment so the user may normalize comments at their own discretion.
 
 - - - TODO: If we're going to escape unmatched occurrences of [ ] ( ) in strings as \< \> \{ \} again, that means we're not going to be writing the \< and \{ delimiters at the start of a line; the \ gets in the way. Is that okay? Actually, it's probably great. Since these are unmatched delimiters, we don't want them to appear unfettered at the start of a line where we might make the mistake of thinking they need to be closed the usual way.
 
-- - - TODO: (multiple paragraphs) {
-
-In order for nested occurrences of string literals to be suppressed (treated as string contents so we can more easily generate Cene code that contains string literals), we'll need to somehow pass a different nesting depth to different macro calls of the DSL. How should we do that?
-
-In a general sense, this is precisely what we started the Punctaffy project to explore (after making a bit of a ball of mud exploring it in Cene for JavaScript). There was a lot of complexity to work out.
-
-One viable approach we found in Punctaffy was to pass around hyperstacks. If we do pass around hyperstacks of some sort (in this case perhaps a low-dimensional stack with such simple stack frames that it merely represents a nesting depth), then how would we pass them around?
-
-One option would be to treat the hyperstack as an attribute carried on a macro DSL object itself; in some sense we have a different DSL altogether at each depth. (This means we would have an explicit first-class macro DSL object we pass around during macroexpansion, which will probably be true if only so that we can reuse some of the code for the behaviors that are common to virtually every macro DSL.)
-
-On the other hand, hypersnippet delimiters are an issue that will tend to have an impact on every single macro DSL, so we'll likely want to make them a fundamental part of the calling convention. After all, if two macro DSLs start to use different hypernest brackets, they'll have trouble respecting each other's brackets. If nothing else, we should at least have them all independently look for the kind of < > and = delimiters we describe in NOTE HYPERSNIPPETS.
-
-Maybe we could carry the hyperstack on the _text input stream_. That way in some places where we use `extfx-read-fault` to read a 0-dimensional source location region, we can read a 1-dimensional source location region instead, and the obligation to complete the region can be fulfilled by the protocol of that 1-dimensional `extfx-read-fault` variant. And in places where we set up a delimiter that we expect to see later, we can use a similar 1-dimensional operation that reads using an opening and a closing textpat and discharges the obligation to match the closing textpat as part of its protocol. Making a local change to the string nesting depth would be just another of these operations. Hmm, yes, the idea of reading hypersnippet-shaped patterns from a stream seems like a very nice and structured way to manage the obligations.
-
-The complexity of any of these options might intimidate Cene newcomers. In the short term, the best course of action is probably to use string syntaxes that don't gracefully nest.
-
-}
+- - - TODO: In order for nested occurrences of string literals to be suppressed (treated as string contents so we can more easily generate Cene code that contains string literals), we'll need to pass a nesting depth around to the macros. The way we did this in Cene for JavaScript became a big ball of mud, and we started the Punctaffy project to sort out that complexity, so we can say with some confidence now that we should represent nesting depth information in the form of a Punctaffy hyperstack and use special bracket notations in our designs; see NOTE HYPERSNIPPETS. Still, even if we have a clear way forward for this, it's still a concept that's bound to intimidate Cene newcomers. The best course of action in the short term will be to settle for string literal syntaxes that don't gracefully nest so that people don't inquire about the special brackets and find themselves falling down a rabbit hole of complexity.
 
 - Someday, patterns for pattern-matching.
 
-- - If the nameless freestanding DSL-expression macro for this DSL doesn't find its . that's an error. (It's unclear what other behavior we might like here.)
+- - The nameless freestanding DSL-expression macro for this DSL:
 
-- - If the nameless bounded DSL-expression macro for this DSL doesn't find its . it behaves as though it found it anyway.
+- - - It's always an error. (It's unclear what other behavior we might like here.)
+
+- - The nameless bounded DSL-expression macro for this DSL:
+
+- - - We read a mandatory identifier prefix and imitate a named macro call.
 
 - Hypothetically, hypersnippet dimension numerals: If we follow the plans we're describing around hypersnippets (NOTE HYPERSNIPPETS), then at some point we need a DSL for numerals that can be used to specify a delimiter's degree.
 
-- - If the nameless freestanding DSL-expression macro for this DSL doesn't find its . that's an error. (It's unclear what kind of numeral we would need to write using a backslash. Perhaps numerals written in different bases?)
+- - The nameless freestanding DSL-expression macro for this DSL:
 
-- - If the nameless bounded DSL-expression macro for this DSL doesn't find its . that's an error. (It's unclear what other behavior we might like here. It's unclear there would even be one useful behavior, let alone a variety.)
+- - - It's always an error. (It's unclear what kind of numeral we would need to write using a backslash. Perhaps numerals written in different bases?)
+
+- - The nameless bounded DSL-expression macro for this DSL:
+
+- - - It's always an error. (It's unclear what other behavior we might like here. It's unclear there would even be one useful behavior, let alone a variety.)
 
 - - The operation that reads an optional numeral is different. When it finds a nonempty span of decimal digits, it converts that to a nonnegative integer using decimal notation.
 
@@ -247,4 +279,51 @@ The complexity of any of these options might intimidate Cene newcomers. In the s
 
 
 
-NOTE HYPERSNIPPETS: In the future, we might use bounded macro syntaxes with < > and = sigils to represent hypersnippet-bounded macro calls. The < would concisely denote the opening of a hypersnippet shape (possibly represented as a hypernest bump), the > would concisely denote one of the closing holes of such a shape, and the = would be a catch-all for less concise situations which are distinguished by identifier names. For instance, we might use = and a certain identifier to close several concentric shapes all at once. Note that by the time we support this, our calling convention for macros may change to have a stack of contexts, so that a span of whitespace that encounters a closing bracket can resume a hypersnippet-shaped comment already in progress. Hypersnippets are a concept explored in the Punctaffy project.
+NOTE HYPERSNIPPETS:
+
+Hypersnippets are a concept explored in the Punctaffy project. The basic idea is that a hypersnippet represents a higher-order snippet of code (or text), which is to say that it's a region of text that has holes in it where other such regions of code or text can be placed inside. A region of content with two holes in the middle must be placed inside a hole that has two islands of content of in the middle. A degree-1 hypersnippet is just a selection with a beginning and an end, and it's often delimited by a simple pair of parentheses. In programming languages, degree-2 hypersnippets already seem to arise in a few places, such as the quoted region of a quasiquotation expression or the quoted region of a string interpolation expression.
+
+For the short term, we don't intend to tangle the concept of hypersnippets into Cene. Cene's macro system will be challenging enough for people to learn without requiring them to learn about hypersnippets at the same time.
+
+In the future, Cene might use < > and ^ markers on its parens to delimit hypersnippets of code, and some macros (such as ones that do quasiquotation) may look for them. They'll likely look like this:
+
+- The delimiters [<1: ... ] mean a degree-1 hypersnippet boundary without a designated name. In any given macro DSL, this would typically call the nameless bounded DSL-expression macro, precisely the way [ ... ] does.
+
+- The delimiters [<1 foo: ... ] are similar but use the name "foo," so they would typically call a named bounded DSL-expression macro the same way [.foo: ... ] does.
+
+- The delimiters [<2: ... ] and [<2 foo: ... ] mean the same kind of thing but for degree-2 hypersnippet regions. These regions can have degree-1 holes in them, which we denote using [>1: ... ] for each one. Note how the < sigil represents the opening of the degree-2 region and the > sigil represents a hole that closes it, like parentheses.
+
+- We would denote a degree-3 hypersnippet using [<3: ... ] or [<3 foo: ... ] and then use [>2: ... ] to denote its degree-2 holes. A degree-3 hypersnippet can also contain occurrences of [>1: ... ] for its degree-1 holes. Its degree-2 holes can also contain occurrences of [>1: ... ] for the degree-1 regions of content inside them. That content is just another part of the degree-3 hypersnippet, so it can contain degree-2 and degree-1 holes.
+
+- The delimiters [<.foo: ... ] and [>.foo: ... ] and [^foo: ... ] make calls to three different macros named "foo" and end up meaning whatever those macros define them to mean.
+
+- - Generally, [<.foo: ... ] and [>.foo: ... ] will be used for custom notions of opening and closing hyperbracket respectively. For instance, we might consider having a custom closing hyperbracket [>.label foo: ... ] that closes every hyperbracket until it closes an opening hyperbracket [<.label foo: ... ] with the same label.
+
+- - Generally, [^.foo: ... ] will be used for custom notions of hyperbracket that can't be easily clasified into "opening" and "closing," such as a hyperbracket that closes a whitespace-normalizing string region and opens a whitespace-preserving string region at the same time.
+
+- - Another example: Cene has weak opening parens such that (a b /c d /e f) is sugar for (a b (c d (e f))). We could consider having a weak opening hyperbracket that behaves similarly, where it doesn't _consume_ but just _peeks at_ its closing hyperbrackets. We'll likely prefer to write this as [^.weak 1 ... ] so that we more can easily spot (strong) hyperbrackets that don't match, but [<.weak 1 ... ] would also make sense.
+
+- - Note that there's a difference between [<1 foo: ... ], which makes a call to the current macro DSL's bounded DSL-expression macro named "foo" using a degree-1 hypersnippet, and [<.foo: ... ], which makes a call to a custom opening hyperbracket macro named "foo". The custom opening hyperbrackets are a macro DSL of sorts, but they're distinct from fthe "current macro DSL." Many different macro DSLs will use the same brackets to denote their macro calls.
+
+- In all these cases, we've illustrated the hyperbrackets like [<1 foo: ... ] using square brackets. Round parens like (<1 foo: ... ) are just as valid (not to mention weak opening parens like /<1 foo: ... ), but we've chosen to use square brackets as a stylistic choice in these examples so that they're not so easy to confuse for Lisp-style calls to functions like like "less than" and "less than one."
+
+- The colons in these syntaxes are optional but provide better control over how to delimit whitespace. If the colon is omitted, its location will be inferred as being before the first non-whitespace character, which means operations where whitespace matters, like string syntaxes, will find their content trimmed on the left side. The colon also serves a secondary role in distinguishing between the [<1: ... ] and [<1 foo: ... ] cases. If the code looks like [<1: foo bar], then removing the colon will yield [<1 foo bar], which will be treated basically the same way as [<1 foo :bar].
+
+The arrangement of hyperbrackets in a Cene program will be similar to the arrangement of bumps in a Punctaffy hypernest. This is precisely what hypernests in Punctaffy were designed to represent.
+
+However, a hypernest carries the entire structure at once. In the reader-macro-style Cene macro system we're describing here, we don't have access to the whole structure before we have to decide how something like a macro name gets resolved. So instead of working with hypernests, we'll likely need to deal with Punctaffy hyperstacks, passing a hyperstack into each macro call to represent its context.
+
+In a macro call's hyperstack, the most immediately available parts of the stack will represent the macro call's local scope, like whether its call site resides in a whitespace-normalizing or whitespace-preserving region of a string. The more distant parts will represent which other macro calls it returns control back to whenever it opens a closing hyperbracket.
+
+The best way to pass this hyperstack into a Cene macro will probably be to treat it as part of the _text input stream_. That way a Cene macro can read an opening paren and set up an obligation on the hyperstack that ensures the closing paren's read will be attempted later on. Likewise, a Cene macro that reads degree-1 source location information can stake out the boundaries of the source it's locating by reading a phantom opening paren and a phantom closing paren of sorts. (We currently do this kind of thing with `extfx-read-fault` for degree-0 hypersnippet source location information.)
+
+Note that even the act of consuming whitespace can involve the hyperstack, since we may like to have hypersnippet-shaped comment syntaxes. In that case when a whitespace-consuming operation reaches a closing bracket, it consults the hyperstack and sees whether that closing bracket would resume a hypersnippet-shaped comment already in progress. If it would, it proceeds to consume that comment until it reaches that comment's next hole, and then it continues consuming whitespace the usual way.
+
+For other things like identifiers, the code that tries to read an identifier will not often expect to consume a degree-2-or-higher portion of the stream. We could either have the "read an optional identifier" operation complain right away if it finds a high-degree identifier hyperbracket, or we could merely have it enforce that the unanticipated holes of that hyperbracket contain nothing but whitespace and comments.
+
+
+It's possible that a direct use of Punctaffy's hypernests and hyperstacks may not turn out to be quite general enough for Cene's purposes.
+
+In particular, in may be interesting to consider a extension of the hypernest concept where the dimension system can have impredicative dimensions in it, essentially so that programmers don't have to number them ahead of time (but must close them by label instead to keep the code unambiguous). A region of impredicative degree could have holes of impredicative degree. The way we would model this in terms of hypernests is that the dimension lattice would be the totally ordered set (0, 1, 2, 3, ..., ..., imp3, imp2, imp1, imp0). The first impredicative-degree bump would be modeled as a degree-imp0 bump, its impredicative-degree bumps and holes would be represented as degree imp1, their bumps and holes would be degree-imp2, and so on. Actually, in order to keep good track of labels as we concatenate hypersnippets with impredicative-degree holes, we'll probably want to ditch the total order and represent the impredicative degrees with finite ordered sequences of available labels. We would we have paths in the dimension lattice like (3 < 5 < imp [d, c, b, a] < imp [b, a] < imp [a]).
+
+TODO: The above paragraph is more of a Punctaffy design comment. It can be informative for one possible future direction of Cene, but we should sort out the logistics of this kind of thing in Punctaffy before we get too attached. Besides, if we use Punctaffy to build macro systems for Racket (or other non-Cene languages), this impredicativity extension might come in handy for those macro systems too, so it's not really specific to Cene.
