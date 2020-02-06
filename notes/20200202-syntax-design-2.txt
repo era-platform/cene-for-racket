@@ -34,15 +34,21 @@ An optimized macro sigil set is an optimized bracket set along with:
 
 - The named freestanding opener: The optimized textpat for matching a sequence of \. and the DSL sigil.
 
+- The concise opening hyperbracket freestanding opener: The optimized textpat for matching a sequence of \< and the DSL sigil.
+
+- The concise closing hyperbracket freestanding opener: The optimized textpat for matching a sequence of \> and the DSL sigil.
+
+- The custom hyperbracket freestanding opener: The optimized textpat for matching a sequence of \^ and the DSL sigil.
+
 - The nameless bounded openers: For each opening bracket, the optimized textpat that starts by matching an occurrence of the opening bracket that isn't followed by . < > or ^ and continues by matching the DSL sigil. If this sigil set isn't confident, this optimized textpat is replaced by one that always fails instead.
 
 - The named bounded openers: For each opening bracket, the optimized textpat for matching a sequence of the opening bracket followed by . and the DSL sigil.
 
-- The concise opening hyperbracket openers: For each opening bracket, the optimized textpat for matching a sequence of the opening bracket followed by < and the DSL sigil.
+- The concise opening hyperbracket bounded openers: For each opening bracket, the optimized textpat for matching a sequence of the opening bracket followed by < and the DSL sigil.
 
-- The concise closing hyperbracket openers: For each opening bracket, the optimized textpat for matching a sequence of the opening bracket followed by > and the DSL sigil.
+- The concise closing hyperbracket bounded openers: For each opening bracket, the optimized textpat for matching a sequence of the opening bracket followed by > and the DSL sigil.
 
-- The custom hyperbracket openers: For each opening bracket, the optimized textpat for matching a sequence of the opening bracket followed by ^ and the DSL sigil.
+- The custom hyperbracket bounded openers: For each opening bracket, the optimized textpat for matching a sequence of the opening bracket followed by ^ and the DSL sigil.
 
 
 The stock bracket set is an optimized bracket set with three entries, namely the entry consiting of [ and ] and the entry consisting of ( and ) and the entry consisting of / and no closing bracket entry.
@@ -78,7 +84,7 @@ To read an optional called macro for some macro DSL, some optimized sigil set, a
 
 - - If we get the sigil set's nameless freestanding opener:
 
-- - - We invoke the nameless freestanding DSL-expression macro for the current macro DSL.
+- - - We invoke the nameless freestanding DSL-expression macro for the current macro DSL and the current surrounding bracket entry.
 
 - - - We've found that macro call's result.
 
@@ -102,7 +108,7 @@ To read an optional called macro for some macro DSL, some optimized sigil set, a
 
 - - - We've found the result we got from the macro call.
 
-- - If we get one of the sigil set's concise opening hyperbracket openers, concise closing hyperbracket openers, or custom hyperbracket openers, that's an error. (We might use this in the future for hypersnippet delimiters. See NOTE HYPERSNIPPETS.)
+- - If we get any of the sigil set's various hyperbracket openers, that's an error. (We might use this in the future for hypersnippet delimiters. See NOTE HYPERSNIPPETS.)
 
 - - Otherwise, we've found that there is no called macro here.
 
@@ -240,7 +246,7 @@ Specific macro DSLs:
 
 - - - TODO: See if we're right to think of a \' [.' (.' or /.' comment as a form of "whitespace" here. Perhaps these cases should find empty fragments rather than whitespace fragments, or perhaps they should find a distinct kind of "comment" fragment so the user may normalize comments at their own discretion.
 
-- - - TODO: If we're going to escape unmatched occurrences of [ ] ( ) in strings as \< \> \{ \} again, that means we're not going to be writing the \< and \{ delimiters at the start of a line; the \ gets in the way. Is that okay? Actually, it's probably great. Since these are unmatched delimiters, we don't want them to appear unfettered at the start of a line where we might make the mistake of thinking they need to be closed the usual way.
+- - - TODO: If we're going to escape unmatched occurrences of [ ] ( ) in strings as \< \> \{ \} again, that means we're not going to be writing the \< and \{ delimiters at the start of a line; the \ gets in the way. Is that okay? Actually, it's probably great. Since these are unmatched delimiters, we don't want them to appear unfettered at the start of a line where we might make the mistake of thinking they need to be closed the usual way. (TODO: Well, we're now using \< \> as hyperbracket notation, so we need to come up with a new way to escape the [ ] characters.)
 
 - - - TODO: In order for nested occurrences of string literals to be suppressed (treated as string contents so we can more easily generate Cene code that contains string literals), we'll need to pass a nesting depth around to the macros. The way we did this in Cene for JavaScript became a big ball of mud, and we started the Punctaffy project to sort out that complexity, so we can say with some confidence now that we should represent nesting depth information in the form of a Punctaffy hyperstack and use special bracket notations in our designs; see NOTE HYPERSNIPPETS. Still, even if we have a clear way forward for this, it's still a concept that's bound to intimidate Cene newcomers. The best course of action in the short term will be to settle for string literal syntaxes that don't gracefully nest so that people don't inquire about the special brackets and find themselves falling down a rabbit hole of complexity.
 
@@ -286,13 +292,17 @@ For the short term, we don't intend to tangle the concept of hypersnippets into 
 
 In the future, Cene might use < > and ^ markers on its parens to delimit hypersnippets of code, and some macros (such as ones that do quasiquotation) may look for them. They'll likely look like this:
 
-- The delimiters [<1: ... ] mean a degree-1 hypersnippet boundary without a designated name. In any given macro DSL, this would typically call the nameless bounded DSL-expression macro, precisely the way [ ... ] does.
+- The delimiters [<1: ... ] mean a degree-1 hypersnippet boundary without a designated name. In any given macro DSL, this would typically call the nameless bounded DSL-expression macro the same way [ ... ] and [.: ... ] do.
 
 - The delimiters [<1 foo: ... ] are similar but use the name "foo," so they would typically call a named bounded DSL-expression macro the same way [.foo: ... ] does.
 
 - The delimiters [<2: ... ] and [<2 foo: ... ] mean the same kind of thing but for degree-2 hypersnippet regions. These regions can have degree-1 holes in them, which we denote using [>1: ... ] for each one. Note how the < sigil represents the opening of the degree-2 region and the > sigil represents a hole that closes it, like parentheses.
 
-- We would denote a degree-3 hypersnippet using [<3: ... ] or [<3 foo: ... ] and then use [>2: ... ] to denote its degree-2 holes. A degree-3 hypersnippet can also contain occurrences of [>1: ... ] for its degree-1 holes. Its degree-2 holes can also contain occurrences of [>1: ... ] for the degree-1 regions of content inside them. That content is just another part of the degree-3 hypersnippet, so it can contain degree-2 and degree-1 holes.
+- We denote a degree-3 hypersnippet using [<3: ... ] or [<3 foo: ... ] and then use [>2: ... ] to denote its degree-2 holes. A degree-3 hypersnippet can also contain occurrences of [>1: ... ] for its degree-1 holes. Its degree-2 holes can also contain occurrences of [>1: ... ] for the degree-1 regions of content inside them. That content is just another part of the degree-3 hypersnippet, so it can contain degree-2 and degree-1 holes.
+
+- Degrees less than 1 are not permitted. If we allowed it, the text [>0: would do basically the same thing ] does, but this would create a situation where Cene code used mismatched [ ] which is something we've otherwise avoided. Although [<1: ... [>0: would be just as well-matched as [<1: ... ] in a formal sense, we believe the use of the punctuation [ [ wouldn't be as well-matched as [ ] from a readability standpoint.
+
+- For the most common cases, we treat [<: ... ] as a shorthand for [<2: ... ] and [>: ... ] as a shorthand for [>1: ... ]. These may seem asymmetrical, but note that a typical opening bracket [ is degree-1 and a typical closing bracket ] is degree-0. Degree-2 opening brackets and degree-1 closing brackets are the first ones that require special hyperbracket notation, and they're likely to be vastly more common than any other hyperbrackets, just as the low-degree [ and ] brackets are vastly more common than these.
 
 - The delimiters [<.foo: ... ] and [>.foo: ... ] and [^foo: ... ] make calls to three different macros named "foo" and end up meaning whatever those macros define them to mean.
 
@@ -306,7 +316,15 @@ In the future, Cene might use < > and ^ markers on its parens to delimit hypersn
 
 - In all these cases, we've illustrated the hyperbrackets like [<1 foo: ... ] using square brackets. Round parens like (<1 foo: ... ) are just as valid (not to mention weak opening parens like /<1 foo: ... ), but we've chosen to use square brackets as a stylistic choice in these examples so that they're not so easy to confuse for Lisp-style calls to functions like like "less than" and "less than one."
 
-- The colons in these syntaxes are optional but provide better control over how to delimit whitespace. If the colon is omitted, its location will be inferred as being before the first non-whitespace character, which means operations where whitespace matters, like string syntaxes, will find their content trimmed on the left side. The colon also serves a secondary role in distinguishing between the [<1: ... ] and [<1 foo: ... ] cases. If the code looks like [<1: foo bar], then removing the colon will yield [<1 foo bar], which will be treated basically the same way as [<1 foo :bar].
+- The colons in these syntaxes are optional but provide better control over how to delimit whitespace. If the colon is omitted, its location will be inferred as being before the first non-whitespace character, which means operations where whitespace matters, like string syntaxes, will find their content trimmed on the left side. The colon also serves a secondary role in distinguishing between the [<: ... ] and [<3: ... ] and [<3 foo: ... ] cases. For instance, if the code looks like [<:3 foo bar] or [<3: foo bar], then removing the colon will yield [<3 foo bar], which will be treated basically the same way as [<3 foo :bar].
+
+- We've described bounded notations surrounded by [ ] or ( ) or the / weak paren, but there are also freestanding syntaxes beginning with \ with slightly different designs.
+
+- - The syntax \>:... is shorthand for \>1:... which, in turn, is similar to what [>1: \... ] does. Note the way that another slash is applied to the ... inside. This is so we can make a chain like \>>>>foo: to represent opening four concentric degree-1 hypersnippet holes and then invoking the "foo" freestanding macro. We may have string escape sequences that look like \foo: and may decide that the variant \>>>foo: will invoke that escape sequence from underneath four additional hyperbracketed layers of string quotation.
+
+- - The syntaxes \<:... and \<2:... are shorthands for \<2.:... which, in turn, is similar to what [<2: \... ] does. The syntax \<2.foo:... is similar to what [<2 foo: \... ] does.
+
+- - The syntaxes \<.foo:... and \>.foo: and \^foo:... make calls to three different macros named "foo". We could say they're similar to what [<.foo: ... ] and [>.foo: ... ] and [^foo: ... ] do, but altogether these invoke six distinct "foo" macros. Note that it's up to the design of each individual macro as to whether it plays nicely in a chain like \>>^foo>>bar: or not. In particular, like any other freestanding macro, it's in charge of reading and processing the text that follows it, and it doesn't have to interpret that text as the remainder of an escape sequence the way we've designed \< and \> to do.
 
 The arrangement of hyperbrackets in a Cene program will be similar to the arrangement of bumps in a Punctaffy hypernest. This is precisely what hypernests in Punctaffy were designed to represent.
 
