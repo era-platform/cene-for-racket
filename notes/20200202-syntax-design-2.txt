@@ -3,12 +3,12 @@ Cene syntax:
 
 An optimized opening bracket entry consists of:
 
-- A string for the opening bracket, as well as well as the optimized textpat that matches it.
+- A string for the opening bracket, as well as the optimized textpat that matches it.
 
 
 An optimized closing bracket entry consists of:
 
-- A string for the closing bracket, an unoptimized textpat for peeking beyond the closing bracket, the optimized textpat that matches the sequence of the string and the peeking obligation, and the the optimized textpat that peeks the same sequence.
+- A string for the closing bracket, as well as the optimized textpat that matches it and the optimized textpat that peeks it.
 
 
 A partial optimized bracket entry consists of:
@@ -45,7 +45,7 @@ An optimized macro sigil set is an optimized bracket set along with:
 - The custom hyperbracket openers: For each opening bracket, the optimized textpat for matching a sequence of the opening bracket followed by ^ and the DSL sigil.
 
 
-The stock bracket set is an optimized bracket set with three entries, namely the entry consiting of [ and ] with no peeking obligation, the entry consisting of ( and ) with no peeking obligation, and the entry consisting of / and no closing bracket entry.
+The stock bracket set is an optimized bracket set with three entries, namely the entry consiting of [ and ] and the entry consisting of ( and ) and the entry consisting of / and no closing bracket entry.
 
 
 The confident/unconfident stock macro sigil set for a given DSL sigil is a confident/unconfident optimized macro sigil set whose bracket set is the stock bracket set and whose DSL sigil is the given one.
