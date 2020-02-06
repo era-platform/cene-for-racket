@@ -28,7 +28,7 @@ An optimized macro sigil set is an optimized bracket set along with:
 
 - An unoptimized textpat for the DSL sigil.
 
-- Confidence: A boolean representing the confidence that a nameless bounded invocation is really intended to be an invocation. (This is helpful because while [. (. and /. (with or without the ' and @ DSL sigils afterwards) may be uncommon in strings other than Cene code, some of the corresponding versions without dots are rather common. We consider \ to be sufficiently uncommon within a string even without the dot, since it's so widely used as an escape character in other languages.)
+- Confidence: A boolean representing the confidence that a nameless bounded invocation is really intended to be an invocation. (This is helpful because while [. (. and /. (with or without the ' and @ DSL sigils afterwards) may be uncommon in strings other than Cene code, some of the corresponding versions without dots are rather common. We can still call a nameless macro using notation like (.: or (.': or (.@: even though we treat ( (' (@ as normal text. We consider \ to be sufficiently uncommon within a string even without the . since \ is so widely used as an escape character in other languages.)
 
 - The nameless freestanding opener: The optimized textpat that starts by matching a \ that isn't followed by . and continues by matching the DSL sigil.
 
@@ -51,15 +51,28 @@ The stock bracket set is an optimized bracket set with three entries, namely the
 The confident/unconfident stock macro sigil set for a given DSL sigil is a confident/unconfident optimized macro sigil set whose bracket set is the stock bracket set and whose DSL sigil is the given one.
 
 
+To read a freestanding/bounded called macro interior for some macro DSL and some surrounding bracket entry:
+
+- We read an optional identifier with the current surrounding bracket entry.
+
+- We consume whitespace with the current surrounding bracket entry.
+
+- We consume the text : if it's the next text available.
+
+- If we succeeded in reading an identifier:
+
+- - We proceed by invoking the named freestanding/bounded DSL-expression macro named after that identifier for the current macro DSL with the current surrounding bracket entry.
+
+- - We proceed by invoking the nameless freestanding/bounded DSL-expression macro for the current macro DSL with the current surrounding bracket entry.
+
+
 To read an optional called macro for some macro DSL, some optimized sigil set, and some surrounding bracket entry:
 
 - We match the text against the following cases:
 
 - - If we get the sigil set's named freestanding opener:
 
-- - - We read a mandatory identifier prefix with the current surrounding bracket entry.
-
-- - - We invoke the named freestanding DSL-expression macro named after that identifier for the current macro DSL with the current surrounding bracket entry.
+- - - We read a freestanding called macro interior for the current macro DSL and the current surrounding bracket entry.
 
 - - - We've found that macro call's result.
 
@@ -73,9 +86,7 @@ To read an optional called macro for some macro DSL, some optimized sigil set, a
 
 - - - We choose a bracket entry to refer to as the "interior bracket entry": If the opener's corresponding partial optimized bracket entry is complete, we choose that. Otherwise, we choose the current bracket entry.
 
-- - - We read a mandatory identifier prefix with the interior bracket entry.
-
-- - - We invoke the named bounded DSL-expression macro named after that identifier for the current macro DSL with the interior bracket entry.
+- - - We read a bounded called macro interior for the current macro DSL and the interior bracket entry.
 
 - - - If the opener's corresponding partial optimized bracket entry is complete, we read its closing bracket. Otherwise, we peek the surrounding bracket entry's closing bracket. If either of those actions fails to match, that's an error.
 
@@ -122,18 +133,6 @@ To read an optional identifier with a known surrounding bracket entry:
 - - Otherwise, we've found that there is no identifier here.
 
 
-To read a mandatory identifier with a known surrounding bracket entry:
-
-- We read an optional identifier with the current surrounding bracket entry. If we don't get one, that's an error.
-
-
-To read a mandatory identifier prefix with a known surrounding bracket entry:
-
-- We read a mandatory identifier with the current surrounding bracket entry. That's the result.
-
-- Before we finish, we consume whitespace with the current surrounding bracket entry, and then we consume the text : if it's the next text available.
-
-
 To read an optional DSL-expression of some macro DSL with a known surrounding bracket entry:
 
 - We read an optional identifier with the current surrounding bracket entry. If we get one:
@@ -164,7 +163,7 @@ Usual macros for most macro DSLs:
 
 - - It's always an error. This is the usual design when there's likely going to be a single named macro that will be most prominent but we don't know what it is yet.
 
-- - We emulate a named call instead, by reading a mandatory identifier prefix and invoking the named macro corresponding to that identifier. This is the usual design when invoking several different named macros _is_ the most common thing to do.
+- - We proceed by reading a freestanding/bounded called macro interior for the current macro DSL and the current surrounding bracket entry. This is the usual design when invoking several different named macros _is_ the most common thing to do.
 
 - - We emulate a behavior similar to having no macro call at all, where the delimiters that originally started this macro call are instead reinterpreted as miscellaneous text (e.g. identifiers). This may be the usual design in certain string literal DSLs where the delimiters are expected to occur often in the string data.
 
@@ -205,17 +204,17 @@ Specific macro DSLs:
 
 - - The nameless bounded DSL-expression macro for this DSL:
 
-- - - We read a mandatory identifier prefix and imitate a named macro call.
+- - - We proceed by reading a bounded called macro interior for the current macro DSL and the current surrounding bracket entry.
 
 - Sink binding sites: Sets of variables that should be lexically bound to an incoming sink value, along with the source location information to blame for each variable in case we need to cause an error relating to duplicate variables. (More ambitious binding site DSLs may have binding sites that have type annotations or that apply patterns to destructure their values.)
 
 - - The nameless freestanding DSL-expression macro for this DSL:
 
-- - - We read a mandatory identifier prefix and imitate a named macro call. (Bracketless syntaxes are precious for binding sites, since binding syntaxes are often designed with the expectation their binding sites will be consise enough to squeeze in on the same line as several other things, and brackets tend to push both themselves and the following expressions onto individual lines. One named macro would likely be the most prominent of all here, namely a macro that binds its input to zero variables (ignoring it), but it seems like the syntax \- or \unused is plenty concise, so we don't need to go quite as far as reserving \ for that exclusive purpose.)
+- - - We proceed by reading a freestanding called macro interior for the current macro DSL and the current surrounding bracket entry. (Bracketless syntaxes are precious for binding sites, since binding syntaxes are often designed with the expectation their binding sites will be consise enough to squeeze in on the same line as several other things, and brackets tend to push both themselves and the following expressions onto individual lines. One named macro would likely be the most prominent of all here, namely a macro that binds its input to zero variables (ignoring it), but it seems like the syntax \- or \unused is plenty concise, so we don't need to go quite as far as reserving \ for that exclusive purpose.)
 
 - - The nameless bounded DSL-expression macro for this DSL:
 
-- - - We read a mandatory identifier prefix and imitate a named macro call. (There is likely going to be a most prominent operation, namely taking the disjoint union of multiple binding sites. However, that's not a call-like operation, so the indentation would work out better if it were written with an explicit operator name like (conflate a b) rather than (a b).)
+- - - We proceed by reading a bounded called macro interior for the current macro DSL and the current surrounding bracket entry. (There is likely going to be a most prominent operation, namely taking the disjoint union of multiple binding sites. However, that's not a call-like operation, so the indentation would work out better if it were written with an explicit operator name like (conflate a b) rather than (a b).)
 
 - Declarations in a lexical unit: Functions that take an "interface" familiarity ticket and an "implementation" familiarity ticket and return an extfx computation that spends its "interface" ticket to describe what things the current lexical unit defines, what things it exports, and what struct export conditions it determines, then eventually spends its "interface" ticket to describe what directive expressions can be used to compute those definitions.
 
@@ -225,13 +224,13 @@ Specific macro DSLs:
 
 - - The nameless bounded DSL-expression macro for this DSL:
 
-- - - We read a mandatory identifier prefix and imitate a named macro call.
+- - - We proceed by reading a bounded called macro interior for the current macro DSL and the current surrounding bracket entry.
 
 - Fragments of whitespace-normalizable interpolated string literals.
 
 - - The nameless freestanding DSL-expression macro for this DSL:
 
-- - - We read a mandatory identifier prefix and imitate a named macro call. (In string literals, various \ syntaxes are important as escape sequences.)
+- - - We proceed by reading a freestanding called macro interior for the current macro DSL and the current surrounding bracket entry. (In string literals, various \ syntaxes are important as escape sequences.)
 
 - - The nameless bounded DSL-expression macro for this DSL:
 
@@ -253,7 +252,7 @@ Specific macro DSLs:
 
 - - The nameless bounded DSL-expression macro for this DSL:
 
-- - - We read a mandatory identifier prefix and imitate a named macro call.
+- - - We proceed by reading a bounded called macro interior for the current macro DSL and the current surrounding bracket entry.
 
 - Hypothetically, hypersnippet dimension numerals: If we follow the plans we're describing around hypersnippets (NOTE HYPERSNIPPETS), then at some point we need a DSL for numerals that can be used to specify a delimiter's degree.
 
