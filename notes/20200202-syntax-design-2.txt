@@ -102,7 +102,7 @@ To read an optional called macro for some macro DSL, some optimized sigil set, a
 
 - - - We choose a bracket entry to refer to as the "interior bracket entry": If the opener's corresponding partial optimized bracket entry is complete, we choose that. Otherwise, we choose the current bracket entry.
 
-- - - We invoke the nameless bounded DSL-expression macro named after that identifier for the current macro DSL with the interior bracket entry.
+- - - We invoke the nameless bounded DSL-expression macro for the current macro DSL with the interior bracket entry.
 
 - - - If the opener's corresponding partial optimized bracket entry is complete, we read its closing bracket. Otherwise, we peek the surrounding bracket entry's closing bracket. If either of those actions fails to match, that's an error.
 
@@ -152,11 +152,6 @@ To read an optional DSL-expression of some macro DSL with a known surrounding br
 - - If we get a called macro for the current macro DSL and the confident stock macro sigil set based on a DSL sigil textpat that peeks that neither ' nor @ is present and the current surrounding bracket entry, we've found that macro result.
 
 - - Otherwise, we've found that there is no DSL-expression here.
-
-
-To read a mandatory DSL-expression of some macro DSL with a known surrounding bracket entry:
-
-- We read an optional DSL-expression of the current macro DSL with the current surrounding bracket entry. If we don't get one, that's an error.
 
 
 Usual macros for most macro DSLs:
