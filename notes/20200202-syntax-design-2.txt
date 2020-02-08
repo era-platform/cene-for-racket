@@ -59,9 +59,13 @@ The confident/unconfident stock macro sigil set for a given DSL sigil is a confi
 
 To read a freestanding/bounded called macro interior for some macro DSL and some surrounding bracket entry:
 
-- We read an optional identifier with the current surrounding bracket entry.
+- We read an optional identifier with the current surrounding bracket entry. Along the way:
 
-- We consume whitespace with the current surrounding bracket entry.
+- - If it turns out we've entered a hypernest bump that isn't whitespace or an identifier, that's an error. (TODO NOW: Support this "along the way" stuff in the "read an optional identifier" action.)
+
+- We consume whitespace with the current surrounding bracket entry. Along the way:
+
+- - If it turns out we've entered a hypernest bump that isn't a comment, that's an error. (TODO NOW: Well... doesn't that mean we're going to have to use an explicit : a lot more often? What about using a comment sigil *before* the hyperbracket sigils, like [.'<<:foo ... ] or something, so that we can see a comment coming before we even know whether we're starting or reentering one?) (TODO NOW: Support this "along the way" stuff in the "consume whitespace" action.) (TODO NOW: Find a good place to note that hypersnippet-shaped comments in the prefix of a called macro interior do indeed make sense. The prefix is part of a degree-2 bump for the comments can be nested within, and the macro body constitutes a degree-1 hole in that bump. I suppose that means, after reading the macro body, we should consume whitespace so that there's a chance to close up any comments in progress.)
 
 - We consume the text : if it's the next text available.
 
