@@ -1,6 +1,87 @@
 Cene syntax:
 
 
+To read an optional identifier or the beginning of a non-identifier bump:
+
+- We verify that the input stream's hyperstack carries a surrounding bracket entry.
+
+- We consume whitespace.
+
+- We match the text against the following cases:
+
+- - If we get a nonempty span of non-whitespace text other than \ [ ] ( ) / : . and end-of-file that normalizes to be a valid identifier, then we've found an identifier with that normalized text. The way we check that text "normalizes to be a valid identifier" should roughly follow the Unicode identifier rules, but we allow - and decimal digits anywhere in an identifier.
+
+- - If we get the beginning of a hyperbracket (e.g. \. for a freestanding hyperbracket with sigils or (. for a bounded hyperbracket with sigils or ( for a bounded hyperbracket without sigils):
+
+- - - If this hyperbracket beginning is one that takes sigils:
+
+- - - - We read a sigil suffix.
+
+- - - Otherwise (if it does not take sigils):
+
+- - - - We pretend we got a sigil suffix that indicated the beginning of a nameless degree-1 bump.
+
+- - - We match the text against the following cases:
+
+- - - - If we get @ we invoke the 1-dimensional
+
+
+invoke the nameless 1-dimensional freestanding/bounded hypersnippet
+
+- - Otherwise, we've found that there is no identifier here.
+
+
+
+To read an optional identifier with a known surrounding bracket entry:
+
+- We consume whitespace with the current surrounding bracket entry.
+
+- We match the text against the following cases:
+
+- - (Note that the text \.' [.' (.' \' [' (' and /' cannot be encountered since we already handled comments when we consumed whitespace.)
+
+- - If we get a called macro for the identifier macro DSL and the confident stock macro sigil set based on the DSL sigil @ and the current surrounding bracket entry, we've found that macro result.
+
+- - If we get a nonempty span of non-whitespace text other than \ [ ] ( ) / : . and end-of-file that normalizes to be a valid identifier, then we've found an identifier with that normalized text. The way we check that text "normalizes to be a valid identifier" should roughly follow the Unicode identifier rules, but we allow - and decimal digits anywhere in an identifier.
+
+- - Otherwise, we've found that there is no identifier here.
+
+
+
+To read an optional DSL-expression of some macro DSL:
+
+- We verify that the input stream's hyperstack carries a surrounding bracket entry.
+
+- We read an optional identifier or the beginning of a non-identifier bump. Depending on the result:
+
+- - If we find an identifier:
+
+- - - We invoke the glossary DSL-expression macro for the current macro DSL.
+
+- - If we've entered into a sigil/freestanding/bounded non-identifier bump in the middle of a sigil chain:
+
+- - - We modify the bump's exit logic so that it causes us to report that we've found a DSL-expression.
+
+- - - If the bump has a name:
+
+- - - - We proceed by invoking the named sigil/freestanding/bounded DSL-expression macro with that name for the current macro DSL.
+
+- - - Otherwise (if the bump has no name):
+
+- - - - We proceed by invoking the nameless sigil/freestanding/bounded DSL-expression macro for the current macro DSL.
+
+- - Otherwise (if we find neither an identifier nor the beginning of a non-identifier bump):
+
+- - - We've found no DSL-expression here.
+
+
+
+
+
+
+
+
+
 An optimized opening bracket entry consists of:
 
 - A string for the opening bracket, as well as the optimized textpat that matches it.
