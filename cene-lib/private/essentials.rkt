@@ -1809,17 +1809,14 @@
         #/sink-extfx-sink-text-input-stream-freshen text-input-stream
           (cenegetfx-cene-err macro-fault "Expected text-input-stream to be an unspent text input stream")
         #/fn text-input-stream
-        #/sink-extfx-sink-cexpr-sequence-output-stream-freshen
+        #/sink-extfx-sink-cexpr-sequence-output-stream-track-identity
           output-stream
           (cenegetfx-cene-err macro-fault "Expected output-stream to be an unspent expression sequence output stream")
-        #/fn output-stream
+        #/fn output-stream sink-extfx-verify-same-output-stream
         #/sink-extfx-sink-text-input-stream-track-identity
           text-input-stream
         #/fn
           text-input-stream sink-extfx-verify-same-text-input-stream
-        #/sink-extfx-sink-cexpr-sequence-output-stream-track-identity
-          output-stream
-        #/fn output-stream sink-extfx-verify-same-output-stream
         #/body
           macro-fault expr-fault unique-name qualify text-input-stream
           output-stream
@@ -4557,12 +4554,9 @@
       (cenegetfx-cene-err fault "Expected output-stream to be an expression sequence output stream")
     #/cenegetfx-tag cssm-nil #/fn csst-nil
     #/cenegetfx-done
-      (sink-extfx-sink-cexpr-sequence-output-stream-freshen
+      (sink-extfx-sink-cexpr-sequence-output-stream-track-identity
         output-stream
         (cenegetfx-cene-err fault "Expected output-stream to be an unspent expression sequence output stream")
-      #/fn output-stream
-      #/sink-extfx-sink-cexpr-sequence-output-stream-track-identity
-        output-stream
       #/fn output-stream sink-extfx-verify-same-output-stream
       #/verify-callback-extfx! fault #/cenegetfx-sink-call fault then
         output-stream
@@ -4614,6 +4608,7 @@
       #/fn output-stream unwrap
       #/sink-extfx-sink-cexpr-sequence-output-stream-track-identity
         output-stream
+        (cenegetfx-cene-err (make-fault-internal) "Expected output-stream to be an unspent expression sequence output stream")
       #/fn output-stream sink-extfx-verify-same-output-stream
       #/verify-callback-extfx! fault #/cenegetfx-sink-call fault then
         output-stream

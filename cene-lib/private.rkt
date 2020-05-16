@@ -1535,8 +1535,8 @@
 
 (define/contract
   (sink-extfx-sink-cexpr-sequence-output-stream-track-identity
-    output-stream then)
-  (-> sink-cexpr-sequence-output-stream?
+    output-stream on-err then)
+  (-> sink-cexpr-sequence-output-stream? (cenegetfx/c none/c)
     (->
       sink-cexpr-sequence-output-stream?
       (-> sink-cexpr-sequence-output-stream? (cenegetfx/c none/c)
@@ -1545,7 +1545,7 @@
       sink-extfx?)
     sink-extfx?)
   (sink-extfx-sink-cexpr-sequence-output-stream-freshen output-stream
-    (cenegetfx-cene-err (make-fault-internal) "Expected output-stream to be an unspent expression sequence output stream")
+    on-err
   #/fn output-stream
   #/sink-extfx-sink-cexpr-sequence-output-stream-spend output-stream
   #/dissectfn (list id state on-cexpr)
@@ -1586,6 +1586,7 @@
       (box #/just #/list identity state on-cexpr))
   #/sink-extfx-sink-cexpr-sequence-output-stream-track-identity
     output-stream
+    (cenegetfx-cene-err (make-fault-internal) "Expected output-stream to be an unspent expression sequence output stream")
   #/fn output-stream sink-extfx-verify-same-output-stream
   #/then
     (sink-cexpr-sequence-output-stream
@@ -2042,11 +2043,12 @@
   'sequential-dsl (current-inspector) (auto-write))
 
 (define/contract
-  (extfx-sequential-dsl-state-track-identity dsl state then)
+  (extfx-sequential-dsl-state-track-identity dsl state on-err then)
   (->i
     (
       [dsl sequential-dsl?]
       [state (dsl) (sequential-dsl-state/c dsl)]
+      [on-err (cenegetfx/c none/c)]
       [then (dsl)
         (w- state/c (sequential-dsl-state/c dsl)
         #/-> state/c
@@ -2055,10 +2057,8 @@
           sink-extfx?)])
     [_ sink-extfx?])
   (dissect dsl (sequential-dsl state/c extfx-state-track-identity)
-  #/extfx-state-track-identity state then))
+  #/extfx-state-track-identity state on-err then))
 
-; TODO: Use `on-err` in this. That will require adding a custom error
-; message to `extfx-sequential-dsl-state-track-identity` and so on.
 (define/contract
   (sink-extfx-sequential-dsl-state-freshen dsl state on-err then)
   (->i
@@ -2068,7 +2068,7 @@
       [on-err (cenegetfx/c none/c)]
       [then (dsl) (-> (sequential-dsl-state/c dsl) sink-extfx?)])
     [_ sink-extfx?])
-  (extfx-sequential-dsl-state-track-identity dsl state
+  (extfx-sequential-dsl-state-track-identity dsl state on-err
   #/fn state verify-same-computation
   #/then state))
 
@@ -2170,15 +2170,12 @@
   #/sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
   #/fn text-input-stream
-  #/sink-extfx-sink-cexpr-sequence-output-stream-freshen
-    output-stream
-    (cenegetfx-cene-err (make-fault-internal) "Expected output-stream to be an unspent expression sequence output stream")
-  #/fn output-stream
-  #/sink-extfx-sink-text-input-stream-track-identity text-input-stream
-  #/fn text-input-stream sink-extfx-verify-same-text-input-stream
   #/sink-extfx-sink-cexpr-sequence-output-stream-track-identity
     output-stream
+    (cenegetfx-cene-err (make-fault-internal) "Expected output-stream to be an unspent expression sequence output stream")
   #/fn output-stream sink-extfx-verify-same-output-stream
+  #/sink-extfx-sink-text-input-stream-track-identity text-input-stream
+  #/fn text-input-stream sink-extfx-verify-same-text-input-stream
   #/sink-extfx-run-cenegetfx
     (cenegetfx-sink-call read-fault op-impl
       expr-fault unique-name qualify text-input-stream output-stream
