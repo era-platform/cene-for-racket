@@ -2075,30 +2075,32 @@
 (struct-easy (concurrent-dsl state/c extfx-state-split-table))
 
 (define/contract
-  (extfx-concurrent-dsl-state-split-table dsl state table then)
+  (extfx-concurrent-dsl-state-split-table dsl state table on-err then)
   (->i
     (
       [dsl concurrent-dsl?]
       [state (dsl) (concurrent-dsl-state/c dsl)]
       [table (table-v-of trivial?)]
+      [on-err (cenegetfx/c none/c)]
       [then (dsl)
         ; TODO: See if this contract should ensure the resulting table
         ; has the same keys as the given one.
         (-> (table-v-of #/concurrent-dsl-state/c dsl) sink-extfx?)])
     [_ sink-extfx?])
   (dissect dsl (concurrent-dsl state/c extfx-state-split-table)
-  #/extfx-state-split-table state table then))
+  #/extfx-state-split-table state table on-err then))
 
 (define first-key (name-of-racket-string "first"))
 (define rest-key (name-of-racket-string "rest"))
 
 (define/contract
-  (extfx-concurrent-dsl-state-split-list dsl state n then)
+  (extfx-concurrent-dsl-state-split-list dsl state n on-err then)
   (->i
     (
       [dsl concurrent-dsl?]
       [state (dsl) (concurrent-dsl-state/c dsl)]
       [n natural?]
+      [on-err (cenegetfx/c none/c)]
       [then (dsl)
         ; TODO: See if this contract should ensure the resulting list
         ; has a length of `n`.
@@ -2106,21 +2108,22 @@
     [_ sink-extfx?])
   (expect (nat->maybe n) (just rest-n)
     (extfx-concurrent-dsl-state-split-table dsl state (table-empty)
+      on-err
     #/dissectfn _
     #/then #/list)
   #/extfx-concurrent-dsl-state-split-table dsl state
     (table-shadow first-key (just #/trivial)
-    #/table-shadow rest-key (just #/trivial)
-    #/table-empty)
+      (table-shadow rest-key (just #/trivial)
+      #/table-empty))
+    on-err
   #/fn states
   #/dissect (table-get first-key states) (just first-state)
   #/dissect (table-get rest-key states) (just rest-state)
   #/extfx-concurrent-dsl-state-split-list dsl rest-state rest-n
+    (cenegetfx-cene-err (make-fault-internal) "Expected rest-state to be an unspent state of the given concurrent DSL")
   #/fn rest-states
   #/then #/cons first-state rest-states))
 
-; TODO: Use `on-err` in this. That will require adding a custom error
-; message to `extfx-concurrent-dsl-state-split-list` and so on.
 (define/contract
   (sink-extfx-concurrent-dsl-state-freshen dsl state on-err then)
   (->i
@@ -2130,7 +2133,7 @@
       [on-err (cenegetfx/c none/c)]
       [then (dsl) (-> (concurrent-dsl-state/c dsl) sink-extfx?)])
     [_ sink-extfx?])
-  (extfx-concurrent-dsl-state-split-list dsl state 1
+  (extfx-concurrent-dsl-state-split-list dsl state 1 on-err
   #/dissectfn (list state)
   #/then state))
 
@@ -2140,7 +2143,7 @@
     sink-extfx-sink-cexpr-sequence-output-stream-track-identity))
 
 (define concurrent-dsl-trivial
-  (concurrent-dsl trivial? (fn state table then #/then table)))
+  (concurrent-dsl trivial? (fn state table on-err then #/then table)))
 
 (define/contract (run-dsl-op/c s-dsl c-dsl)
   (-> sequential-dsl? concurrent-dsl? contract?)
