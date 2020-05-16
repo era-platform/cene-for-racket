@@ -2320,9 +2320,11 @@
       read-fault expr-fault unique-name qualify text-input-stream
       output-stream then
       
-      (sink-extfx-read-and-run-bounded-cexpr-op
-        read-fault expr-fault unique-name qualify text-input-stream
-        output-stream then)))
+      (sink-extfx-read-and-run-dsl-op
+        read-fault expr-fault
+        sequential-dsl-for-expr concurrent-dsl-trivial
+        unique-name qualify text-input-stream output-stream (trivial)
+        sink-name-for-bounded-cexpr-op sink-extfx-run-expr-op then)))
   
   ; This binds the freestanding expression reader macro for `=`. This
   ; implementation is a line comment syntax: It consumes all the

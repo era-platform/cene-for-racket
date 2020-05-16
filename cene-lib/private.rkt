@@ -29,8 +29,8 @@
 ; documentation correctly says it is, we require it from there.
 (require #/only-in racket/contract get/build-late-neg-projection)
 (require #/only-in racket/contract/base
-  -> ->* and/c any any/c contract? cons/c contract-name list/c listof
-  none/c or/c rename-contract)
+  -> ->* ->i and/c any any/c contract? cons/c contract-name list/c
+  listof none/c or/c rename-contract)
 (require #/only-in racket/contract/combinator
   blame-add-context coerce-contract make-contract raise-blame-error)
 (require #/only-in racket/contract/region define/contract)
@@ -53,7 +53,7 @@
 (require #/only-in lathe-comforts/struct
   auto-write define-imitation-simple-struct
   define-syntax-and-value-imitation-simple-struct struct-easy)
-(require #/only-in lathe-comforts/trivial trivial)
+(require #/only-in lathe-comforts/trivial trivial trivial?)
 
 (require #/only-in interconfection/extensibility/base
   authorized-name? authorized-name-get-name authorized-name-subname
@@ -73,7 +73,7 @@
   dex-tuple fuse-by-merge getfx-call-fuse getfx-dexed-of
   getfx-is-in-dex getfx-name-of getfx-table-map-fuse
   make-fusable-function merge-by-dex merge-table name? ordering-eq?
-  table? table-empty? table-empty table-get table-shadow)
+  table? table-empty? table-empty table-get table-shadow table-v-of)
 (require #/prefix-in unsafe: #/only-in interconfection/order/unsafe
   dex dexed gen:dex-internals name)
 
@@ -530,13 +530,16 @@
   (dissect name (sink-name #/unsafe:name name)
   #/sink-name #/unsafe:name #/func name))
 
+(define/contract (name-of-racket-string string)
+  (-> immutable-string? name?)
+  (just-value #/pure-run-getfx #/getfx-name-of (dex-immutable-string)
+    string))
+
 ; TODO: See if we should do `(sink-name-for-string #/sink-string ...)`
 ; instead.
 (define/contract (sink-name-of-racket-string string)
   (-> immutable-string? sink-name?)
-  (sink-name #/just-value #/pure-run-getfx #/getfx-name-of
-    (dex-immutable-string)
-    string))
+  (sink-name #/name-of-racket-string string))
 
 (define/contract (sink-table-get-maybe table name)
   (-> sink-table? sink-name? #/maybe/c sink?)
@@ -2031,10 +2034,116 @@
   
   #/sink-extfx-cene-err syntax-error-fault "Encountered an unrecognized case of the expression operator syntax"))
 
+(define-imitation-simple-struct
+  (sequential-dsl?
+    sequential-dsl-state/c
+    sequential-dsl-extfx-state-track-identity)
+  sequential-dsl
+  'sequential-dsl (current-inspector) (auto-write))
+
 (define/contract
-  (sink-extfx-run-op
-    read-fault op-impl expr-fault unique-name qualify
-    text-input-stream output-stream then)
+  (extfx-sequential-dsl-state-track-identity dsl state then)
+  (->i
+    (
+      [dsl sequential-dsl?]
+      [state (dsl) (sequential-dsl-state/c dsl)]
+      [then (dsl)
+        (w- state/c (sequential-dsl-state/c dsl)
+        #/-> state/c
+          (-> state/c (cenegetfx/c none/c) (-> state/c sink-extfx?)
+            sink-extfx?)
+          sink-extfx?)])
+    [_ sink-extfx?])
+  (dissect dsl (sequential-dsl state/c extfx-state-track-identity)
+  #/extfx-state-track-identity state then))
+
+; TODO: Use `on-err` in this. That will require adding a custom error
+; message to `extfx-sequential-dsl-state-track-identity` and so on.
+(define/contract
+  (sink-extfx-sequential-dsl-state-freshen dsl state on-err then)
+  (->i
+    (
+      [dsl sequential-dsl?]
+      [state (dsl) (sequential-dsl-state/c dsl)]
+      [on-err (cenegetfx/c none/c)]
+      [then (dsl) (-> (sequential-dsl-state/c dsl) sink-extfx?)])
+    [_ sink-extfx?])
+  (extfx-sequential-dsl-state-track-identity dsl state
+  #/fn state verify-same-computation
+  #/then state))
+
+(struct-easy (concurrent-dsl state/c extfx-state-split-table))
+
+(define/contract
+  (extfx-concurrent-dsl-state-split-table dsl state table then)
+  (->i
+    (
+      [dsl concurrent-dsl?]
+      [state (dsl) (concurrent-dsl-state/c dsl)]
+      [table (table-v-of trivial?)]
+      [then (dsl)
+        ; TODO: See if this contract should ensure the resulting table
+        ; has the same keys as the given one.
+        (-> (table-v-of #/concurrent-dsl-state/c dsl) sink-extfx?)])
+    [_ sink-extfx?])
+  (dissect dsl (concurrent-dsl state/c extfx-state-split-table)
+  #/extfx-state-split-table state table then))
+
+(define first-key (name-of-racket-string "first"))
+(define rest-key (name-of-racket-string "rest"))
+
+(define/contract
+  (extfx-concurrent-dsl-state-split-list dsl state n then)
+  (->i
+    (
+      [dsl concurrent-dsl?]
+      [state (dsl) (concurrent-dsl-state/c dsl)]
+      [n natural?]
+      [then (dsl)
+        ; TODO: See if this contract should ensure the resulting list
+        ; has a length of `n`.
+        (-> (listof #/concurrent-dsl-state/c dsl) sink-extfx?)])
+    [_ sink-extfx?])
+  (expect (nat->maybe n) (just rest-n)
+    (extfx-concurrent-dsl-state-split-table dsl state (table-empty)
+    #/dissectfn _
+    #/then #/list)
+  #/extfx-concurrent-dsl-state-split-table dsl state
+    (table-shadow first-key (just #/trivial)
+    #/table-shadow rest-key (just #/trivial)
+    #/table-empty)
+  #/fn states
+  #/dissect (table-get first-key states) (just first-state)
+  #/dissect (table-get rest-key states) (just rest-state)
+  #/extfx-concurrent-dsl-state-split-list dsl rest-state rest-n
+  #/fn rest-states
+  #/then #/cons first-state rest-states))
+
+; TODO: Use `on-err` in this. That will require adding a custom error
+; message to `extfx-concurrent-dsl-state-split-list` and so on.
+(define/contract
+  (sink-extfx-concurrent-dsl-state-freshen dsl state on-err then)
+  (->i
+    (
+      [dsl concurrent-dsl?]
+      [state (dsl) (concurrent-dsl-state/c dsl)]
+      [on-err (cenegetfx/c none/c)]
+      [then (dsl) (-> (concurrent-dsl-state/c dsl) sink-extfx?)])
+    [_ sink-extfx?])
+  (extfx-concurrent-dsl-state-split-list dsl state 1
+  #/dissectfn (list state)
+  #/then state))
+
+(define sequential-dsl-for-expr
+  (sequential-dsl
+    sink-cexpr-sequence-output-stream?
+    sink-extfx-sink-cexpr-sequence-output-stream-track-identity))
+
+(define concurrent-dsl-trivial
+  (concurrent-dsl trivial? (fn state table then #/then table)))
+
+(define/contract (run-dsl-op/c s-dsl c-dsl)
+  (-> sequential-dsl? concurrent-dsl? contract?)
   (->
     sink-fault?
     sink?
@@ -2042,14 +2151,21 @@
     sink-authorized-name?
     sink-qualify?
     sink-text-input-stream?
-    sink-cexpr-sequence-output-stream?
+    (sequential-dsl-state/c s-dsl)
+    (concurrent-dsl-state/c c-dsl)
     (->
       sink-authorized-name?
       sink-qualify?
       sink-text-input-stream?
-      sink-cexpr-sequence-output-stream?
+      (sequential-dsl-state/c s-dsl)
       sink-extfx?)
-    sink-extfx?)
+    sink-extfx?))
+
+(define/contract
+  (sink-extfx-run-expr-op
+    read-fault op-impl expr-fault unique-name qualify
+    text-input-stream output-stream trivial-c-state then)
+  (run-dsl-op/c sequential-dsl-for-expr concurrent-dsl-trivial)
   (sink-extfx-claim-freshen unique-name #/fn unique-name
   #/sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
@@ -2102,132 +2218,85 @@
     result))
 
 (define/contract
-  (sink-extfx-read-and-run-op
-    read-fault expr-fault unique-name qualify text-input-stream
-    output-stream pre-qualify then)
-  (->
-    sink-fault?
-    sink-fault?
-    sink-authorized-name?
-    sink-qualify?
-    sink-text-input-stream?
-    sink-cexpr-sequence-output-stream?
-    (-> sink-name? sink-name?)
-    (->
-      sink-authorized-name?
-      sink-qualify?
-      sink-text-input-stream?
-      sink-cexpr-sequence-output-stream?
-      sink-extfx?)
-    sink-extfx?)
+  (sink-extfx-read-and-run-dsl-op
+    read-fault form-fault s-dsl c-dsl unique-name qualify
+    text-input-stream s-state c-state pre-qualify
+    sink-extfx-run-dsl-op then)
+  (->i
+    (
+      [read-fault sink-fault?]
+      [form-fault sink-fault?]
+      [s-dsl sequential-dsl?]
+      [c-dsl concurrent-dsl?]
+      [unique-name sink-authorized-name?]
+      [qualify sink-qualify?]
+      [text-input-stream sink-text-input-stream?]
+      [s-state (s-dsl) (sequential-dsl-state/c s-dsl)]
+      [c-state (c-dsl) (concurrent-dsl-state/c c-dsl)]
+      [pre-qualify (-> sink-name? sink-name?)]
+      [sink-extfx-run-dsl-op (s-dsl c-dsl) (run-dsl-op/c s-dsl c-dsl)]
+      [then (s-dsl)
+        (->
+          sink-authorized-name?
+          sink-qualify?
+          sink-text-input-stream?
+          (sequential-dsl-state/c s-dsl)
+          sink-extfx?)])
+    [_ sink-extfx?])
   (sink-extfx-claim-freshen unique-name #/fn unique-name
   #/sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
   #/fn text-input-stream
-  #/sink-extfx-sink-cexpr-sequence-output-stream-freshen
-    output-stream
-    (cenegetfx-cene-err (make-fault-internal) "Expected output-stream to be an unspent expression sequence output stream")
-  #/fn output-stream
+  #/sink-extfx-sequential-dsl-state-freshen s-dsl s-state
+    (cenegetfx-cene-err (make-fault-internal) "Expected s-state to be an unspent state of the given sequential DSL")
+  #/fn s-state
+  #/sink-extfx-concurrent-dsl-state-freshen c-dsl c-state
+    (cenegetfx-cene-err (make-fault-internal) "Expected c-state to be an unspent state of the given concurrent DSL")
+  #/fn c-state
   #/sink-extfx-read-op
     read-fault qualify text-input-stream pre-qualify
   #/fn text-input-stream op-name
   #/sink-extfx-run-sink-getfx
     (sink-getfx-get #/sink-authorized-name-get-name op-name)
   #/fn op-impl
-  #/sink-extfx-run-op
-    read-fault op-impl expr-fault unique-name qualify
-    text-input-stream output-stream then))
+  #/sink-extfx-run-dsl-op
+    read-fault op-impl form-fault unique-name qualify
+    text-input-stream s-state c-state then))
 
 (define/contract
-  (sink-extfx-read-and-run-freestanding-cexpr-op
-    read-fault expr-fault unique-name qualify text-input-stream
-    output-stream then)
-  (->
-    sink-fault?
-    sink-fault?
-    sink-authorized-name?
-    sink-qualify?
-    sink-text-input-stream?
-    sink-cexpr-sequence-output-stream?
-    (->
-      sink-authorized-name?
-      sink-qualify?
-      sink-text-input-stream?
-      sink-cexpr-sequence-output-stream?
-      sink-extfx?)
-    sink-extfx?)
+  (sink-extfx-run-nameless-dsl-op
+    read-fault form-fault s-dsl c-dsl unique-name qualify
+    text-input-stream s-state c-state sink-extfx-run-dsl-op then)
+  (->i
+    (
+      [read-fault sink-fault?]
+      [form-fault sink-fault?]
+      [s-dsl sequential-dsl?]
+      [c-dsl concurrent-dsl?]
+      [unique-name sink-authorized-name?]
+      [qualify sink-qualify?]
+      [text-input-stream sink-text-input-stream?]
+      [s-state (s-dsl) (sequential-dsl-state/c s-dsl)]
+      [c-state (c-dsl) (concurrent-dsl-state/c c-dsl)]
+      [sink-extfx-run-dsl-op (s-dsl c-dsl) (run-dsl-op/c s-dsl c-dsl)]
+      [then (s-dsl)
+        (->
+          sink-authorized-name?
+          sink-qualify?
+          sink-text-input-stream?
+          (sequential-dsl-state/c s-dsl)
+          sink-extfx?)])
+    [_ sink-extfx?])
   (sink-extfx-claim-freshen unique-name #/fn unique-name
   #/sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
   #/fn text-input-stream
-  #/sink-extfx-sink-cexpr-sequence-output-stream-freshen
-    output-stream
-    (cenegetfx-cene-err (make-fault-internal) "Expected output-stream to be an unspent expression sequence output stream")
-  #/fn output-stream
-  #/sink-extfx-read-and-run-op
-    read-fault expr-fault unique-name qualify text-input-stream
-    output-stream
-    sink-name-for-freestanding-cexpr-op
-    then))
-
-(define/contract
-  (sink-extfx-read-and-run-bounded-cexpr-op
-    read-fault expr-fault unique-name qualify text-input-stream
-    output-stream then)
-  (->
-    sink-fault?
-    sink-fault?
-    sink-authorized-name?
-    sink-qualify?
-    sink-text-input-stream?
-    sink-cexpr-sequence-output-stream?
-    (->
-      sink-authorized-name?
-      sink-qualify?
-      sink-text-input-stream?
-      sink-cexpr-sequence-output-stream?
-      sink-extfx?)
-    sink-extfx?)
-  (sink-extfx-claim-freshen unique-name #/fn unique-name
-  #/sink-extfx-sink-text-input-stream-freshen text-input-stream
-    (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
-  #/fn text-input-stream
-  #/sink-extfx-sink-cexpr-sequence-output-stream-freshen
-    output-stream
-    (cenegetfx-cene-err (make-fault-internal) "Expected output-stream to be an unspent expression sequence output stream")
-  #/fn output-stream
-  #/sink-extfx-read-and-run-op
-    read-fault expr-fault unique-name qualify text-input-stream
-    output-stream
-    sink-name-for-bounded-cexpr-op
-    then))
-
-(define/contract
-  (sink-extfx-run-nameless-op
-    read-fault expr-fault unique-name qualify text-input-stream
-    output-stream then)
-  (->
-    sink-fault?
-    sink-fault?
-    sink-authorized-name?
-    sink-qualify?
-    sink-text-input-stream?
-    sink-cexpr-sequence-output-stream?
-    (->
-      sink-authorized-name?
-      sink-qualify?
-      sink-text-input-stream?
-      sink-cexpr-sequence-output-stream?
-      sink-extfx?)
-    sink-extfx?)
-  (sink-extfx-claim-freshen unique-name #/fn unique-name
-  #/sink-extfx-sink-text-input-stream-freshen text-input-stream
-    (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
-  #/fn text-input-stream
-  #/sink-extfx-sink-cexpr-sequence-output-stream-freshen
-    output-stream
-    (cenegetfx-cene-err (make-fault-internal) "Expected output-stream to be an unspent expression sequence output stream")
-  #/fn output-stream
+  #/sink-extfx-sequential-dsl-state-freshen s-dsl s-state
+    (cenegetfx-cene-err (make-fault-internal) "Expected s-state to be an unspent state of the given sequential DSL")
+  #/fn s-state
+  #/sink-extfx-concurrent-dsl-state-freshen c-dsl c-state
+    (cenegetfx-cene-err (make-fault-internal) "Expected c-state to be an unspent state of the given concurrent DSL")
+  #/fn c-state
   #/sink-extfx-run-sink-getfx
     (sink-getfx-bind
       (sink-getfx-run-cenegetfx
@@ -2236,9 +2305,9 @@
     #/fn qualified
     #/sink-getfx-get #/sink-authorized-name-get-name qualified)
   #/fn op-impl
-  #/sink-extfx-run-op
-    read-fault op-impl expr-fault unique-name qualify
-    text-input-stream output-stream then))
+  #/sink-extfx-run-dsl-op
+    read-fault op-impl form-fault unique-name qualify
+    text-input-stream s-state c-state then))
 
 ; TODO: See if we should keep this around. We just use it for
 ; debugging.
@@ -2248,25 +2317,33 @@
   #/dissect (unbox b) (just #/list path input-port)
   #/peek-string 1000 0 input-port))
 
-; TODO CEXPR-LOCATED: For every cexpr read this way, wrap that cexpr
-; in a `cexpr-located`.
 (define/contract
-  (sink-extfx-read-cexprs
-    read-fault unique-name qualify text-input-stream output-stream
-    then)
-  (->
-    sink-fault?
-    sink-authorized-name?
-    sink-qualify?
-    sink-text-input-stream?
-    sink-cexpr-sequence-output-stream?
-    (->
-      sink-authorized-name?
-      sink-qualify?
-      sink-text-input-stream?
-      sink-cexpr-sequence-output-stream?
-      sink-extfx?)
-    sink-extfx?)
+  (sink-extfx-read-dsl-form
+    read-fault s-dsl c-dsl unique-name qualify text-input-stream
+    s-state c-state
+    sink-name-for-freestanding-dsl-op sink-name-for-bounded-dsl-op
+    sink-extfx-run-dsl-op then)
+  (->i
+    (
+      [read-fault sink-fault?]
+      [s-dsl sequential-dsl?]
+      [c-dsl concurrent-dsl?]
+      [unique-name sink-authorized-name?]
+      [qualify sink-qualify?]
+      [text-input-stream sink-text-input-stream?]
+      [s-state (s-dsl) (sequential-dsl-state/c s-dsl)]
+      [c-state (c-dsl) (concurrent-dsl-state/c c-dsl)]
+      [sink-name-for-freestanding-dsl-op (-> sink-name? sink-name?)]
+      [sink-name-for-bounded-dsl-op (-> sink-name? sink-name?)]
+      [sink-extfx-run-dsl-op (s-dsl c-dsl) (run-dsl-op/c s-dsl c-dsl)]
+      [then (s-dsl)
+        (->
+          sink-authorized-name?
+          sink-qualify?
+          sink-text-input-stream?
+          (sequential-dsl-state/c s-dsl)
+          sink-extfx?)])
+    [_  sink-extfx?])
   
   ; NOTE: These are the cases we should handle.
   ;
@@ -2295,20 +2372,22 @@
   #/sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
   #/fn text-input-stream
-  #/sink-extfx-sink-cexpr-sequence-output-stream-freshen
-    output-stream
-    (cenegetfx-cene-err (make-fault-internal) "Expected output-stream to be an unspent expression sequence output stream")
-  #/fn output-stream
+  #/sink-extfx-sequential-dsl-state-freshen s-dsl s-state
+    (cenegetfx-cene-err (make-fault-internal) "Expected s-state to be an unspent state of the given sequential DSL")
+  #/fn s-state
+  #/sink-extfx-concurrent-dsl-state-freshen c-dsl c-state
+    (cenegetfx-cene-err (make-fault-internal) "Expected c-state to be an unspent state of the given concurrent DSL")
+  #/fn c-state
   #/sink-extfx-read-whitespace text-input-stream
   #/fn text-input-stream whitespace
   #/sink-extfx-peek-whether-eof text-input-stream
   #/fn text-input-stream is-eof
   #/if is-eof
-    (then unique-name qualify text-input-stream output-stream)
+    (then unique-name qualify text-input-stream s-state)
   
   #/sink-extfx-read-fault text-input-stream
-  #/fn text-input-stream expr-fault
-  #/w- syntax-error-fault (make-fault-read read-fault expr-fault)
+  #/fn text-input-stream form-fault
+  #/w- syntax-error-fault (make-fault-read read-fault form-fault)
   
   #/sink-extfx-optimized-textpat-read-located
     |pat ")"| text-input-stream
@@ -2325,16 +2404,17 @@
     |pat "\\"| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
-    (sink-extfx-read-and-run-freestanding-cexpr-op
-      read-fault expr-fault unique-name qualify text-input-stream
-      output-stream then)
+    (sink-extfx-read-and-run-dsl-op
+      read-fault form-fault s-dsl c-dsl
+      unique-name qualify text-input-stream s-state c-state
+      sink-name-for-freestanding-dsl-op sink-extfx-run-dsl-op then)
   
   #/sink-extfx-optimized-textpat-read-located
     |pat "("| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     (w- then
-      (fn unique-name qualify text-input-stream output-stream
+      (fn unique-name qualify text-input-stream s-state
         (sink-extfx-optimized-textpat-read-located
           |pat ")"| text-input-stream
         #/fn text-input-stream maybe-str
@@ -2344,24 +2424,26 @@
           ; location of the opening bracket, which is probably more
           ; useful.
           (sink-extfx-cene-err syntax-error-fault "Encountered a syntax that began with ( or (. and did not end with )")
-        #/then unique-name qualify text-input-stream output-stream))
+        #/then unique-name qualify text-input-stream s-state))
     #/sink-extfx-optimized-textpat-read-located
       |pat "."| text-input-stream
     #/fn text-input-stream maybe-str
     #/mat maybe-str (just _)
-      (sink-extfx-read-and-run-bounded-cexpr-op
-        read-fault expr-fault unique-name qualify text-input-stream
-        output-stream then)
-    #/sink-extfx-run-nameless-op
-      read-fault expr-fault unique-name qualify text-input-stream
-      output-stream then)
+      (sink-extfx-read-and-run-dsl-op
+        read-fault form-fault s-dsl c-dsl
+        unique-name qualify text-input-stream s-state c-state
+        sink-name-for-bounded-dsl-op sink-extfx-run-dsl-op then)
+    #/sink-extfx-run-nameless-dsl-op
+      read-fault form-fault s-dsl c-dsl
+      unique-name qualify text-input-stream s-state c-state
+      sink-extfx-run-dsl-op then)
   
   #/sink-extfx-optimized-textpat-read-located
     |pat "["| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     (w- then
-      (fn unique-name qualify text-input-stream output-stream
+      (fn unique-name qualify text-input-stream s-state
         (sink-extfx-optimized-textpat-read-located
           |pat "]"| text-input-stream
         #/fn text-input-stream maybe-str
@@ -2371,24 +2453,26 @@
           ; location of the opening bracket, which is probably more
           ; useful.
           (sink-extfx-cene-err syntax-error-fault "Encountered a syntax that began with [ or [. and did not end with ]")
-        #/then unique-name qualify text-input-stream output-stream))
+        #/then unique-name qualify text-input-stream s-state))
     #/sink-extfx-optimized-textpat-read-located
       |pat "."| text-input-stream
     #/fn text-input-stream maybe-str
     #/mat maybe-str (just _)
-      (sink-extfx-read-and-run-bounded-cexpr-op
-        read-fault expr-fault unique-name qualify text-input-stream
-        output-stream then)
-    #/sink-extfx-run-nameless-op
-      read-fault expr-fault unique-name qualify text-input-stream
-      output-stream then)
+      (sink-extfx-read-and-run-dsl-op
+        read-fault form-fault s-dsl c-dsl
+        unique-name qualify text-input-stream s-state c-state
+        sink-name-for-bounded-dsl-op sink-extfx-run-dsl-op then)
+    #/sink-extfx-run-nameless-dsl-op
+      read-fault form-fault s-dsl c-dsl
+      unique-name qualify text-input-stream s-state c-state
+      sink-extfx-run-dsl-op then)
   
   #/sink-extfx-optimized-textpat-read-located
     |pat "/"| text-input-stream
   #/fn text-input-stream maybe-str
   #/mat maybe-str (just _)
     (w- then
-      (fn unique-name qualify text-input-stream output-stream
+      (fn unique-name qualify text-input-stream s-state
         (sink-extfx-peek-whether-closing-bracket text-input-stream
         #/fn text-input-stream is-closing-bracket
         #/if (not is-closing-bracket)
@@ -2397,19 +2481,57 @@
           ; location of the opening bracket, which is probably more
           ; useful.
           (sink-extfx-cene-err syntax-error-fault "Encountered a syntax that began with /. and did not end at ) or ]")
-        #/then unique-name qualify text-input-stream output-stream))
+        #/then unique-name qualify text-input-stream s-state))
     #/sink-extfx-optimized-textpat-read-located
       |pat "."| text-input-stream
     #/fn text-input-stream maybe-str
     #/mat maybe-str (just _)
-      (sink-extfx-read-and-run-bounded-cexpr-op
-        read-fault expr-fault unique-name qualify text-input-stream
-        output-stream then)
-    #/sink-extfx-run-nameless-op
-      read-fault expr-fault unique-name qualify text-input-stream
-      output-stream then)
+      (sink-extfx-read-and-run-dsl-op
+        read-fault form-fault s-dsl c-dsl
+        unique-name qualify text-input-stream s-state c-state
+        sink-name-for-bounded-dsl-op sink-extfx-run-dsl-op then)
+    #/sink-extfx-run-nameless-dsl-op
+      read-fault form-fault s-dsl c-dsl
+      unique-name qualify text-input-stream s-state c-state
+      sink-extfx-run-dsl-op then)
   
-  #/sink-extfx-cene-err syntax-error-fault "Encountered an unrecognized case of the expression syntax"))
+  ; TODO: See if we really want to call this "the form syntax" in a
+  ; user-facing way. Perhaps it should be "the term former syntax" or
+  ; something.
+  #/sink-extfx-cene-err syntax-error-fault "Encountered an unrecognized case of the form syntax"))
+
+; TODO CEXPR-LOCATED: For every cexpr read this way, wrap that cexpr
+; in a `cexpr-located`.
+(define/contract
+  (sink-extfx-read-cexprs
+    read-fault unique-name qualify text-input-stream output-stream
+    then)
+  (->
+    sink-fault?
+    sink-authorized-name?
+    sink-qualify?
+    sink-text-input-stream?
+    sink-cexpr-sequence-output-stream?
+    (->
+      sink-authorized-name?
+      sink-qualify?
+      sink-text-input-stream?
+      sink-cexpr-sequence-output-stream?
+      sink-extfx?)
+    sink-extfx?)
+  (sink-extfx-claim-freshen unique-name #/fn unique-name
+  #/sink-extfx-sink-text-input-stream-freshen text-input-stream
+    (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
+  #/fn text-input-stream
+  #/sink-extfx-sink-cexpr-sequence-output-stream-freshen
+    output-stream
+    (cenegetfx-cene-err (make-fault-internal) "Expected output-stream to be an unspent expression sequence output stream")
+  #/fn output-stream
+  #/sink-extfx-read-dsl-form
+    read-fault sequential-dsl-for-expr concurrent-dsl-trivial
+    unique-name qualify text-input-stream output-stream (trivial)
+    sink-name-for-freestanding-cexpr-op sink-name-for-bounded-cexpr-op
+    sink-extfx-run-expr-op then))
 
 (struct-easy
   (core-sink-struct-metadata
