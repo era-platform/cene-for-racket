@@ -2136,7 +2136,7 @@
   #/dissectfn (list state)
   #/then state))
 
-(define sequential-dsl-for-expr
+(define sequential-dsl-for-cexpr
   (sequential-dsl
     sink-cexpr-sequence-output-stream?
     sink-extfx-sink-cexpr-sequence-output-stream-track-identity))
@@ -2164,10 +2164,10 @@
     sink-extfx?))
 
 (define/contract
-  (sink-extfx-run-expr-op
+  (sink-extfx-run-cexpr-op
     read-fault op-impl expr-fault unique-name qualify
     text-input-stream output-stream trivial-c-state then)
-  (run-dsl-op/c sequential-dsl-for-expr concurrent-dsl-trivial)
+  (run-dsl-op/c sequential-dsl-for-cexpr concurrent-dsl-trivial)
   (sink-extfx-claim-freshen unique-name #/fn unique-name
   #/sink-extfx-sink-text-input-stream-freshen text-input-stream
     (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
@@ -2527,10 +2527,10 @@
     (cenegetfx-cene-err (make-fault-internal) "Expected output-stream to be an unspent expression sequence output stream")
   #/fn output-stream
   #/sink-extfx-read-dsl-form
-    read-fault sequential-dsl-for-expr concurrent-dsl-trivial
+    read-fault sequential-dsl-for-cexpr concurrent-dsl-trivial
     unique-name qualify text-input-stream output-stream (trivial)
     sink-name-for-freestanding-cexpr-op sink-name-for-bounded-cexpr-op
-    sink-extfx-run-expr-op then))
+    sink-extfx-run-cexpr-op then))
 
 (struct-easy
   (core-sink-struct-metadata
