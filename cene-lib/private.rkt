@@ -2014,8 +2014,7 @@
       #/fn text-input-stream maybe-str
       #/then text-input-stream op-name))
   
-  ; TODO: Support the use of ( and [ as delimiters for macro
-  ; names.
+  ; TODO: Support the use of ( and [ as delimiters for macro names.
   #/sink-extfx-optimized-textpat-read-located
     |pat "("| text-input-stream
   #/fn text-input-stream maybe-str
@@ -2190,31 +2189,31 @@
     ; `make-fault-double-callback`, but using something like that.
     #/cenegetfx-done
     #/expect (sink-authorized-name? unique-name) #t
-      (sink-extfx-cene-err read-fault "Expected the unique name of a macro's callback results to be an authorized name")
+      (sink-extfx-cene-err read-fault "Expected the unique name of an expression operation's callback results to be an authorized name")
     #/expect (sink-qualify? qualify) #t
-      (sink-extfx-cene-err read-fault "Expected the qualify value of macro's callback results to be a qualify value")
+      (sink-extfx-cene-err read-fault "Expected the qualify value of an expression operation's callback results to be a qualify value")
     #/expect (sink-text-input-stream? text-input-stream) #t
-      (sink-extfx-cene-err read-fault "Expected the text input stream of a macro's callback results to be a text input stream")
+      (sink-extfx-cene-err read-fault "Expected the text input stream of an expression operation's callback results to be a text input stream")
     #/expect (sink-cexpr-sequence-output-stream? output-stream) #t
-      (sink-extfx-cene-err read-fault "Expected the expression sequence output stream of a macro's callback results to be an expression sequence output stream")
+      (sink-extfx-cene-err read-fault "Expected the expression sequence output stream of an expression operation's callback results to be an expression sequence output stream")
     #/sink-extfx-claim-freshen unique-name #/fn unique-name
     #/sink-extfx-sink-text-input-stream-freshen text-input-stream
-      (cenegetfx-cene-err read-fault "Expected the text input stream of a macro's callback results to be an unspent text input stream")
+      (cenegetfx-cene-err read-fault "Expected the text input stream of an expression operation's callback results to be an unspent text input stream")
     #/fn text-input-stream
     #/sink-extfx-sink-cexpr-sequence-output-stream-freshen
       output-stream
-      (cenegetfx-cene-err read-fault "Expected the expression sequence output stream of a macro's callback results to be an unspent expression sequence output stream")
+      (cenegetfx-cene-err read-fault "Expected the expression sequence output stream of an expression operation's callback results to be an unspent expression sequence output stream")
     #/fn output-stream
     #/sink-extfx-verify-same-text-input-stream text-input-stream
-      (cenegetfx-cene-err read-fault "Expected the text input stream of a macro's callback results to be a future incarnation of the macro's original input stream")
+      (cenegetfx-cene-err read-fault "Expected the text input stream of an expression operation's callback results to be a future incarnation of the operation's original input stream")
     #/fn text-input-stream
     #/sink-extfx-verify-same-output-stream output-stream
-      (cenegetfx-cene-err read-fault "Expected the expression sequence output stream of a macro's callback results to be a future incarnation of the macro's original output stream")
+      (cenegetfx-cene-err read-fault "Expected the expression sequence output stream of an expression operation's callback results to be a future incarnation of the operation's original output stream")
     #/fn output-stream
     #/then unique-name qualify text-input-stream output-stream)
   #/fn result
   #/expect (sink-extfx? result) #t
-    (sink-extfx-cene-err read-fault "Expected the return value of a macro to be an effectful computation")
+    (sink-extfx-cene-err read-fault "Expected the return value of an expression operation to be an effectful computation")
     result))
 
 (define/contract
@@ -2730,9 +2729,9 @@
   (cenegetfx-cexpr-eval-in-env fault cexpr (table-empty)))
 
 ; This returns a computation that reads all the content of the given
-; text input stream and runs the reader macros it encounters. Unlike
-; typical Lisp readers, this does not read first-class values; it only
-; reads and performs side effects.
+; text input stream and runs the cexpr operations it encounters.
+; Unlike typical Lisp readers, this does not read first-class values;
+; it only reads and performs side effects.
 (define/contract
   (sink-extfx-read-top-level
     read-fault unique-name qualify text-input-stream)

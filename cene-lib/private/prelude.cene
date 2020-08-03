@@ -20,9 +20,9 @@
 
 \= TODO: Finish implementing `extfx-read-bounded-exprs`.
 
-\= TODO: Work up to defining `defn` and `def-macro`. In order to do
-\= that, we've been porting things to Cene that we've already
-\= implemented on the Racket side.
+\= TODO: Work up to defining `defn` and `def-bounded-expr-op`. In
+\= order to do that, we've been porting things to Cene that we've
+\= already implemented on the Racket side.
 
 \= TODO: If we define anything that should be visible to user-supplied
 \= Cene code but that doesn't make sense to define with
@@ -312,25 +312,25 @@
 
 
 (prelude-to-everyone-def-func-blame
-  macro-impl body-bl body
-  (fn-blame macro-bl
+  expr-op-impl body-bl body
+  (fn-blame op-bl
     expr-bl unique-name qualify text-input-stream output-stream then
     
     (cast (is-blame expr-bl) yep -
-      [errb macro-bl /str-prim:Expected expr-bl to be a blame value]
+      [errb op-bl /str-prim:Expected expr-bl to be a blame value]
     /cast (is-authorized-name unique-name) yep -
-      [errb macro-bl /str-prim:Expected unique-name to be an authorized name]
+      [errb op-bl /str-prim:Expected unique-name to be an authorized name]
     /cast (is-qualify qualify) yep -
-      [errb macro-bl /str-prim:Expected qualify to be a qualify value]
+      [errb op-bl /str-prim:Expected qualify to be a qualify value]
     /cast (is-text-input-stream text-input-stream) yep -
-      [errb macro-bl /str-prim:Expected text-input-stream to be a text input stream]
+      [errb op-bl /str-prim:Expected text-input-stream to be a text input stream]
     /cast (is-expr-sequence-output-stream output-stream) yep -
-      [errb macro-bl /str-prim:Expected output-stream to be an expression sequence output stream]
+      [errb op-bl /str-prim:Expected output-stream to be an expression sequence output stream]
     /extfx-text-input-stream-freshen text-input-stream
-      [fn - /errb macro-bl /str-prim:Expected text-input-stream to be an unspent text input stream]
+      [fn - /errb op-bl /str-prim:Expected text-input-stream to be an unspent text input stream]
     /fn text-input-stream
     /extfx-expr-sequence-output-stream-freshen output-stream
-      [fn - /errb macro-bl /str-prim:Expected output-stream to be an unspent expression sequence output stream]
+      [fn - /errb op-bl /str-prim:Expected output-stream to be an unspent expression sequence output stream]
     /fn output-stream
     /extfx-text-input-stream-track-identity text-input-stream
     /fn text-input-stream extfx-verify-same-text-input-stream
@@ -338,48 +338,48 @@
     /fn output-stream extfx-verify-same-output-stream
     /let effects
       (c body
-        macro-bl expr-bl unique-name qualify text-input-stream
+        op-bl expr-bl unique-name qualify text-input-stream
         output-stream
       /fn unique-name qualify text-input-stream output-stream
       /cast (is-authorized-name unique-name) yep -
-        [errb body-bl /str-prim:Expected a macro-impl body's resulting unique name to be an authorized name]
+        [errb body-bl /str-prim:Expected an expr-op-impl body's resulting unique name to be an authorized name]
       /cast (is-qualify qualify) yep -
-        [errb body-bl /str-prim:Expected a macro-impl body's resulting qualify value to be a qualify value]
+        [errb body-bl /str-prim:Expected an expr-op-impl body's resulting qualify value to be a qualify value]
       /cast (is-text-input-stream text-input-stream) yep -
-        [errb body-bl /str-prim:Expected a macro-impl body's resulting text input stream to be a text input stream]
+        [errb body-bl /str-prim:Expected an expr-op-impl body's resulting text input stream to be a text input stream]
       /cast (is-expr-sequence-output-stream output-stream) yep -
-        [errb body-bl /str-prim:Expected a macro-impl body's resulting output stream to be an expression sequence output stream]
+        [errb body-bl /str-prim:Expected an expr-op-impl body's resulting output stream to be an expression sequence output stream]
       /extfx-text-input-stream-freshen text-input-stream
-        [fn - /errb body-bl /str-prim:Expected a macro-impl body's resulting text input stream to be an unspent text input stream]
+        [fn - /errb body-bl /str-prim:Expected an expr-op-impl body's resulting text input stream to be an unspent text input stream]
       /fn text-input-stream
       /extfx-claim-freshen unique-name /fn unique-name
       /extfx-expr-sequence-output-stream-freshen output-stream
-        [fn - /errb body-bl /str-prim:Expected a macro-impl body's resulting output stream to be an unspent expression sequence output stream]
+        [fn - /errb body-bl /str-prim:Expected an expr-op-impl body's resulting output stream to be an unspent expression sequence output stream]
       /fn output-stream
       /c extfx-verify-same-text-input-stream text-input-stream
-        [fn - /errb body-bl /str-prim:Expected a macro-impl body's resulting input stream to be a future incarnation of the body's original input stream]
+        [fn - /errb body-bl /str-prim:Expected an expr-op-impl body's resulting input stream to be a future incarnation of the body's original input stream]
       /fn text-input-stream
       /c extfx-verify-same-output-stream output-stream
-        [fn - /errb body-bl /str-prim:Expected a macro-impl body's resulting output stream to be a future incarnation of the body's original output stream]
+        [fn - /errb body-bl /str-prim:Expected an expr-op-impl body's resulting output stream to be a future incarnation of the body's original output stream]
       /fn output-stream
       /let effects
-        (c-blame macro-bl then
+        (c-blame op-bl then
           unique-name qualify text-input-stream output-stream)
       /cast (is-extfx effects) yep -
-        [errb macro-bl /str-prim:Expected the return value of a macro's callback to be an extfx effectful computation]
+        [errb op-bl /str-prim:Expected the return value of an expression operation's callback to be an extfx effectful computation]
         effects)
     /cast (is-extfx effects) yep -
-      [errb body-bl /str-prim:Expected the return value of a macro-impl body to be an extfx effectful computation]
+      [errb body-bl /str-prim:Expected the return value of an expr-op-impl body to be an extfx effectful computation]
       effects)))
 
-\= This creates a macro implementation function that reads a form body
-\= of precisely `n-args` cexprs, then writes a single cexpr computed
-\= from those using `body`.
+\= This creates an expression operation implementation function that
+\= reads a form body of precisely `n-args` expressions, then writes a
+\= single expression computed from those using `body`.
 (prelude-to-everyone-def-func-blame
-  macro-impl-specific-number-of-args body-bl n-args body
+  expr-op-impl-specific-number-of-args body-bl n-args body
   (cast (is-nat n-args) yep -
     [errb body-bl /str-prim:Expected n-args to be a natural number]
-  /macro-impl
+  /expr-op-impl
   /fn
     read-bl expr-bl unique-name qualify text-input-stream
     output-stream then
@@ -395,7 +395,7 @@
       (c-blame read-bl then
         unique-name qualify text-input-stream output-stream)
     /cast (is-extfx effects) yep -
-      [errb read-bl /str-prim:Expected the return value of a macro-impl-specific-number-of-args callback to be an extfx effectful computation]
+      [errb read-bl /str-prim:Expected the return value of an expr-op-impl-specific-number-of-args callback to be an extfx effectful computation]
       effects)))
 
 
