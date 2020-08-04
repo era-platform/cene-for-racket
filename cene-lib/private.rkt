@@ -2203,6 +2203,7 @@
     #/dissectfn (list)
     #/then)))
 
+; TODO BUILTINS: Expose this to Cene.
 (define/contract
   (sink-extfx-sink-familiarity-ticket-split-table
     ft table on-err then)
