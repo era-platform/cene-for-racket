@@ -5122,6 +5122,15 @@
       (sink-qualify cenegetfx-qualify-for-prelude)))
   
   ; Run the prelude code.
+  ;
+  ; TODO: Change this so that instead of calling
+  ; `sink-extfx-read-top-level`, it calls a variant of
+  ; `sink-extfx-read-top-level` which calls `sink-extfx-read-decl`
+  ; instead of `sink-extfx-read-cexprs`. For this to work, we'll need
+  ; to change `prelude-to-everyone-def-func-blame` so that it's a
+  ; declaration operation rather than an expression operation. We may
+  ; also need to remove the `directive` declaration from prelude.cene.
+  ;
   (add-init-essentials-step! #/fn unique-name
     (sink-extfx-read-top-level
       (make-fault-internal)

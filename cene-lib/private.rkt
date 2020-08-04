@@ -2710,6 +2710,41 @@
     (sink-name-for-nameless-bounded-cexpr-op)
     sink-extfx-run-cexpr-op then))
 
+(define/contract
+  (sink-extfx-read-decl
+    read-fault unique-name qualify text-input-stream api-ft impl-ft
+    then)
+  (->
+    sink-fault?
+    sink-authorized-name?
+    sink-qualify?
+    sink-text-input-stream?
+    sink-familiarity-ticket?
+    sink-familiarity-ticket?
+    (-> sink-authorized-name? sink-qualify? sink-text-input-stream?
+      sink-extfx?)
+    sink-extfx?)
+  (sink-extfx-claim-freshen unique-name #/fn unique-name
+  #/sink-extfx-sink-text-input-stream-freshen text-input-stream
+    (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
+  #/fn text-input-stream
+  #/sink-extfx-sink-familiarity-ticket-freshen
+    api-ft
+    (cenegetfx-cene-err (make-fault-internal) "Expected api-ft to be an unspent familiarity ticket")
+  #/fn api-ft
+  #/sink-extfx-sink-familiarity-ticket-freshen
+    impl-ft
+    (cenegetfx-cene-err (make-fault-internal) "Expected impl-ft to be an unspent familiarity ticket")
+  #/fn impl-ft
+  #/sink-extfx-read-dsl-form
+    read-fault sequential-dsl-trivial concurrent-dsl-for-decl
+    unique-name qualify text-input-stream
+    (trivial)
+    (concurrent-dsl-for-decl-state api-ft impl-ft)
+    sink-name-for-freestanding-decl-op sink-name-for-bounded-decl-op
+    (sink-name-for-nameless-bounded-decl-op)
+    sink-extfx-run-decl-op then))
+
 (struct-easy
   (core-sink-struct-metadata
     tag-cache-key main-tag-string proj-strings))
