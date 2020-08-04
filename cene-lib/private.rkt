@@ -60,11 +60,11 @@
   dex-authorized-name dex-dspace dspace? error-definer?
   error-definer-from-exn error-definer-from-message
   error-definer-uninformative extfx? extfx-claim-unique
-  extfx-ct-continue extfx-noop extfx-pub-write extfx-run-getfx
-  extfx-put extfx-split-list extfx-sub-write fuse-extfx getfx?
-  getfx-bind getfx/c getfx-done getfx-err getfx-get make-pub make-sub
-  optionally-dexed-dexed optionally-dexed-once pure-run-getfx
-  success-or-error-definer)
+  extfx-ct-continue extfx-freshen extfx-noop extfx-pub-write
+  extfx-run-getfx extfx-put extfx-split-list extfx-split-table
+  extfx-sub-write fuse-extfx getfx? getfx-bind getfx/c getfx-done
+  getfx-err getfx-get make-pub make-sub optionally-dexed-dexed
+  optionally-dexed-once pure-run-getfx success-or-error-definer)
 (require #/only-in interconfection/order
   assocs->table-if-mutually-unique dex-immutable-string dex-trivial
   getfx-is-eq-by-dex ordering-eq)
@@ -125,6 +125,19 @@
 (define/contract (table-v-map table v-to-v)
   (-> table? (-> any/c any/c) table?)
   (table-kv-map table #/fn k v #/v-to-v v))
+
+; NOTE: This assumes both input tables have the same keys.
+;
+; TODO: Consider putting something like this into the
+; `interconfection/order` module or something (maybe even
+; `interconfection/order/base`), but only after we figure out what to
+; do about unaligned input tables.
+;
+(define/contract (table-kv-zip-map-aligned a-table b-table kvv-to-v)
+  (-> table? table? (-> any/c any/c any/c) table?)
+  (table-kv-map a-table #/fn k a
+    (dissect (table-get k b-table) (just b)
+    #/kvv-to-v k a b)))
 
 ; TODO: See if we should add this to `interconfection/extensibility`.
 (define/contract (extfx-err on-execute)
@@ -433,6 +446,12 @@
   sink-extfx
   sink-extfx/t
   'sink-extfx (current-inspector) (auto-write) (#:gen gen:sink))
+(define-imitation-simple-struct
+  (sink-familiarity-ticket?
+    sink-familiarity-ticket-familiarity-ticket)
+  sink-familiarity-ticket
+  'sink-familiarity-ticket (current-inspector) (auto-write)
+  (#:gen gen:sink))
 (define-imitation-simple-struct
   (sink-pub? sink-pub-pub)
   sink-pub
@@ -1496,6 +1515,20 @@
   (-> sink-name?)
   (sink-name #/unsafe:name #/list 'name:nameless-bounded-cexpr-op))
 
+(define/contract (sink-name-for-freestanding-decl-op inner-name)
+  (-> sink-name? sink-name?)
+  (sink-name-rep-map inner-name #/fn n
+    (list 'name:freestanding-decl-op n)))
+
+(define/contract (sink-name-for-bounded-decl-op inner-name)
+  (-> sink-name? sink-name?)
+  (sink-name-rep-map inner-name #/fn n
+    (list 'name:bounded-decl-op n)))
+
+(define/contract (sink-name-for-nameless-bounded-decl-op)
+  (-> sink-name?)
+  (sink-name #/unsafe:name #/list 'name:nameless-bounded-decl-op))
+
 (define/contract
   (sink-extfx-sink-cexpr-sequence-output-stream-freshen
     output-stream on-err then)
@@ -2071,10 +2104,11 @@
   #/fn state verify-same-computation
   #/then state))
 
-(struct-easy (concurrent-dsl state/c extfx-state-split-table))
+(struct-easy (concurrent-dsl state/c sink-extfx-state-split-table))
 
 (define/contract
-  (extfx-concurrent-dsl-state-split-table dsl state table on-err then)
+  (sink-extfx-concurrent-dsl-state-split-table
+    dsl state table on-err then)
   (->i
     (
       [dsl concurrent-dsl?]
@@ -2086,14 +2120,14 @@
         ; has the same keys as the given one.
         (-> (table-v-of #/concurrent-dsl-state/c dsl) sink-extfx?)])
     [_ sink-extfx?])
-  (dissect dsl (concurrent-dsl state/c extfx-state-split-table)
-  #/extfx-state-split-table state table on-err then))
+  (dissect dsl (concurrent-dsl state/c sink-extfx-state-split-table)
+  #/sink-extfx-state-split-table state table on-err then))
 
 (define first-key (name-of-racket-string "first"))
 (define rest-key (name-of-racket-string "rest"))
 
 (define/contract
-  (extfx-concurrent-dsl-state-split-list dsl state n on-err then)
+  (sink-extfx-concurrent-dsl-state-split-list dsl state n on-err then)
   (->i
     (
       [dsl concurrent-dsl?]
@@ -2106,11 +2140,12 @@
         (-> (listof #/concurrent-dsl-state/c dsl) sink-extfx?)])
     [_ sink-extfx?])
   (expect (nat->maybe n) (just rest-n)
-    (extfx-concurrent-dsl-state-split-table dsl state (table-empty)
+    (sink-extfx-concurrent-dsl-state-split-table dsl state
+      (table-empty)
       on-err
     #/dissectfn _
     #/then #/list)
-  #/extfx-concurrent-dsl-state-split-table dsl state
+  #/sink-extfx-concurrent-dsl-state-split-table dsl state
     (table-shadow first-key (just #/trivial)
       (table-shadow rest-key (just #/trivial)
       #/table-empty))
@@ -2118,7 +2153,7 @@
   #/fn states
   #/dissect (table-get first-key states) (just first-state)
   #/dissect (table-get rest-key states) (just rest-state)
-  #/extfx-concurrent-dsl-state-split-list dsl rest-state rest-n
+  #/sink-extfx-concurrent-dsl-state-split-list dsl rest-state rest-n
     (cenegetfx-cene-err (make-fault-internal) "Expected rest-state to be an unspent state of the given concurrent DSL")
   #/fn rest-states
   #/then #/cons first-state rest-states))
@@ -2132,7 +2167,7 @@
       [on-err (cenegetfx/c none/c)]
       [then (dsl) (-> (concurrent-dsl-state/c dsl) sink-extfx?)])
     [_ sink-extfx?])
-  (extfx-concurrent-dsl-state-split-list dsl state 1 on-err
+  (sink-extfx-concurrent-dsl-state-split-list dsl state 1 on-err
   #/dissectfn (list state)
   #/then state))
 
@@ -2143,6 +2178,99 @@
 
 (define concurrent-dsl-trivial
   (concurrent-dsl trivial? (fn state table on-err then #/then table)))
+
+(define/contract
+  (sink-extfx-sink-familiarity-ticket-freshen ft on-err then)
+  (->
+    sink-familiarity-ticket?
+    (cenegetfx/c none/c)
+    (-> sink-familiarity-ticket? sink-extfx?)
+    sink-extfx?)
+  (dissect ft (sink-familiarity-ticket ft)
+  #/make-sink-extfx #/cenegetfx-done
+    ; TODO: Make use of `on-err` here.
+    (extfx-freshen ft (error-definer-uninformative) #/fn ft
+    #/extfx-run-sink-extfx #/then #/sink-familiarity-ticket ft)))
+
+(define/contract
+  (sink-extfx-sink-familiarity-ticket-drop ft on-err then)
+  (-> sink-familiarity-ticket? (cenegetfx/c none/c) (-> sink-extfx?)
+    sink-extfx?)
+  (dissect ft (sink-familiarity-ticket ft)
+  #/make-sink-extfx #/cenegetfx-done
+    ; TODO: Make use of `on-err` here.
+    (extfx-split-list ft 0 (error-definer-uninformative)
+    #/dissectfn (list)
+    #/then)))
+
+(define/contract
+  (sink-extfx-sink-familiarity-ticket-split-table
+    ft table on-err then)
+  (->
+    sink-familiarity-ticket?
+    (table-v-of trivial?)
+    (cenegetfx/c none/c)
+    ; TODO: See if this contract should ensure the resulting table has
+    ; the same keys as the given one.
+    (-> (table-v-of sink-familiarity-ticket?) sink-extfx?)
+    sink-extfx?)
+  (dissect ft (sink-familiarity-ticket ft)
+  #/make-sink-extfx #/cenegetfx-done
+    ; TODO: Make use of `on-err` here.
+    (extfx-split-table ft table (error-definer-uninformative)
+    #/fn table
+    #/extfx-run-sink-extfx
+      (then
+        (table-v-map table #/fn ft #/sink-familiarity-ticket ft)))))
+
+(define-imitation-simple-struct
+  (concurrent-dsl-for-decl-state?
+    concurrent-dsl-for-decl-state-interface-familiarity-ticket
+    concurrent-dsl-for-decl-state-implementation-familiarity-ticket)
+  concurrent-dsl-for-decl-state
+  'concurrent-dsl-for-decl-state (current-inspector) (auto-write))
+
+(define/contract (concurrent-dsl-for-decl-state/c)
+  (-> contract?)
+  (rename-contract
+    (match/c concurrent-dsl-for-decl-state
+      sink-familiarity-ticket?
+      sink-familiarity-ticket?)
+    '(concurrent-dsl-for-decl-state/c)))
+
+(define/contract
+  (sink-extfx-concurrent-dsl-for-decl-state-split-table
+    state table on-err then)
+  (->
+    sink-familiarity-ticket?
+    (table-v-of #/concurrent-dsl-for-decl-state/c)
+    (cenegetfx/c none/c)
+    ; TODO: See if this contract should ensure the resulting table has
+    ; the same keys as the given one.
+    (-> (table-v-of #/concurrent-dsl-for-decl-state/c) sink-extfx?)
+    sink-extfx?)
+  (dissect state (concurrent-dsl-for-decl-state api-ft impl-ft)
+  ; TODO: Use `on-err` properly here. We might not want to pass it in
+  ; so simply, especially not in the same way to both of these calls.
+  #/sink-extfx-sink-familiarity-ticket-split-table api-ft on-err
+  #/fn api-ft-table
+  #/sink-extfx-sink-familiarity-ticket-split-table impl-ft on-err
+  #/fn impl-ft-table
+  #/then
+    (table-kv-zip-map-aligned api-ft-table impl-ft-table
+      (fn k api-ft impl-ft
+        (concurrent-dsl-for-decl-state api-ft impl-ft)))))
+
+(define sequential-dsl-trivial
+  (sequential-dsl
+    trivial?
+    (fn state on-err then
+      (then state (fn other-state on-err then #/then other-state)))))
+
+(define concurrent-dsl-for-decl
+  (concurrent-dsl
+    (concurrent-dsl-for-decl-state/c)
+    sink-extfx-concurrent-dsl-for-decl-state-split-table))
 
 (define/contract (run-dsl-op/c s-dsl c-dsl)
   (-> sequential-dsl? concurrent-dsl? contract?)
@@ -2217,6 +2345,49 @@
     result))
 
 (define/contract
+  (sink-extfx-run-decl-op
+    read-fault op-impl decl-fault unique-name qualify
+    text-input-stream trivial-s-state c-state then)
+  (run-dsl-op/c sequential-dsl-trivial concurrent-dsl-for-decl)
+  (sink-extfx-claim-freshen unique-name #/fn unique-name
+  #/sink-extfx-sink-text-input-stream-freshen text-input-stream
+    (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
+  #/fn text-input-stream
+  #/sink-extfx-concurrent-dsl-state-freshen concurrent-dsl-for-decl
+    c-state
+    (cenegetfx-cene-err (make-fault-internal) "Expected c-state to be an unspent concurrent-dsl-for-decl-state")
+  #/dissectfn (concurrent-dsl-for-decl-state api-ft impl-ft)
+  #/sink-extfx-sink-text-input-stream-track-identity text-input-stream
+  #/fn text-input-stream sink-extfx-verify-same-text-input-stream
+  #/sink-extfx-run-cenegetfx
+    (cenegetfx-sink-call read-fault op-impl
+      decl-fault unique-name qualify text-input-stream api-ft impl-ft
+    #/sink-fn-curried-fault 3
+    #/fn read-fault unique-name qualify text-input-stream
+    ; TODO FAULT: See if we should combine this `read-fault` with the
+    ; one we had already in the outer scope... maybe not using
+    ; `make-fault-double-callback`, but using something like that.
+    #/cenegetfx-done
+    #/expect (sink-authorized-name? unique-name) #t
+      (sink-extfx-cene-err read-fault "Expected the unique name of a declaration operation's callback results to be an authorized name")
+    #/expect (sink-qualify? qualify) #t
+      (sink-extfx-cene-err read-fault "Expected the qualify value of a declaration operation's callback results to be a qualify value")
+    #/expect (sink-text-input-stream? text-input-stream) #t
+      (sink-extfx-cene-err read-fault "Expected the text input stream of a declaration operation's callback results to be a text input stream")
+    #/sink-extfx-claim-freshen unique-name #/fn unique-name
+    #/sink-extfx-sink-text-input-stream-freshen text-input-stream
+      (cenegetfx-cene-err read-fault "Expected the text input stream of a declaration operation's callback results to be an unspent text input stream")
+    #/fn text-input-stream
+    #/sink-extfx-verify-same-text-input-stream text-input-stream
+      (cenegetfx-cene-err read-fault "Expected the text input stream of a declaration operation's callback results to be a future incarnation of the operation's original input stream")
+    #/fn text-input-stream
+    #/then unique-name qualify text-input-stream)
+  #/fn result
+  #/expect (sink-extfx? result) #t
+    (sink-extfx-cene-err read-fault "Expected the return value of a declaration operation to be an effectful computation")
+    result))
+
+(define/contract
   (sink-extfx-read-and-run-dsl-op
     read-fault form-fault s-dsl c-dsl unique-name qualify
     text-input-stream s-state c-state pre-qualify
@@ -2265,7 +2436,8 @@
 (define/contract
   (sink-extfx-run-nameless-dsl-op
     read-fault form-fault s-dsl c-dsl unique-name qualify
-    text-input-stream s-state c-state sink-extfx-run-dsl-op then)
+    text-input-stream s-state c-state
+    sink-name-for-nameless-bounded-dsl-op sink-extfx-run-dsl-op then)
   (->i
     (
       [read-fault sink-fault?]
@@ -2277,6 +2449,7 @@
       [text-input-stream sink-text-input-stream?]
       [s-state (s-dsl) (sequential-dsl-state/c s-dsl)]
       [c-state (c-dsl) (concurrent-dsl-state/c c-dsl)]
+      [sink-name-for-nameless-bounded-dsl-op sink-name?]
       [sink-extfx-run-dsl-op (s-dsl c-dsl) (run-dsl-op/c s-dsl c-dsl)]
       [then (s-dsl)
         (->
@@ -2300,7 +2473,7 @@
     (sink-getfx-bind
       (sink-getfx-run-cenegetfx
         (cenegetfx-sink-qualify-call qualify
-          (sink-name-for-nameless-bounded-cexpr-op)))
+          sink-name-for-nameless-bounded-dsl-op))
     #/fn qualified
     #/sink-getfx-get #/sink-authorized-name-get-name qualified)
   #/fn op-impl
@@ -2321,7 +2494,7 @@
     read-fault s-dsl c-dsl unique-name qualify text-input-stream
     s-state c-state
     sink-name-for-freestanding-dsl-op sink-name-for-bounded-dsl-op
-    sink-extfx-run-dsl-op then)
+    sink-name-for-nameless-bounded-dsl-op sink-extfx-run-dsl-op then)
   (->i
     (
       [read-fault sink-fault?]
@@ -2334,6 +2507,7 @@
       [c-state (c-dsl) (concurrent-dsl-state/c c-dsl)]
       [sink-name-for-freestanding-dsl-op (-> sink-name? sink-name?)]
       [sink-name-for-bounded-dsl-op (-> sink-name? sink-name?)]
+      [sink-name-for-nameless-bounded-dsl-op sink-name?]
       [sink-extfx-run-dsl-op (s-dsl c-dsl) (run-dsl-op/c s-dsl c-dsl)]
       [then (s-dsl)
         (->
@@ -2435,7 +2609,8 @@
     #/sink-extfx-run-nameless-dsl-op
       read-fault form-fault s-dsl c-dsl
       unique-name qualify text-input-stream s-state c-state
-      sink-extfx-run-dsl-op then)
+      sink-name-for-nameless-bounded-dsl-op sink-extfx-run-dsl-op
+      then)
   
   #/sink-extfx-optimized-textpat-read-located
     |pat "["| text-input-stream
@@ -2464,7 +2639,8 @@
     #/sink-extfx-run-nameless-dsl-op
       read-fault form-fault s-dsl c-dsl
       unique-name qualify text-input-stream s-state c-state
-      sink-extfx-run-dsl-op then)
+      sink-name-for-nameless-bounded-dsl-op sink-extfx-run-dsl-op
+      then)
   
   #/sink-extfx-optimized-textpat-read-located
     |pat "/"| text-input-stream
@@ -2492,7 +2668,8 @@
     #/sink-extfx-run-nameless-dsl-op
       read-fault form-fault s-dsl c-dsl
       unique-name qualify text-input-stream s-state c-state
-      sink-extfx-run-dsl-op then)
+      sink-name-for-nameless-bounded-dsl-op sink-extfx-run-dsl-op
+      then)
   
   ; TODO: See if we really want to call this "the form syntax" in a
   ; user-facing way. Perhaps it should be "the term former syntax" or
@@ -2530,6 +2707,7 @@
     read-fault sequential-dsl-for-cexpr concurrent-dsl-trivial
     unique-name qualify text-input-stream output-stream (trivial)
     sink-name-for-freestanding-cexpr-op sink-name-for-bounded-cexpr-op
+    (sink-name-for-nameless-bounded-cexpr-op)
     sink-extfx-run-cexpr-op then))
 
 (struct-easy

@@ -1842,6 +1842,70 @@
           (sink-extfx-cene-err op-fault "Expected the return value of an expression operation's callback to be an extfx effectful computation")
           effects))))
   
+  (define/contract (decl-op-impl body)
+    (->
+      (->
+        sink-fault?
+        sink-fault?
+        sink-authorized-name?
+        sink-qualify?
+        sink-text-input-stream?
+        sink-familiarity-ticket?
+        sink-familiarity-ticket?
+        (->
+          sink-authorized-name?
+          sink-qualify?
+          sink-text-input-stream?
+          sink-extfx?)
+        sink-extfx?)
+      sink?)
+    (sink-fn-curried-fault 7 #/fn
+      op-fault decl-fault unique-name qualify text-input-stream
+      api-ft impl-ft then
+      
+      (expect (sink-authorized-name? unique-name) #t
+        (cenegetfx-cene-err op-fault "Expected unique-name to be an authorized name")
+      #/expect (sink-qualify? qualify) #t
+        (cenegetfx-cene-err op-fault "Expected qualify to be a qualify value")
+      #/expect (sink-text-input-stream? text-input-stream) #t
+        (cenegetfx-cene-err op-fault "Expected text-input-stream to be a text input stream")
+      #/expect (sink-familiarity-ticket? api-ft) #t
+        (cenegetfx-cene-err op-fault "Expected api-ft to be a familiarity ticket")
+      #/expect (sink-familiarity-ticket? impl-ft) #t
+        (cenegetfx-cene-err op-fault "Expected impl-ft to be a familiarity ticket")
+      #/cenegetfx-done
+        (sink-extfx-claim-freshen unique-name #/fn unique-name
+        #/sink-extfx-sink-text-input-stream-freshen text-input-stream
+          (cenegetfx-cene-err op-fault "Expected text-input-stream to be an unspent text input stream")
+        #/fn text-input-stream
+        #/sink-extfx-sink-familiarity-ticket-freshen api-ft
+          (cenegetfx-cene-err op-fault "Expected api-ft to be an unspent familiarity ticket")
+        #/fn api-ft
+        #/sink-extfx-sink-familiarity-ticket-freshen impl-ft
+          (cenegetfx-cene-err op-fault "Expected impl-ft to be an unspent familiarity ticket")
+        #/fn impl-ft
+        #/sink-extfx-sink-text-input-stream-track-identity
+          text-input-stream
+        #/fn
+          text-input-stream sink-extfx-verify-same-text-input-stream
+        #/body
+          op-fault decl-fault unique-name qualify text-input-stream
+          api-ft impl-ft
+        #/fn unique-name qualify text-input-stream
+        #/sink-extfx-sink-text-input-stream-freshen text-input-stream
+          (cenegetfx-cene-err (make-fault-internal) "Expected a decl-op-impl body's resulting text input stream to be an unspent text input stream")
+        #/fn text-input-stream
+        #/sink-extfx-verify-same-text-input-stream text-input-stream
+          (cenegetfx-cene-err (make-fault-internal) "Expected a decl-op-impl body's resulting text input stream to be a future incarnation of the body's original input stream")
+        #/fn text-input-stream
+        #/sink-extfx-run-cenegetfx
+          (cenegetfx-sink-call op-fault then
+            unique-name qualify text-input-stream)
+        #/fn effects
+        #/expect (sink-extfx? effects) #t
+          (sink-extfx-cene-err op-fault "Expected the return value of a declaration operation's callback to be an extfx effectful computation")
+          effects))))
+  
   ; This creates a cexpr operation implementation function that reads
   ; a form body of precisely `n-args` cexprs, then writes a single
   ; cexpr computed from those using `body`.
@@ -2345,6 +2409,56 @@
       #/fn text-input-stream non-line-breaks
       #/then unique-name qualify text-input-stream output-stream)))
   
+  ; This binds the nameless bounded declaration operation. This
+  ; implementation proceeds by reading and running a (named) bounded
+  ; declaration operation.
+  ;
+  ; The Cene code `(foo a b c)` invokes the nameless bounded
+  ; delcaration operation, and since that operation typically has this
+  ; implementation, it typically behaves just like `(.foo a b c)`.
+  ; That is, it consumes "foo", it looks up a bounded declaration
+  ; operation based on qualifying the string "foo", and it runs that
+  ; operation.
+  ;
+  (def-value-for-package! (sink-name-for-nameless-bounded-decl-op)
+    (decl-op-impl #/fn
+      read-fault decl-fault unique-name qualify text-input-stream
+      api-ft impl-ft then
+      
+      (sink-extfx-read-and-run-dsl-op
+        read-fault decl-fault
+        sequential-dsl-trivial concurrent-dsl-for-decl
+        unique-name qualify text-input-stream
+        (trivial)
+        (concurrent-dsl-for-decl-state api-ft impl-ft)
+        sink-name-for-bounded-decl-op sink-extfx-run-decl-op then)))
+  
+  ; This binds the freestanding delaration operation for `=`. This
+  ; implementation is a line comment syntax: It consumes all the
+  ; proceeding non-line-break characters, contributes nothing at all
+  ; (no definitions, exports, struct tag export circumstances, nor
+  ; implementations), and leaves it at that.
+  ;
+  ;   \= This is an example comment.
+  ;
+  (def-value-for-package!
+    (sink-name-for-freestanding-decl-op
+    #/sink-name-for-string #/sink-string "=")
+    (decl-op-impl #/fn
+      read-fault decl-fault unique-name qualify text-input-stream
+      api-ft impl-ft then
+      
+      (sink-extfx-claim-freshen unique-name #/fn unique-name
+      #/sink-extfx-sink-familiarity-ticket-drop api-ft
+        (cenegetfx-cene-err (make-fault-internal) "Expected api-ft to be an unspent familiarity ticket")
+      #/fn
+      #/sink-extfx-sink-familiarity-ticket-drop impl-ft
+        (cenegetfx-cene-err (make-fault-internal) "Expected impl-ft to be an unspent familiarity ticket")
+      #/fn
+      #/sink-extfx-read-non-line-breaks text-input-stream
+      #/fn text-input-stream non-line-breaks
+      #/then unique-name qualify text-input-stream)))
+  
   
   ; Miscellaneous
   
@@ -2411,6 +2525,10 @@
   (def-func! "getfx-err" clamor
     (cenegetfx-done
       (sink-getfx-run-cenegetfx #/cenegetfx-err-from-clamor clamor)))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func! "is-familiarity-ticket" v
+    (racket-boolean->cenegetfx-sink #/sink-familiarity-ticket? v))
   
   ; TODO: Test this.
   ;
@@ -4490,6 +4608,22 @@
   
   (def-nullary-func! "name-for-nameless-bounded-expr-op"
     (sink-name-for-nameless-bounded-cexpr-op))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func-fault! "name-for-freestanding-decl-op" fault name
+    (expect (sink-name? name) #t
+      (cenegetfx-cene-err fault "Expected name to be a name")
+    #/cenegetfx-done #/sink-name-for-freestanding-decl-op name))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-func-fault! "name-for-bounded-decl-op" fault name
+    (expect (sink-name? name) #t
+      (cenegetfx-cene-err fault "Expected name to be a name")
+    #/cenegetfx-done #/sink-name-for-bounded-decl-op name))
+  
+  ; NOTE: The JavaScript version of Cene doesn't have this.
+  (def-nullary-func! "name-for-nameless-bounded-decl-op"
+    (sink-name-for-nameless-bounded-decl-op))
   
   (def-func-fault! "name-for-local-variable" fault name
     (expect (sink-name? name) #t
