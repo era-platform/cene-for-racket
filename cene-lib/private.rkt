@@ -2187,21 +2187,42 @@
     (-> sink-familiarity-ticket? sink-extfx?)
     sink-extfx?)
   (dissect ft (sink-familiarity-ticket ft)
-  #/make-sink-extfx #/cenegetfx-done
-    ; TODO: Make use of `on-err` here.
-    (extfx-freshen ft (error-definer-uninformative) #/fn ft
-    #/extfx-run-sink-extfx #/then #/sink-familiarity-ticket ft)))
+  #/make-sink-extfx
+    (cenegetfx-bind (cenegetfx-read-root-info) #/fn rinfo
+    #/cenegetfx-done
+      ; TODO: Make use of `on-err` here.
+      (extfx-freshen ft (error-definer-uninformative) #/fn ft
+      #/extfx-run-sink-extfx rinfo
+        (then #/sink-familiarity-ticket ft)))))
+
+(define/contract
+  (sink-extfx-sink-familiarity-ticket-split-list ft n on-err then)
+  (->
+    sink-familiarity-ticket?
+    natural?
+    (cenegetfx/c none/c)
+    ; TODO: See if this contract should ensure the resulting list has
+    ; a length of `n`.
+    (-> (listof sink-familiarity-ticket?) sink-extfx?)
+    sink-extfx?)
+  (dissect ft (sink-familiarity-ticket ft)
+  #/make-sink-extfx
+    (cenegetfx-bind (cenegetfx-read-root-info) #/fn rinfo
+    #/cenegetfx-done
+      ; TODO: Make use of `on-err` here.
+      (extfx-split-list ft n (error-definer-uninformative)
+      #/fn ft-list
+      #/extfx-run-sink-extfx rinfo
+        (then
+          (list-map ft-list #/fn ft #/sink-familiarity-ticket ft))))))
 
 (define/contract
   (sink-extfx-sink-familiarity-ticket-drop ft on-err then)
   (-> sink-familiarity-ticket? (cenegetfx/c none/c) (-> sink-extfx?)
     sink-extfx?)
-  (dissect ft (sink-familiarity-ticket ft)
-  #/make-sink-extfx #/cenegetfx-done
-    ; TODO: Make use of `on-err` here.
-    (extfx-split-list ft 0 (error-definer-uninformative)
-    #/dissectfn (list)
-    #/then)))
+  (sink-extfx-sink-familiarity-ticket-split-list ft 0 on-err
+  #/dissectfn (list)
+  #/then))
 
 ; TODO BUILTINS: Expose this to Cene.
 (define/contract
@@ -2216,13 +2237,16 @@
     (-> (table-v-of sink-familiarity-ticket?) sink-extfx?)
     sink-extfx?)
   (dissect ft (sink-familiarity-ticket ft)
-  #/make-sink-extfx #/cenegetfx-done
-    ; TODO: Make use of `on-err` here.
-    (extfx-split-table ft table (error-definer-uninformative)
-    #/fn table
-    #/extfx-run-sink-extfx
-      (then
-        (table-v-map table #/fn ft #/sink-familiarity-ticket ft)))))
+  #/make-sink-extfx
+    (cenegetfx-bind (cenegetfx-read-root-info) #/fn rinfo
+    #/cenegetfx-done
+      ; TODO: Make use of `on-err` here.
+      (extfx-split-table ft table (error-definer-uninformative)
+      #/fn table
+      #/extfx-run-sink-extfx rinfo
+        (then
+          (table-v-map table #/fn ft
+            (sink-familiarity-ticket ft)))))))
 
 (define-imitation-simple-struct
   (concurrent-dsl-for-decl-state?
@@ -2889,6 +2913,26 @@
     
     #/next n rest #/cons first names)))
 
+; TODO BUILTINS: Expose this to Cene.
+(define/contract (sink-extfx-make-familiarity-ticket name on-success)
+  (-> sink-authorized-name?
+    (-> sink-authorized-name? sink-familiarity-ticket? sink-extfx?)
+    sink-extfx?)
+  (dissect name (sink-authorized-name name)
+  #/make-sink-extfx
+    (cenegetfx-bind (cenegetfx-read-root-info) #/fn rinfo
+    #/cenegetfx-done
+      (extfx-claim-unique name
+        (error-definer-from-message
+          "Tried to claim a name unique more than once")
+        (error-definer-from-message
+          "Expected the extfx-make-familiarity-ticket familiarity ticket to be spent")
+      #/fn name ft
+      #/extfx-run-sink-extfx rinfo
+        (on-success
+          (sink-authorized-name name)
+          (sink-familiarity-ticket ft))))))
+
 (define/contract (sink-extfx-claim name on-success)
   (-> sink-authorized-name? (-> sink-extfx?) sink-extfx?)
   (dissect name (sink-authorized-name name)
@@ -3007,6 +3051,113 @@
   #/sink-extfx-claim-and-split unique-name-writer 0 #/dissectfn (list)
   #/sink-extfx-read-and-run-directive-cexprs
     read-fault unique-name-main qualify text-input-stream))
+
+; This returns a computation that reads all the content of the given
+; text input stream and runs the declaration operations it encounters.
+; Unlike typical Lisp readers, this does not read first-class values;
+; it only reads and performs side effects.
+;
+; TODO RUN-DECLS: Finish implementing this, and use it in
+; `cene/private/essentials` to read the prelude.
+;
+(define/contract
+  (sink-extfx-read-and-run-decls
+    read-fault unique-name qualify text-input-stream)
+  (->
+    sink-fault?
+    sink-authorized-name?
+    sink-qualify?
+    sink-text-input-stream?
+    sink-extfx?)
+  (sink-extfx-claim-freshen unique-name #/fn unique-name
+  #/sink-extfx-sink-text-input-stream-freshen text-input-stream
+    (cenegetfx-cene-err (make-fault-internal) "Expected text-input-stream to be an unspent text input stream")
+  #/fn text-input-stream
+  #/sink-extfx-claim-and-split unique-name 3
+  #/dissectfn (list unique-name-api unique-name-impl unique-name-main)
+  #/sink-extfx-make-familiarity-ticket unique-name-api
+  #/fn api-name api-ft
+  #/sink-extfx-make-familiarity-ticket unique-name-impl
+  #/fn impl-name impl-ft
+  #/w- sink-extfx-eval-directive-cexpr
+    (fn unique-name qualify cexpr
+      ; If we encounter an expression, we evaluate it and call the
+      ; result, passing in the current scope information.
+      (expect cexpr (sink-cexpr cexpr)
+        ; TODO: Test that we can actually get this error. We might
+        ; already be checking for this condition elsewhere.
+        ; TODO FAULT: Make this `read-fault` more specific.
+        (sink-extfx-cene-err read-fault "Encountered a top-level expression that compiled to a non-expression value")
+      #/expect (cexpr-has-free-vars? cexpr #/table-empty) #f
+        ; TODO FAULT: Make this `read-fault` more specific.
+        (sink-extfx-cene-err read-fault "Encountered a top-level expression with at least one free variable")
+      #/sink-extfx-run-cenegetfx
+        (cenegetfx-cexpr-eval read-fault cexpr)
+      #/expectfn (sink-directive directive)
+        ; TODO FAULT: Make this `read-fault` more specific.
+        (sink-extfx-cene-err read-fault "Expected every top-level expression to evaluate to a directive")
+      #/sink-extfx-run-cenegetfx
+        (cenegetfx-sink-call read-fault directive unique-name qualify)
+      #/fn effects
+      #/expect (sink-extfx? effects) #t
+        ; TODO FAULT: Make this `read-fault` more specific.
+        (sink-extfx-cene-err read-fault "Expected every top-level expression to evaluate to a directive made from a callable value that takes two arguments and returns extfx side effects")
+        effects))
+  #/sink-extfx-fuse
+    (begin
+    
+    ; TODO RUN-DECLS: Implement `sink-extfx-collect`, and uncomment
+    ; these lines.
+;    #/sink-extfx-collect api-name #/fn api-contributions
+;    #/sink-extfx-collect impl-name #/fn impl-contributions
+    
+    ; TODO RUN-DECLS: Make use of `sink-extfx-eval-directive-cexpr`
+    ; here to run all the contributions. Actually, we should be
+    ; running them right away when they're contributed, rather than
+    ; waiting fo all the other contributions to come in. Also, figure
+    ; out what to do with `api-contributions`; we'll probably want to
+    ; aggregate them into another data structure that summarizes the
+    ; interface fo the lexical unit.
+    
+    #/sink-extfx-noop)
+  #/w-loop next
+    unique-name unique-name
+    qualify qualify
+    text-input-stream text-input-stream
+    api-ft api-ft
+    impl-ft impl-ft
+    
+    (sink-extfx-read-eof text-input-stream
+      
+      ; If we're at the end of the file, we're done.
+      ;
+      ; We claim the `unique-name` to stay in the habit, even though
+      ; it's clear no one else can be using it. We drop the
+      ; familiarity tickets because we have to.
+      ;
+      (sink-extfx-claim unique-name #/fn
+      #/sink-extfx-sink-familiarity-ticket-drop api-ft
+        (cenegetfx-cene-err (make-fault-internal) "Expected api-ft to be an unspent familiarity ticket")
+      #/fn
+      #/sink-extfx-sink-familiarity-ticket-drop impl-ft
+        (cenegetfx-cene-err (make-fault-internal) "Expected impl-ft to be an unspent familiarity ticket")
+      #/fn
+      #/sink-extfx-noop)
+    
+    #/fn text-input-stream
+    #/sink-extfx-sink-familiarity-ticket-split-list api-ft 2
+      (cenegetfx-cene-err (make-fault-internal) "Expected api-ft to be an unspent familiarity ticket")
+    #/dissectfn (list api-ft-first api-ft-rest)
+    #/sink-extfx-sink-familiarity-ticket-split-list impl-ft 2
+      (cenegetfx-cene-err (make-fault-internal) "Expected impl-ft to be an unspent familiarity ticket")
+    #/dissectfn (list impl-ft-first impl-ft-rest)
+    #/sink-extfx-read-decl
+      read-fault unique-name qualify text-input-stream
+      api-ft-first impl-ft-first
+    #/fn unique-name qualify text-input-stream
+    #/next
+      unique-name qualify text-input-stream
+      api-ft-rest impl-ft-rest)))
 
 (define/contract
   (sink-extfx-run-directive-cexprs-in-string

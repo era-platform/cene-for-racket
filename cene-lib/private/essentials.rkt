@@ -5123,9 +5123,10 @@
   
   ; Run the prelude code.
   ;
-  ; TODO: Change this so that instead of calling
-  ; `sink-extfx-read-and-run-directive-cexprs`, it calls a variant of
-  ; `sink-extfx-read-and-run-directive-cexprs` which calls
+  ; TODO RUN-DECLS: Change this so that instead of calling
+  ; `sink-extfx-read-and-run-directive-cexprs`, it calls (the
+  ; unfinished) `sink-extfx-read-and-run-decls`, which is a variant of
+  ; `sink-extfx-read-and-run-directive-cexprs` that calls
   ; `sink-extfx-read-decl` instead of `sink-extfx-read-cexprs`. For
   ; this to work, we'll need to change
   ; `prelude-to-everyone-def-func-blame` so that it's a declaration
