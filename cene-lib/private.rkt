@@ -2947,7 +2947,7 @@
 ; Unlike typical Lisp readers, this does not read first-class values;
 ; it only reads and performs side effects.
 (define/contract
-  (sink-extfx-read-top-level
+  (sink-extfx-read-and-run-directive-cexprs
     read-fault unique-name qualify text-input-stream)
   (->
     sink-fault?
@@ -3005,16 +3005,18 @@
   #/fn unique-name-main qualify text-input-stream output-stream
   #/unwrap output-stream #/fn unique-name-writer
   #/sink-extfx-claim-and-split unique-name-writer 0 #/dissectfn (list)
-  #/sink-extfx-read-top-level
+  #/sink-extfx-read-and-run-directive-cexprs
     read-fault unique-name-main qualify text-input-stream))
 
 (define/contract
-  (sink-extfx-run-string read-fault unique-name qualify string)
+  (sink-extfx-run-directive-cexprs-in-string
+    read-fault unique-name qualify string)
   (->
     sink-fault?
     sink-authorized-name?
     sink-qualify?
     immutable-string?
     sink-extfx?)
-  (sink-extfx-read-top-level read-fault unique-name qualify
+  (sink-extfx-read-and-run-directive-cexprs
+    read-fault unique-name qualify
     (sink-text-input-stream-for-string string)))

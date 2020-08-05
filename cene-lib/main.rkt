@@ -38,6 +38,6 @@
 (provide sink-extfx-fuse)
 (provide sink-extfx-init-essentials)
 (provide sink-extfx-init-package)
-(provide sink-extfx-run-string)
+(provide sink-extfx-run-directive-cexprs-in-string)
 (provide sink-name-of-racket-string)
 (provide sink-qualify)
