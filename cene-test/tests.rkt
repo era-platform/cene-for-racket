@@ -69,7 +69,7 @@
       #/sink-extfx-fuse
         (sink-extfx-init-essentials unique-name-essentials)
         (sink-extfx-init-package unique-name-package qualify)
-        (sink-extfx-run-string (make-fault-internal)
+        (sink-extfx-run-directive-cexprs-in-string (make-fault-internal)
           unique-name-sample qualify code-string)
       #/make-sink-extfx #/cenegetfx-done
         (extfx-ct-continue then
