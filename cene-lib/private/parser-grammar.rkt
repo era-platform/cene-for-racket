@@ -1,6 +1,6 @@
 #lang brag
 
-; cene/private/parser
+; cene/private/parser-grammar
 ;
 ; A traditional parser for Cene syntax.
 
