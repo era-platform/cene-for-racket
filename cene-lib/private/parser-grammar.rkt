@@ -2,7 +2,7 @@
 
 ; cene/private/parser-grammar
 ;
-; A traditional parser for Cene syntax.
+; The grammar for a traditional parser for Cene syntax.
 
 ;   Copyright 2020 The Era Authors
 ;
@@ -18,9 +18,6 @@
 ;   either express or implied. See the License for the specific
 ;   language governing permissions and limitations under the License.
 
-
-; TODO: Uncomment this file once we have this parser working, and once
-; we're ready to commit to a dependency on a parser library.
 
 ; TODO: Document the purpose of this new parser. It represents a major
 ; change to the way we're treating Cene's syntax. The major goals, in
@@ -131,7 +128,8 @@ inline-and-compound-whitespace
   | compound-then-inline-and-compound-whitespace
 
 whitespace-lines-and-indent
-  : INLINE-WHITESPACE [whitespace-lines-and-indent]
+  : END-OF-FILE
+  | INLINE-WHITESPACE [whitespace-lines-and-indent]
   | inactive-comment-sigil [whitespace-lines-and-indent]
   |
     active-comment-sigil
@@ -142,8 +140,8 @@ whitespace-lines-and-indent
     [new-whitespace-lines-and-indent]
 
 new-whitespace-lines-and-indent
-  : NEWLINE [whitespace-lines-and-indent]
-  | END-OF-FILE
+  : END-OF-FILE
+  | NEWLINE [whitespace-lines-and-indent]
 
 ws
   : inline-and-compound-whitespace [new-whitespace-lines-and-indent]
