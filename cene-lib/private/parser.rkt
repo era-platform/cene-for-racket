@@ -1,4 +1,4 @@
-#lang racket/base
+#lang brag
 
 ; cene/private/parser
 ;
@@ -67,10 +67,6 @@
 ;     better support more traditional syntax highlighers and code
 ;     editors.
 
-#|
-
-#lang brag
-
 
 ; NOTE: Since this comes first in the file, it's the root nonterminal.
 ;
@@ -78,7 +74,8 @@
 ; making it optional (`[ws]`). Now it's optional too. See if we can
 ; make `ws` more like `[ws]` to simplify things.
 ;
-header-tokens: [ws] ((IDENTIFIER | COLON | compound-token) [ws])*
+header-tokens
+  : [ws] [(IDENTIFIER | COLON | compound-token) header-tokens]
 
 
 ; tokens:
@@ -124,35 +121,34 @@ any-hyperbracket-sigil-starter
   | NEUTRAL-ANGULAR-BRACKET
   | CLOSE-ANGULAR-BRACKET
 
-end-of-line: END-OF-FILE | NEWLINE
+inline-then-inline-and-compound-whitespace
+  : INLINE-WHITESPACE [compound-then-inline-and-compound-whitespace]
+compound-then-inline-and-compound-whitespace
+  : compound-whitespace [inline-then-inline-and-compound-whitespace]
 
 inline-and-compound-whitespace
-  :
-    INLINE-WHITESPACE
-    (compound-whitespace INLINE-WHITESPACE)*
-    [compound-whitespace]
-  |
-    compound-whitespace
-    (INLINE-WHITESPACE compound-whitespace)*
-    [INLINE-WHITESPACE]
+  : inline-then-inline-and-compound-whitespace
+  | compound-then-inline-and-compound-whitespace
 
-whitespace-line
-  : INLINE-WHITESPACE whitespace-line
-  | inactive-comment-sigil whitespace-line
-  | active-comment-sigil inline-text end-of-line
-  | compound-whitespace [inline-and-compound-whitespace] end-of-line
+whitespace-lines-and-indent
+  : INLINE-WHITESPACE [whitespace-lines-and-indent]
+  | inactive-comment-sigil [whitespace-lines-and-indent]
+  |
+    active-comment-sigil
+    inline-text
+    [new-whitespace-lines-and-indent]
+  |
+    compound-then-inline-and-compound-whitespace
+    [new-whitespace-lines-and-indent]
+
+new-whitespace-lines-and-indent
+  : NEWLINE [whitespace-lines-and-indent]
+  | END-OF-FILE
 
 ws
-  :
-    inline-and-compound-whitespace
-    [
-      end-of-line
-      whitespace-line*
-      [inline-and-compound-whitespace]]
-  |
-    (BEGINNING-OF-FILE | end-of-line)
-    whitespace-line*
-    [inline-and-compound-whitespace]
+  : inline-and-compound-whitespace [new-whitespace-lines-and-indent]
+  | BEGINNING-OF-FILE [whitespace-lines-and-indent]
+  | new-whitespace-lines-and-indent
 
 ; NOTE: We allow many constructs to be commented out. For the sake of
 ; readability, the only things we allow to be commented out in a way
@@ -166,47 +162,62 @@ ws
 
 simple-comment-sigil: SLASH SLASH
 
-active-comment-sigil: SLASH SLASH comment-sigil-after-comment
+active-comment-sigil: SLASH SLASH [comment-sigil-after-comment]
 
 ; NOTE: We allow our more sophisticated commenting-out operations to
 ; be commented out themselves.
 inactive-comment-sigil
-  : [SLASH SLASH simple-comment-sigil comment-sigil-after-comment]
+  : SLASH SLASH simple-comment-sigil [comment-sigil-after-comment]
 
 comment-sigil-after-comment
-  : [hyperbracket-sigil* DOT optional-operation]
+  : hyperbracket-sigil comment-sigil-after-comment
+  | DOT optional-operation
 
 hyperbracket-sigil
-  : any-hyperbracket-sigil-starter operation-and-header
-  |
-    any-hyperbracket-sigil-starter simple-comment-sigil
+  :
+    any-hyperbracket-sigil-starter
+    [simple-comment-sigil]
     operation-and-header
 
 operation-and-header: optional-operation header-tokens
 optional-operation: [ws] [IDENTIFIER [ws]] [COLON]
 
+dotted-compound-token-inline-after-comment
+  : hyperbracket-sigil dotted-compound-token-inline-after-comment
+  | DOT [ws] IDENTIFIER
 compound-token-inline-after-comment
-  : [hyperbracket-sigil* DOT] [ws] IDENTIFIER
+  : dotted-compound-token-inline-after-comment
+  | [ws] IDENTIFIER
 compound-token-block-after-comment
   : CLOSE-ROUND-BRACKET
   | DOT DOT compound-token-block-after-comment
   | DOT DOT simple-comment-sigil compound-token-block-after-comment
   | hyperbracket-sigil compound-token-block-after-comment
   | prefix-or-nameless-header compound-token-block-after-comment
-  | commented-out-prefix-header compound-token-block-after-comment
 
 compound-token
   : BACKSLASH compound-token-inline-after-comment
   |
-    OPEN-ROUND-BRACKET inactive-comment-sigil
+    OPEN-ROUND-BRACKET
+    [inactive-comment-sigil]
     compound-token-block-after-comment
 
 prefix-or-nameless-header
   :
-    ([ws] DOT simple-comment-sigil operation-and-header)*
-    (DOT operation-and-header | header-tokens)
+    DOT
+    simple-comment-sigil
+    operation-and-header
+    [ws]
+    prefix-or-nameless-header
+  | DOT operation-and-header
+  | header-tokens
 
 compound-whitespace
+  : BACKSLASH simple-comment-sigil compound-token-inline-after-comment
+  |
+    OPEN-ROUND-BRACKET
+    active-comment-sigil
+    compound-token-block-after-comment
   
   ; NOTE:
   ;
@@ -276,10 +287,3 @@ compound-whitespace
   ; However, there's not much point to this. A standalone colon can be
   ; commented out by wrapping it in parens and commenting out the
   ; parens.
-  
-  : BACKSLASH simple-comment-sigil compound-token-inline-after-comment
-  |
-    OPEN-ROUND-BRACKET active-comment-sigil
-    compound-token-block-after-comment
-
-|#
