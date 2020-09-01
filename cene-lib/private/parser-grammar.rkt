@@ -188,8 +188,7 @@ compound-token-inline-after-comment
   | [ws] IDENTIFIER
 compound-token-block-after-comment
   : CLOSE-ROUND-BRACKET
-  | DOT DOT compound-token-block-after-comment
-  | DOT DOT simple-comment-sigil compound-token-block-after-comment
+  | DOT DOT [simple-comment-sigil] compound-token-block-after-comment
   | hyperbracket-sigil compound-token-block-after-comment
   | prefix-or-nameless-header compound-token-block-after-comment
 
