@@ -198,16 +198,11 @@ compound-token-inline-after-comment
 nonnameless-compound-token-block-after-comment
   : CLOSE-ROUND-BRACKET
   | DOT DOT [simple-comment-sigil] compound-token-block-after-comment
-  |
-    hyperbracket-sigil
-    nonnameless-compound-token-block-after-comment
+  | hyperbracket-sigil nonnameless-compound-token-block-after-comment
   |
     DOT
-    simple-comment-sigil
+    [simple-comment-sigil]
     operation-and-header
-    [ws]
-    nonnameless-compound-token-block-after-comment
-  | DOT operation-and-header
     nonnameless-compound-token-block-after-comment
 compound-token-block-after-comment
   : nonnameless-compound-token-block-after-comment
