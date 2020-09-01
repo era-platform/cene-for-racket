@@ -121,7 +121,7 @@ any-hyperbracket-sigil-starter
 inline-then-inline-and-compound-whitespace
   : INLINE-WHITESPACE [compound-then-inline-and-compound-whitespace]
 compound-then-inline-and-compound-whitespace
-  : compound-whitespace [inline-then-inline-and-compound-whitespace]
+  : compound-whitespace inline-and-compound-whitespace
 
 inline-and-compound-whitespace
   : inline-then-inline-and-compound-whitespace
