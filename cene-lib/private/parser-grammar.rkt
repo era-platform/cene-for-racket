@@ -179,15 +179,28 @@ hyperbracket-sigil
     [simple-comment-sigil]
     operation-and-header
 
-; NOTE: We could specify `operation-and-header` like this:
+; NOTE:
+;
+; We could specify `operation-and-header` like this:
 ;
 ;   operation-and-header: optional-operation header-tokens
 ;
-; However, that introduces ambiguities into the grammar. Instead, we
+; However, that introduces ambiguity into the grammar. Instead, we
 ; allow the operation name (if any) and colon (if any) to be treated
 ; as header tokens, and (TODO) we'll process them on a second pass.
 ;
 operation-and-header: header-tokens
+
+; NOTE:
+;
+; We could specify `grouping-or-operation-and-header` like this:
+;
+;   grouping-or-operation-and-header: [operation-and-header]
+;
+; However, that introduces ambiguity into the grammar. Instead, (TODO)
+; we'll process empty headers on a second pass.
+;
+grouping-or-operation-and-header: operation-and-header
 
 optional-operation: [ws] [IDENTIFIER [ws]] [COLON]
 
@@ -214,8 +227,9 @@ nonnameless-compound-token-block-after-comment
     operation-and-header
     nonnameless-compound-token-block-after-comment
 compound-token-block-after-comment
-  : nonnameless-compound-token-block-after-comment
-  | header-tokens nonnameless-compound-token-block-after-comment
+  :
+    grouping-or-operation-and-header
+    nonnameless-compound-token-block-after-comment
 
 compound-token
   : BACKSLASH compound-token-inline-after-comment
