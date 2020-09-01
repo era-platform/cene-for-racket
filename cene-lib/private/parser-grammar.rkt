@@ -133,8 +133,8 @@ whitespace-lines-and-indent
   | inactive-comment-sigil [whitespace-lines-and-indent]
   |
     active-comment-sigil
-    inline-text
-    [new-whitespace-lines-and-indent]
+    [inline-text]
+    new-whitespace-lines-and-indent
   |
     compound-then-inline-and-compound-whitespace
     [new-whitespace-lines-and-indent]
