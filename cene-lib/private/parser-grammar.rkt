@@ -71,8 +71,7 @@
 ; making it optional (`[ws]`). Now it's optional too. See if we can
 ; make `ws` more like `[ws]` to simplify things.
 ;
-header-tokens
-  : [ws] [(IDENTIFIER | COLON | compound-token) header-tokens]
+header-tokens: [ws] [header-token header-tokens]
 
 
 ; tokens:
@@ -173,12 +172,7 @@ active-comment-sigil
 ; be commented out themselves.
 inactive-comment-sigil: SLASH simple-comment-sigil piped-comment-sigil
 
-piped-comment-sigil
-  : PIPE grouping-or-operation-and-header piped-comment-sigil-rest
-
-piped-comment-sigil-rest
-  : prefix-sigil piped-comment-sigil-rest
-  | PIPE SLASH
+piped-comment-sigil: PIPE prefixes PIPE SLASH
 
 prefix-sigil
   :
@@ -211,16 +205,12 @@ operation-and-header: header-tokens
 ;
 grouping-or-operation-and-header: operation-and-header
 
-compound-token-inline-after-pipe
-  : prefix-sigil compound-token-inline-after-pipe
-  | PIPE compound-token-inline-after-comment
+prefixes: grouping-or-operation-and-header prefix-sigil*
+
 compound-token-inline-after-comment
-  :
-    PIPE
-    grouping-or-operation-and-header
-    compound-token-inline-after-pipe
+  : PIPE prefixes PIPE compound-token-inline-after-comment
   | IDENTIFIER
-nonnameless-compound-token-block-after-comment
+compound-token-block-after-prefixes
   : CLOSE-ROUND-BRACKET
   
   ; NOTE: In a block, we use `HASH` to end the preceding header and
@@ -229,19 +219,17 @@ nonnameless-compound-token-block-after-comment
   ; of the block is commented out too.
   ;
   | HASH [simple-comment-sigil] compound-token-block-after-comment
-  
-  | prefix-sigil nonnameless-compound-token-block-after-comment
 compound-token-block-after-comment
-  :
-    grouping-or-operation-and-header
-    nonnameless-compound-token-block-after-comment
+  : prefixes compound-token-block-after-prefixes
 
-compound-token
+header-token
   : BACKSLASH compound-token-inline-after-comment
   |
     OPEN-ROUND-BRACKET
     [inactive-comment-sigil]
     compound-token-block-after-comment
+  | IDENTIFIER
+  | COLON
 
 compound-whitespace
   : BACKSLASH simple-comment-sigil compound-token-inline-after-comment
