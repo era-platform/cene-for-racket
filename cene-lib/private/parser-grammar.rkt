@@ -195,11 +195,18 @@ dotted-compound-token-inline-after-comment
 compound-token-inline-after-comment
   : dotted-compound-token-inline-after-comment
   | [ws] IDENTIFIER
-compound-token-block-after-comment
+nonnameless-compound-token-block-after-comment
   : CLOSE-ROUND-BRACKET
   | DOT DOT [simple-comment-sigil] compound-token-block-after-comment
-  | hyperbracket-sigil compound-token-block-after-comment
-  | prefix-or-nameless-header compound-token-block-after-comment
+  |
+    hyperbracket-sigil
+    nonnameless-compound-token-block-after-comment
+  |
+    nonnameless-prefix-or-nameless-header
+    nonnameless-compound-token-block-after-comment
+compound-token-block-after-comment
+  : nonnameless-compound-token-block-after-comment
+  | header-tokens nonnameless-compound-token-block-after-comment
 
 compound-token
   : BACKSLASH compound-token-inline-after-comment
@@ -216,9 +223,6 @@ nonnameless-prefix-or-nameless-header
     [ws]
     nonnameless-prefix-or-nameless-header
   | DOT operation-and-header
-prefix-or-nameless-header
-  : nonnameless-prefix-or-nameless-header
-  | header-tokens
 
 compound-whitespace
   : BACKSLASH simple-comment-sigil compound-token-inline-after-comment
