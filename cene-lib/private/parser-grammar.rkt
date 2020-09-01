@@ -66,12 +66,7 @@
 
 
 ; NOTE: Since this comes first in the file, it's the root nonterminal.
-;
-; TODO: At one point, this was the one place we used `ws` without
-; making it optional (`[ws]`). Now it's optional too. See if we can
-; make `ws` more like `[ws]` to simplify things.
-;
-header-tokens: [ws] [header-token header-tokens]
+header-tokens: header-token*
 
 
 ; tokens:
@@ -99,28 +94,27 @@ header-tokens: [ws] [header-token header-tokens]
 ;   PIPE ("|")
 ;   HASH ("#")
 
-; Any nonempty text that does not include carriage return or newline.
-inline-text
-  :
-    (INLINE-WHITESPACE
-      | IDENTIFIER
-      | BACKSLASH
-      | SLASH
-      | OPEN-ROUND-BRACKET
-      | CLOSE-ROUND-BRACKET
-      | OPEN-ANGULAR-BRACKET
-      | NEUTRAL-ANGULAR-BRACKET
-      | CLOSE-ANGULAR-BRACKET
-      | DOT
-      | COLON
-      | PIPE
-      | HASH)+
-
-any-prefix-sigil-starter
-  : DOT
+; Any token other than `BEGINNING-OF-FILE`, `END-OF-FILE`, and
+; `NEWLINE`.
+;
+inline-text-token
+  : INLINE-WHITESPACE
+  | IDENTIFIER
+  | BACKSLASH
+  | SLASH
+  | OPEN-ROUND-BRACKET
+  | CLOSE-ROUND-BRACKET
   | OPEN-ANGULAR-BRACKET
   | NEUTRAL-ANGULAR-BRACKET
   | CLOSE-ANGULAR-BRACKET
+  | DOT
+  | COLON
+  | PIPE
+  | HASH
+
+; Any text that does not include carriage return or newline (or the
+; beginning- or end-of-file markers).
+inline-text: inline-text-token*
 
 inline-then-inline-and-compound-whitespace
   : INLINE-WHITESPACE [compound-then-inline-and-compound-whitespace]
@@ -135,10 +129,7 @@ whitespace-lines-and-indent
   : END-OF-FILE
   | INLINE-WHITESPACE [whitespace-lines-and-indent]
   | inactive-comment-sigil [whitespace-lines-and-indent]
-  |
-    active-comment-sigil
-    [inline-text]
-    new-whitespace-lines-and-indent
+  | active-comment-sigil inline-text new-whitespace-lines-and-indent
   |
     compound-then-inline-and-compound-whitespace
     [new-whitespace-lines-and-indent]
@@ -174,11 +165,13 @@ inactive-comment-sigil: SLASH simple-comment-sigil piped-comment-sigil
 
 piped-comment-sigil: PIPE prefixes PIPE SLASH
 
+prefix-sigil-starter
+  : DOT
+  | OPEN-ANGULAR-BRACKET
+  | NEUTRAL-ANGULAR-BRACKET
+  | CLOSE-ANGULAR-BRACKET
 prefix-sigil
-  :
-    any-prefix-sigil-starter
-    [simple-comment-sigil]
-    operation-and-header
+  : prefix-sigil-starter [simple-comment-sigil] operation-and-header
 
 ; NOTE:
 ;
@@ -230,6 +223,7 @@ header-token
     compound-token-block-after-comment
   | IDENTIFIER
   | COLON
+  | ws
 
 compound-whitespace
   : BACKSLASH simple-comment-sigil compound-token-inline-after-comment
