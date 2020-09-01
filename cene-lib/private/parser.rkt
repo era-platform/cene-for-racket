@@ -67,6 +67,7 @@
     [">" (token 'CLOSE-ANGULAR-BRACKET lexeme)]
     ["." (token 'DOT lexeme)]
     [":" (token 'COLON lexeme)]
+    ["|" (token 'PIPE lexeme)]
     ["#" (token 'HASH lexeme)]))
 
 (define (cene-lexer)

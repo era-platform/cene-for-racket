@@ -97,6 +97,7 @@ header-tokens
 ;   CLOSE-ANGULAR-BRACKET (">")
 ;   DOT (".")
 ;   COLON (":")
+;   PIPE ("|")
 ;   HASH ("#")
 
 ; Any nonempty text that does not include carriage return or newline.
@@ -113,10 +114,12 @@ inline-text
       | CLOSE-ANGULAR-BRACKET
       | DOT
       | COLON
+      | PIPE
       | HASH)+
 
-any-hyperbracket-sigil-starter
-  : OPEN-ANGULAR-BRACKET
+any-prefix-sigil-starter
+  : DOT
+  | OPEN-ANGULAR-BRACKET
   | NEUTRAL-ANGULAR-BRACKET
   | CLOSE-ANGULAR-BRACKET
 
@@ -162,20 +165,24 @@ ws
 
 simple-comment-sigil: SLASH SLASH
 
-active-comment-sigil: SLASH SLASH [comment-sigil-after-comment]
+active-comment-sigil
+  : simple-comment-sigil
+  | SLASH piped-comment-sigil
 
 ; NOTE: We allow our more sophisticated commenting-out operations to
 ; be commented out themselves.
-inactive-comment-sigil
-  : SLASH SLASH simple-comment-sigil [comment-sigil-after-comment]
+inactive-comment-sigil: SLASH simple-comment-sigil piped-comment-sigil
 
-comment-sigil-after-comment
-  : hyperbracket-sigil comment-sigil-after-comment
-  | DOT optional-operation
+piped-comment-sigil
+  : PIPE grouping-or-operation-and-header piped-comment-sigil-rest
 
-hyperbracket-sigil
+piped-comment-sigil-rest
+  : prefix-sigil piped-comment-sigil-rest
+  | PIPE SLASH
+
+prefix-sigil
   :
-    any-hyperbracket-sigil-starter
+    any-prefix-sigil-starter
     [simple-comment-sigil]
     operation-and-header
 
@@ -183,7 +190,7 @@ hyperbracket-sigil
 ;
 ; We could specify `operation-and-header` like this:
 ;
-;   operation-and-header: optional-operation header-tokens
+;   operation-and-header: [ws] [IDENTIFIER [ws]] [COLON] header-tokens
 ;
 ; However, that introduces ambiguity into the grammar. Instead, we
 ; allow the operation name (if any) and colon (if any) to be treated
@@ -204,14 +211,15 @@ operation-and-header: header-tokens
 ;
 grouping-or-operation-and-header: operation-and-header
 
-optional-operation: [ws] [IDENTIFIER [ws]] [COLON]
-
-dotted-compound-token-inline-after-comment
-  : hyperbracket-sigil dotted-compound-token-inline-after-comment
-  | DOT [ws] IDENTIFIER
+compound-token-inline-after-pipe
+  : prefix-sigil compound-token-inline-after-pipe
+  | PIPE compound-token-inline-after-comment
 compound-token-inline-after-comment
-  : dotted-compound-token-inline-after-comment
-  | [ws] IDENTIFIER
+  :
+    PIPE
+    grouping-or-operation-and-header
+    compound-token-inline-after-pipe
+  | IDENTIFIER
 nonnameless-compound-token-block-after-comment
   : CLOSE-ROUND-BRACKET
   
@@ -222,12 +230,7 @@ nonnameless-compound-token-block-after-comment
   ;
   | HASH [simple-comment-sigil] compound-token-block-after-comment
   
-  | hyperbracket-sigil nonnameless-compound-token-block-after-comment
-  |
-    DOT
-    [simple-comment-sigil]
-    operation-and-header
-    nonnameless-compound-token-block-after-comment
+  | prefix-sigil nonnameless-compound-token-block-after-comment
 compound-token-block-after-comment
   :
     grouping-or-operation-and-header
@@ -246,53 +249,6 @@ compound-whitespace
     OPEN-ROUND-BRACKET
     active-comment-sigil
     compound-token-block-after-comment
-  
-  ; NOTE:
-  ;
-  ; We don't handle the commenting-out of `DOT` here. That's because
-  ; we use `DOT` for a few distinct purposes that each have their own
-  ; commenting-out design rationale. Only a couple of those purposes
-  ; benefit from a comment syntax, and they're better off handled
-  ; individually in the context that gives the `DOT` its meaning.
-  ;
-  ; Actually, all the uses of `DOT` serve a similar purpose: To
-  ; specify where a hyperbracket sigil's header should end, when
-  ; there isn't a `CLOSE-ROUND-BRACKET`, `END-OF-FILE`, or another
-  ; hyperbracket sigil to end it first. However, that purpose alone
-  ; doesn't justify a syntax for commenting out the `DOT`, because the
-  ; hyperbracket sigil's header has to end sometime.
-  ;
-  ; The reason we start wanting to comment out the `DOT` at all is
-  ; because in some contexts, we've used a single occurrence of `DOT`
-  ; to fulfill more than one purpose.
-  ;
-  ; These are the purposes we use `DOT` for and their commenting-out
-  ; design rationales:
-  ;
-  ;   - In a comment sigil, we use `DOT` to end the final hyperbracket
-  ;     sigil and/or signal that we may be supplying a comment
-  ;     operation identifier.
-  ;
-  ;     - This one can't be commented out. The final hyperbracket
-  ;       sigil has to end sometime, and a clearer way to comment out
-  ;       the dot-and-identifier combination would be to wrap it in
-  ;       commented-out parens.
-  ;
-  ;   - In an inline (backslashed) compound token, we use `DOT` to end
-  ;     the final hyperbracket sigil.
-  ;
-  ;     - This one can't be commented out. The final hyperbracket
-  ;       sigil has to end sometime.
-  ;
-  ;   - In a prefix or nameless header, we use `DOT` to end the
-  ;     preceding header and to signal that we may be explicitly
-  ;     designating a prefix operation identifier and/or using `COLON`
-  ;     to designate a precise starting position.
-  ;
-  ;     - This one can be commented out. If it is, the preceding
-  ;       header is still terminated, and this commented-out prefix
-  ;       or nameless header becomes part of the prefacing whitespace
-  ;       that belongs to the next prefix or nameless header.
   
   ; NOTE:
   ;
