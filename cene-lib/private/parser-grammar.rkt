@@ -202,7 +202,12 @@ nonnameless-compound-token-block-after-comment
     hyperbracket-sigil
     nonnameless-compound-token-block-after-comment
   |
-    nonnameless-prefix-or-nameless-header
+    DOT
+    simple-comment-sigil
+    operation-and-header
+    [ws]
+    nonnameless-compound-token-block-after-comment
+  | DOT operation-and-header
     nonnameless-compound-token-block-after-comment
 compound-token-block-after-comment
   : nonnameless-compound-token-block-after-comment
@@ -214,15 +219,6 @@ compound-token
     OPEN-ROUND-BRACKET
     [inactive-comment-sigil]
     compound-token-block-after-comment
-
-nonnameless-prefix-or-nameless-header
-  :
-    DOT
-    simple-comment-sigil
-    operation-and-header
-    [ws]
-    nonnameless-prefix-or-nameless-header
-  | DOT operation-and-header
 
 compound-whitespace
   : BACKSLASH simple-comment-sigil compound-token-inline-after-comment
