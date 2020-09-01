@@ -208,14 +208,16 @@ compound-token
     [inactive-comment-sigil]
     compound-token-block-after-comment
 
-prefix-or-nameless-header
+nonnameless-prefix-or-nameless-header
   :
     DOT
     simple-comment-sigil
     operation-and-header
     [ws]
-    prefix-or-nameless-header
+    nonnameless-prefix-or-nameless-header
   | DOT operation-and-header
+prefix-or-nameless-header
+  : nonnameless-prefix-or-nameless-header
   | header-tokens
 
 compound-whitespace
