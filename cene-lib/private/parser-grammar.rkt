@@ -177,7 +177,16 @@ hyperbracket-sigil
     [simple-comment-sigil]
     operation-and-header
 
-operation-and-header: optional-operation header-tokens
+; NOTE: We could specify `operation-and-header` like this:
+;
+;   operation-and-header: optional-operation header-tokens
+;
+; However, that introduces ambiguities into the grammar. Instead, we
+; allow the operation name (if any) and colon (if any) to be treated
+; as header tokens, and (TODO) we'll process them on a second pass.
+;
+operation-and-header: header-tokens
+
 optional-operation: [ws] [IDENTIFIER [ws]] [COLON]
 
 dotted-compound-token-inline-after-comment
