@@ -97,6 +97,7 @@ header-tokens
 ;   CLOSE-ANGULAR-BRACKET (">")
 ;   DOT (".")
 ;   COLON (":")
+;   HASH ("#")
 
 ; Any nonempty text that does not include carriage return or newline.
 inline-text
@@ -111,7 +112,8 @@ inline-text
       | NEUTRAL-ANGULAR-BRACKET
       | CLOSE-ANGULAR-BRACKET
       | DOT
-      | COLON)+
+      | COLON
+      | HASH)+
 
 any-hyperbracket-sigil-starter
   : OPEN-ANGULAR-BRACKET
@@ -197,7 +199,14 @@ compound-token-inline-after-comment
   | [ws] IDENTIFIER
 nonnameless-compound-token-block-after-comment
   : CLOSE-ROUND-BRACKET
-  | DOT DOT [simple-comment-sigil] compound-token-block-after-comment
+  
+  ; NOTE: In a block, we use `HASH` to end the preceding header and
+  ; designate a tail of the block. This isn't meant to be good for
+  ; anything except commenting out. When we comment it out, the rest
+  ; of the block is commented out too.
+  ;
+  | HASH [simple-comment-sigil] compound-token-block-after-comment
+  
   | hyperbracket-sigil nonnameless-compound-token-block-after-comment
   |
     DOT
@@ -268,18 +277,6 @@ compound-whitespace
   ;       header is still terminated, and this commented-out prefix
   ;       or nameless header becomes part of the prefacing whitespace
   ;       that belongs to the next prefix or nameless header.
-  ;
-  ;   - In a block, we use `DOT DOT` to end the preceding header and
-  ;     designate a tail of the block. This isn't meant to be good for
-  ;     anything except commenting out.
-  ;
-  ;     - This one can be commented out. If it is, the rest of the
-  ;       block is commented out. Essentially, this is *a different
-  ;       way* to comment out a hyperbracket sigil or a prefix or
-  ;       nameless header appearing in a block. The usual way comments
-  ;       out just that one sigil/header while leaving the rest of the
-  ;       block intact, but this way comments out the rest of the
-  ;       block too.
   
   ; NOTE:
   ;

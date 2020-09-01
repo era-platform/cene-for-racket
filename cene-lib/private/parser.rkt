@@ -66,7 +66,8 @@
     ["^" (token 'NEUTRAL-ANGULAR-BRACKET lexeme)]
     [">" (token 'CLOSE-ANGULAR-BRACKET lexeme)]
     ["." (token 'DOT lexeme)]
-    [":" (token 'COLON lexeme)]))
+    [":" (token 'COLON lexeme)]
+    ["#" (token 'HASH lexeme)]))
 
 (define (cene-lexer)
   (define beginningless-lexer (beginningless-cene-lexer))
