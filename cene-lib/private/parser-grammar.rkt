@@ -80,7 +80,7 @@ header-tokens: header-token*
 ;   IDENTIFIER
 ;     (any nonempty text that does not contain space, tab, carriage
 ;     return, newline, backlsash, "/", "(", ")", "<", "^", ">", ".",
-;     or ":")
+;     ":", "|", or "#")
 ;   NEWLINE (matches carriage return, newline, or both in succession)
 ;   BACKSLASH (the \ character)
 ;   SLASH ("/")

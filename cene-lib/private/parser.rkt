@@ -52,7 +52,7 @@
     ; This matches any nonempty text that does not contain the various
     ; other characters we care about here.
     [
-      (+ #/~ #/char-set " \t\r\n\\/()<^>.:")
+      (+ #/~ #/char-set " \t\r\n\\/()<^>.:|#")
       (token 'IDENTIFIER lexeme)]
     
     ; This matches carriage return, newline, or both in succession.
