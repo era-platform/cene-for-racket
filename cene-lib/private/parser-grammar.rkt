@@ -195,10 +195,12 @@ operation-and-header: header-tokens
 ;
 ; We could specify `grouping-or-operation-and-header` like this:
 ;
-;   grouping-or-operation-and-header: [operation-and-header]
+;   grouping-or-operation-and-header
+;     : [ws]
+;     | operation-and-header
 ;
 ; However, that introduces ambiguity into the grammar. Instead, (TODO)
-; we'll process empty headers on a second pass.
+; we'll process whitespace-only headers on a second pass.
 ;
 grouping-or-operation-and-header: operation-and-header
 
