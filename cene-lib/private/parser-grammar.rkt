@@ -52,8 +52,8 @@
 ;     Parendown's "/" notation into a sigil that starts every prefix
 ;     operation. (Here, we change that sigil to ".".) If a block
 ;     doesn't start with a sigiled prefix operation, it represents a
-;     nameless operation instead, which can often have a trivial
-;     semantics like grouping parentheses.
+;     nameless operation instead, which can often be given a trivial
+;     semantics such as grouping parentheses.
 ;
 ;   - We can take this opportunity to make sure our comment syntaxes
 ;     and simple escape sequence syntaxes can incorporate hyperbracket
@@ -61,7 +61,7 @@
 ;     or the escape sequences apply.
 ;
 ;   - By using a more traditional EBNF syntax, we can potentially get
-;     better support more traditional syntax highlighers and code
+;     better support for more traditional syntax highlighers and code
 ;     editors.
 
 
