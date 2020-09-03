@@ -201,12 +201,25 @@ grouping-or-operation-and-header: operation-and-header
 
 prefixes: grouping-or-operation-and-header prefix-sigil*
 
-compound-token-inline-after-piped: IDENTIFIER
+compound-token-inline-after-piped
+  : IDENTIFIER
+  
+  ; This is for writing an escaped close bracket.
+  | CLOSE-MISC-BRACKET
+
 compound-token-inline-after-comment
   : prefixes PIPE compound-token-inline-after-piped
 active-compound-token-inline-after-backslash
   : PIPE compound-token-inline-after-comment
   | compound-token-inline-after-piped
+
+compound-token-backward-after-piped: BACKSLASH
+compound-token-backward-after-comment
+  : prefixes PIPE compound-token-backward-after-piped
+active-compound-token-backward-after-bracket
+  : PIPE compound-token-backward-after-comment
+  | compound-token-backward-after-piped
+
 compound-token-block-after-prefixes
   : CLOSE-MISC-BRACKET
   
@@ -221,6 +234,15 @@ compound-token-block-after-comment
 
 header-token
   : BACKSLASH active-compound-token-inline-after-backslash
+  
+  ; This is for escaping an open bracket. The escape sequence is
+  ; written backwards, like (\ or (|...|\ for instance, but the part
+  ; within the |...| is still written in the usual direction. The
+  ; backwards design makes escaped brackets appear more symmetrical
+  ; and raises the visibility of the open bracket by letting it be
+  ; placed at the very beginning of a line of code.
+  ;
+  | OPEN-MISC-BRACKET active-compound-token-backward-after-bracket
   
   ; TODO: Verify the open and close brackets match up on a second
   ; pass.
@@ -239,6 +261,15 @@ compound-whitespace
     PIPE
     simple-comment-sigil
     compound-token-inline-after-comment
+  
+  ; This is for a commented-out escape of an open bracket. The escape
+  ; sequence is written backwards, like (|//...|\ for instance, but
+  ; the part within the |...| is still written in the usual direction.
+  |
+    OPEN-MISC-BRACKET
+    PIPE
+    simple-comment-sigil
+    compound-token-backward-after-comment
   
   ; TODO: Verify the open and close brackets match up on a second
   ; pass.
