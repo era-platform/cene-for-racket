@@ -79,17 +79,28 @@ header-tokens: header-token*
 ;     and control characters in this.)
 ;   NEWLINE (matches carriage return, newline, or both in succession)
 ;   IDENTIFIER
-;     (any nonempty text that does not contain space, tab, carriage
-;     return, newline, backlsash, ":", "=", "(", ")", "[", "]", "{",
-;     "}", "/", "<", "^", ">", ".", "|", or "#")
+;     (any nonempty text that that contains only letters, digits, "'",
+;     "-", and "_".)
 ;   GRAWLIX
-;     (any colon-delimited text that does not contain whitespace or
-;     colons)
+;     (any colon-delimited text that does not contain colons,
+;     whitespace, or forbidden characters)
 ;   ESCAPED-PUNCTUATION-MARK
-;     ("=" followed by ":", "=", "(", ")", "[", "]", "{", "}", "/",
-;     "<", "^", ">", ".", "|", or "#")
+;     ("=" followed by any of the various punctuation marks we care
+;     about here, any of the ones we allow to be used directly
+;     (`DIRECT-PUNCTUATION-MARK`), and any of the ones we reserve for
+;     future tokenization control)
 ;   OPEN-MISC-BRACKET (an open bracket, namely "(", "[", or "{")
 ;   CLOSE-MISC-BRACKET (a close bracket, namely ")", "]", or "}")
+;   DIRECT-PUNCTUATION-MARK
+;     (a single punctuation mark either that we don't ever intend to
+;     use for tokenization control (namely, the characters "," and ";"
+;     which are too easily confused with "." and ":", the characters
+;     "!" and "?" which are too tinted by sentiment, and the character
+;     "$" which is too region-specific) or that we do intend to use as
+;     a convenient delimiter or escape sequence (namely,
+;     the " character, which is good for delimiting string-like
+;     inputs, and the character "`" which lets us write "\`" as an
+;     escape sequence for a backslash))
 ;   BACKSLASH (the \ character)
 ;   SLASH ("/")
 ;   OPEN-ANGULAR-BRACKET ("<")
@@ -98,6 +109,13 @@ header-tokens: header-token*
 ;   DOT (".")
 ;   PIPE ("|")
 ;   HASH ("#")
+;
+; characters we reserve for future use in controlling tokenization:
+;   % & * + @ ~
+;
+; forbidden characters:
+;   ASCII control characters
+;   for the moment, non-ASCII characters (TODO: Support more Unicode.)
 ;
 ; Thanks to the `GRAWLIX` tokens, we can have DSLs with nicely
 ; symmetrical arrow notations like `(1 :->: 2 :<-: 3)` without having
@@ -228,6 +246,8 @@ compound-token-inline-after-piped
   
   ; This is for writing an escaped close bracket.
   | CLOSE-MISC-BRACKET
+  
+  | DIRECT-PUNCTUATION-MARK
 
 compound-token-inline-after-comment
   : prefixes PIPE compound-token-inline-after-piped
@@ -276,6 +296,7 @@ header-token
   | IDENTIFIER
   | GRAWLIX
   | ESCAPED-PUNCTUATION-MARK
+  | DIRECT-PUNCTUATION-MARK
   | ws
 
 compound-whitespace
