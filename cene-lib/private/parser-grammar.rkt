@@ -78,10 +78,13 @@ header-tokens: header-token*
 ;     (TODO: We should consider including Unicode whitespace, blank,
 ;     and control characters in this.)
 ;   NEWLINE (matches carriage return, newline, or both in succession)
+;   ESCAPED-PUNCTUATION-MARK
+;     ("=" followed by "=", "(", ")", "[", "]", "{", "}", "/", "<",
+;     "^", ">", ".", ":", "|", or "#")
 ;   IDENTIFIER
 ;     (any nonempty text that does not contain space, tab, carriage
-;     return, newline, backlsash, "(", ")", "[", "]", "{", "}", "/",
-;     "<", "^", ">", ".", ":", "|", or "#")
+;     return, newline, backlsash, "=", "(", ")", "[", "]", "{", "}",
+;     "/", "<", "^", ">", ".", ":", "|", or "#")
 ;   OPEN-MISC-BRACKET (an open bracket, namely "(", "[", or "{")
 ;   CLOSE-MISC-BRACKET (a close bracket, namely ")", "]", or "}")
 ;   BACKSLASH (the \ character)
@@ -100,6 +103,7 @@ header-tokens: header-token*
 inline-text-token
   : INLINE-WHITESPACE
   | IDENTIFIER
+  | ESCAPED-PUNCTUATION-MARK
   | OPEN-MISC-BRACKET
   | CLOSE-MISC-BRACKET
   | BACKSLASH
@@ -203,6 +207,7 @@ prefixes: grouping-or-operation-and-header prefix-sigil*
 
 compound-token-inline-after-piped
   : IDENTIFIER
+  | ESCAPED-PUNCTUATION-MARK
   
   ; This is for writing an escaped close bracket.
   | CLOSE-MISC-BRACKET

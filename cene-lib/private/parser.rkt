@@ -52,10 +52,17 @@
     ; This matches carriage return, newline, or both in succession.
     [(or (seq "\r" #/? "\n") "\n") (token 'NEWLINE lexeme)]
     
-    ; This matches any nonempty text that does not contain the various
-    ; other characters we care about here.
+    ; This matches "=" followed by any of the various punctuation
+    ; marks we care about here.
     [
-      (+ #/~ #/char-set " \t\r\n()[]{}\\/<^>.:|#")
+      (seq "=" #/char-set "=()[]{}\\/<^>.:|#")
+      (token 'ESCAPED-PUNCTUATION-MARK lexeme)]
+    
+    ; This matches any nonempty text that does not contain any of the
+    ; various whitespace characters and punctuation marks we care
+    ; about here.
+    [
+      (+ #/~ #/char-set " \t\r\n=()[]{}\\/<^>.:|#")
       (token 'IDENTIFIER lexeme)]
     
     ; This matches an open bracket.
