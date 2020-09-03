@@ -60,8 +60,8 @@
     
     ["\\" (token 'BACKSLASH lexeme)]
     ["/" (token 'SLASH lexeme)]
-    ["(" (token 'OPEN-ROUND-BRACKET lexeme)]
-    [")" (token 'CLOSE-ROUND-BRACKET lexeme)]
+    [(char-set "([{") (token 'OPEN-MISC-BRACKET lexeme)]
+    [(char-set ")]}") (token 'CLOSE-MISC-BRACKET lexeme)]
     ["<" (token 'OPEN-ANGULAR-BRACKET lexeme)]
     ["^" (token 'NEUTRAL-ANGULAR-BRACKET lexeme)]
     [">" (token 'CLOSE-ANGULAR-BRACKET lexeme)]

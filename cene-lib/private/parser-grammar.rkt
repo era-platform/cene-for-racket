@@ -84,8 +84,8 @@ header-tokens: header-token*
 ;   NEWLINE (matches carriage return, newline, or both in succession)
 ;   BACKSLASH (the \ character)
 ;   SLASH ("/")
-;   OPEN-ROUND-BRACKET ("(")
-;   CLOSE-ROUND-BRACKET (")")
+;   OPEN-MISC-BRACKET ("(", "[", or "{")
+;   CLOSE-MISC-BRACKET (")", "]", or "}")
 ;   OPEN-ANGULAR-BRACKET ("<")
 ;   NEUTRAL-ANGULAR-BRACKET ("^")
 ;   CLOSE-ANGULAR-BRACKET (">")
@@ -102,8 +102,8 @@ inline-text-token
   | IDENTIFIER
   | BACKSLASH
   | SLASH
-  | OPEN-ROUND-BRACKET
-  | CLOSE-ROUND-BRACKET
+  | OPEN-MISC-BRACKET
+  | CLOSE-MISC-BRACKET
   | OPEN-ANGULAR-BRACKET
   | NEUTRAL-ANGULAR-BRACKET
   | CLOSE-ANGULAR-BRACKET
@@ -208,7 +208,7 @@ active-compound-token-inline-after-backslash
   : PIPE compound-token-inline-after-comment
   | compound-token-inline-after-piped
 compound-token-block-after-prefixes
-  : CLOSE-ROUND-BRACKET
+  : CLOSE-MISC-BRACKET
   
   ; NOTE: In a block, we use `HASH` to end the preceding header and
   ; designate a tail of the block. This isn't meant to be good for
@@ -221,10 +221,14 @@ compound-token-block-after-comment
 
 header-token
   : BACKSLASH active-compound-token-inline-after-backslash
+  
+  ; TODO: Verify the open and close brackets match up on a second
+  ; pass.
   |
-    OPEN-ROUND-BRACKET
+    OPEN-MISC-BRACKET
     [inactive-comment-sigil]
     compound-token-block-after-comment
+  
   | IDENTIFIER
   | COLON
   | ws
@@ -235,8 +239,11 @@ compound-whitespace
     PIPE
     simple-comment-sigil
     compound-token-inline-after-comment
+  
+  ; TODO: Verify the open and close brackets match up on a second
+  ; pass.
   |
-    OPEN-ROUND-BRACKET
+    OPEN-MISC-BRACKET
     active-comment-sigil
     compound-token-block-after-comment
   
