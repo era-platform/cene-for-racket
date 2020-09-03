@@ -157,13 +157,14 @@ simple-comment-sigil: SLASH SLASH
 
 active-comment-sigil
   : simple-comment-sigil
-  | SLASH piped-comment-sigil
+  | SLASH PIPE comment-sigil-after-comment
 
 ; NOTE: We allow our more sophisticated commenting-out operations to
 ; be commented out themselves.
-inactive-comment-sigil: SLASH simple-comment-sigil piped-comment-sigil
+inactive-comment-sigil
+  : SLASH PIPE simple-comment-sigil comment-sigil-after-comment
 
-piped-comment-sigil: PIPE prefixes PIPE SLASH
+comment-sigil-after-comment: prefixes PIPE SLASH
 
 prefix-sigil-starter
   : DOT
@@ -200,9 +201,12 @@ grouping-or-operation-and-header: operation-and-header
 
 prefixes: grouping-or-operation-and-header prefix-sigil*
 
+compound-token-inline-after-piped: IDENTIFIER
 compound-token-inline-after-comment
-  : PIPE prefixes PIPE compound-token-inline-after-comment
-  | IDENTIFIER
+  : prefixes PIPE compound-token-inline-after-piped
+active-compound-token-inline-after-backslash
+  : PIPE compound-token-inline-after-comment
+  | compound-token-inline-after-piped
 compound-token-block-after-prefixes
   : CLOSE-ROUND-BRACKET
   
@@ -216,7 +220,7 @@ compound-token-block-after-comment
   : prefixes compound-token-block-after-prefixes
 
 header-token
-  : BACKSLASH compound-token-inline-after-comment
+  : BACKSLASH active-compound-token-inline-after-backslash
   |
     OPEN-ROUND-BRACKET
     [inactive-comment-sigil]
@@ -226,7 +230,11 @@ header-token
   | ws
 
 compound-whitespace
-  : BACKSLASH simple-comment-sigil compound-token-inline-after-comment
+  :
+    BACKSLASH
+    PIPE
+    simple-comment-sigil
+    compound-token-inline-after-comment
   |
     OPEN-ROUND-BRACKET
     active-comment-sigil
