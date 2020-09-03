@@ -78,13 +78,16 @@ header-tokens: header-token*
 ;     (TODO: We should consider including Unicode whitespace, blank,
 ;     and control characters in this.)
 ;   NEWLINE (matches carriage return, newline, or both in succession)
-;   ESCAPED-PUNCTUATION-MARK
-;     ("=" followed by "=", "(", ")", "[", "]", "{", "}", "/", "<",
-;     "^", ">", ".", ":", "|", or "#")
 ;   IDENTIFIER
 ;     (any nonempty text that does not contain space, tab, carriage
-;     return, newline, backlsash, "=", "(", ")", "[", "]", "{", "}",
-;     "/", "<", "^", ">", ".", ":", "|", or "#")
+;     return, newline, backlsash, ":", "=", "(", ")", "[", "]", "{",
+;     "}", "/", "<", "^", ">", ".", "|", or "#")
+;   GRAWLIX
+;     (any colon-delimited text that does not contain whitespace or
+;     colons)
+;   ESCAPED-PUNCTUATION-MARK
+;     ("=" followed by ":", "=", "(", ")", "[", "]", "{", "}", "/",
+;     "<", "^", ">", ".", "|", or "#")
 ;   OPEN-MISC-BRACKET (an open bracket, namely "(", "[", or "{")
 ;   CLOSE-MISC-BRACKET (a close bracket, namely ")", "]", or "}")
 ;   BACKSLASH (the \ character)
@@ -93,9 +96,17 @@ header-tokens: header-token*
 ;   NEUTRAL-ANGULAR-BRACKET ("^")
 ;   CLOSE-ANGULAR-BRACKET (">")
 ;   DOT (".")
-;   COLON (":")
 ;   PIPE ("|")
 ;   HASH ("#")
+;
+; Thanks to the `GRAWLIX` tokens, we can have DSLs with nicely
+; symmetrical arrow notations like `(1 :->: 2 :<-: 3)` without having
+; to first parse `>` and `<` according to their hyperbracket-related
+; purposes, flatten that parse result into a string again, and
+; re-tokenize. If a DSL does care to go to all that trouble, it
+; potentially can get `(1 -> 2 <- 3)` to work, but it'll probably be
+; pretty inefficient.
+
 
 ; Any token other than `BEGINNING-OF-FILE`, `END-OF-FILE`, and
 ; `NEWLINE`.
@@ -103,6 +114,7 @@ header-tokens: header-token*
 inline-text-token
   : INLINE-WHITESPACE
   | IDENTIFIER
+  | GRAWLIX
   | ESCAPED-PUNCTUATION-MARK
   | OPEN-MISC-BRACKET
   | CLOSE-MISC-BRACKET
@@ -112,7 +124,6 @@ inline-text-token
   | NEUTRAL-ANGULAR-BRACKET
   | CLOSE-ANGULAR-BRACKET
   | DOT
-  | COLON
   | PIPE
   | HASH
 
@@ -182,11 +193,16 @@ prefix-sigil
 ;
 ; We could specify `operation-and-header` like this:
 ;
-;   operation-and-header: [ws] [IDENTIFIER [ws]] [COLON] header-tokens
+;   operation-and-header
+;     : [ws] [IDENTIFIER [ws]] [EMPTY-GRAWLIX] header-tokens
 ;
-; However, that introduces ambiguity into the grammar. Instead, we
-; allow the operation name (if any) and colon (if any) to be treated
-; as header tokens, and (TODO) we'll process them on a second pass.
+; In this case, `EMPTY-GRAWLIX` would match the specific grawlix `::`,
+; which serves the purpose of a simple delimiter.
+;
+; However, that specification introduces ambiguity into the grammar.
+; Instead, we allow the operation name (if any) and grawlix delimiter
+; (if any) to be treated as header tokens, and (TODO) we'll process
+; them on a second pass.
 ;
 operation-and-header: header-tokens
 
@@ -207,6 +223,7 @@ prefixes: grouping-or-operation-and-header prefix-sigil*
 
 compound-token-inline-after-piped
   : IDENTIFIER
+  | GRAWLIX
   | ESCAPED-PUNCTUATION-MARK
   
   ; This is for writing an escaped close bracket.
@@ -257,7 +274,8 @@ header-token
     compound-token-block-after-comment
   
   | IDENTIFIER
-  | COLON
+  | GRAWLIX
+  | ESCAPED-PUNCTUATION-MARK
   | ws
 
 compound-whitespace
@@ -285,10 +303,11 @@ compound-whitespace
   
   ; NOTE:
   ;
-  ; We've thought about having a clause in here to comment out colons:
+  ; We've thought about having a clause in here to comment out
+  ; grawlixes:
   ;
-  ;   | COLON simple-comment-sigil
+  ;   | GRAWLIX simple-comment-sigil
   ;
-  ; However, there's not much point to this. A standalone colon can be
-  ; commented out by wrapping it in parens and commenting out the
+  ; However, there's not much point to this. A standalone grawlix can
+  ; be commented out by wrapping it in parens and commenting out the
   ; parens.

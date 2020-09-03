@@ -23,7 +23,7 @@
 
 (require #/only-in brag/support token)
 (require #/only-in br-parser-tools/lex char-set lexeme lexer-src-pos)
-(require #/only-in br-parser-tools/lex-sre + ~ ? or seq)
+(require #/only-in br-parser-tools/lex-sre + ~ ? * or seq)
 
 (require #/only-in lathe-comforts dissect fn mat)
 
@@ -52,18 +52,37 @@
     ; This matches carriage return, newline, or both in succession.
     [(or (seq "\r" #/? "\n") "\n") (token 'NEWLINE lexeme)]
     
-    ; This matches "=" followed by any of the various punctuation
-    ; marks we care about here.
-    [
-      (seq "=" #/char-set "=()[]{}\\/<^>.:|#")
-      (token 'ESCAPED-PUNCTUATION-MARK lexeme)]
-    
     ; This matches any nonempty text that does not contain any of the
     ; various whitespace characters and punctuation marks we care
     ; about here.
+    ;
+    ; TODO: Only include code points that are assigned in Unicode and
+    ; are neither whitespace nor Pattern_Syntax.
+    ;
     [
-      (+ #/~ #/char-set " \t\r\n=()[]{}\\/<^>.:|#")
+      (+ #/~ #/char-set " \t\r\n=:()[]{}\\/<^>.|#")
       (token 'IDENTIFIER lexeme)]
+    
+    ; This matches any colon-delimited text that does not contain
+    ; whitespace or colons.
+    ;
+    ; TODO: Include Unicode whitespace. For security, prefer text that
+    ; doesn't mix scripts, perhaps by requiring each segment of text
+    ; between Pattern_Syntax characters to conform to at least one
+    ; known-good combination of scripts.
+    ;
+    [
+      (seq ":" (* #/~ #/char-set " \t\r\n:") ":")
+      (token 'GRAWLIX lexeme)]
+    
+    ; This matches "=" followed by any of the various punctuation
+    ; marks we care about here.
+    ;
+    ; TODO: Include non-ASCII Unicode Pattern_Syntax characters here.
+    ;
+    [
+      (seq "=" #/char-set "=:()[]{}\\/<^>.|#")
+      (token 'ESCAPED-PUNCTUATION-MARK lexeme)]
     
     ; This matches an open bracket.
     ;
@@ -83,7 +102,6 @@
     ["^" (token 'NEUTRAL-ANGULAR-BRACKET lexeme)]
     [">" (token 'CLOSE-ANGULAR-BRACKET lexeme)]
     ["." (token 'DOT lexeme)]
-    [":" (token 'COLON lexeme)]
     ["|" (token 'PIPE lexeme)]
     ["#" (token 'HASH lexeme)]))
 
