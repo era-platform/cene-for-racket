@@ -49,19 +49,29 @@
     ;
     [(+ #/char-set " \t") (token 'INLINE-WHITESPACE lexeme)]
     
-    ; This matches any nonempty text that does not contain the various
-    ; other characters we care about here.
-    [
-      (+ #/~ #/char-set " \t\r\n\\/()<^>.:|#")
-      (token 'IDENTIFIER lexeme)]
-    
     ; This matches carriage return, newline, or both in succession.
     [(or (seq "\r" #/? "\n") "\n") (token 'NEWLINE lexeme)]
     
+    ; This matches any nonempty text that does not contain the various
+    ; other characters we care about here.
+    [
+      (+ #/~ #/char-set " \t\r\n()[]{}\\/<^>.:|#")
+      (token 'IDENTIFIER lexeme)]
+    
+    ; This matches an open bracket.
+    ;
+    ; TODO: Include other Unicode open brackets.
+    ;
+    [(char-set "([{") (token 'OPEN-MISC-BRACKET lexeme)]
+    
+    ; This matches a close bracket.
+    ;
+    ; TODO: Include other Unicode close brackets.
+    ;
+    [(char-set ")]}") (token 'CLOSE-MISC-BRACKET lexeme)]
+    
     ["\\" (token 'BACKSLASH lexeme)]
     ["/" (token 'SLASH lexeme)]
-    [(char-set "([{") (token 'OPEN-MISC-BRACKET lexeme)]
-    [(char-set ")]}") (token 'CLOSE-MISC-BRACKET lexeme)]
     ["<" (token 'OPEN-ANGULAR-BRACKET lexeme)]
     ["^" (token 'NEUTRAL-ANGULAR-BRACKET lexeme)]
     [">" (token 'CLOSE-ANGULAR-BRACKET lexeme)]

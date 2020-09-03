@@ -77,15 +77,15 @@ header-tokens: header-token*
 ;     (any nonempty text consisting of only space and tab)
 ;     (TODO: We should consider including Unicode whitespace, blank,
 ;     and control characters in this.)
+;   NEWLINE (matches carriage return, newline, or both in succession)
 ;   IDENTIFIER
 ;     (any nonempty text that does not contain space, tab, carriage
-;     return, newline, backlsash, "/", "(", ")", "<", "^", ">", ".",
-;     ":", "|", or "#")
-;   NEWLINE (matches carriage return, newline, or both in succession)
+;     return, newline, backlsash, "(", ")", "[", "]", "{", "}", "/",
+;     "<", "^", ">", ".", ":", "|", or "#")
+;   OPEN-MISC-BRACKET (an open bracket, namely "(", "[", or "{")
+;   CLOSE-MISC-BRACKET (a close bracket, namely ")", "]", or "}")
 ;   BACKSLASH (the \ character)
 ;   SLASH ("/")
-;   OPEN-MISC-BRACKET ("(", "[", or "{")
-;   CLOSE-MISC-BRACKET (")", "]", or "}")
 ;   OPEN-ANGULAR-BRACKET ("<")
 ;   NEUTRAL-ANGULAR-BRACKET ("^")
 ;   CLOSE-ANGULAR-BRACKET (">")
@@ -100,10 +100,10 @@ header-tokens: header-token*
 inline-text-token
   : INLINE-WHITESPACE
   | IDENTIFIER
-  | BACKSLASH
-  | SLASH
   | OPEN-MISC-BRACKET
   | CLOSE-MISC-BRACKET
+  | BACKSLASH
+  | SLASH
   | OPEN-ANGULAR-BRACKET
   | NEUTRAL-ANGULAR-BRACKET
   | CLOSE-ANGULAR-BRACKET
