@@ -69,9 +69,9 @@
   assocs->table-if-mutually-unique dex-immutable-string dex-trivial
   getfx-is-eq-by-dex ordering-eq)
 (require #/only-in interconfection/order/base
-  dex? dex-default dexed-first-order/c dex-give-up dex-name dex-table
-  dex-tuple fuse-by-merge getfx-call-fuse getfx-dexed-of
-  getfx-is-in-dex getfx-name-of getfx-table-map-fuse
+  dex? dex-default dexed? dexed/c dexed-first-order/c dex-give-up
+  dex-name dex-table dex-tuple fuse-by-merge getfx-call-fuse
+  getfx-dexed-of getfx-is-in-dex getfx-name-of getfx-table-map-fuse
   make-fusable-function merge-by-dex merge-table name? ordering-eq?
   table? table-empty? table-empty table-get table-shadow table-v-of)
 (require #/prefix-in unsafe: #/only-in interconfection/order/unsafe
@@ -105,10 +105,15 @@
   (getmaybefx-bind effects #/fn intermediate
   #/getfx-done #/just #/func intermediate))
 
+; TODO: Consider putting this into `interconfection/order`.
+(define/contract (dexed-name name)
+  (-> name? dexed?)
+  (just-value #/pure-run-getfx #/getfx-dexed-of (dex-name) name))
+
 ; TODO: Put this into the `interconfection/order` module or something
 ; (maybe even `interconfection/order/base`).
 (define/contract (table-kv-map table kv-to-v)
-  (-> table? (-> name? any/c any/c) table?)
+  (-> table? (-> dexed? any/c any/c) table?)
   (mat
     (pure-run-getfx #/getfx-table-map-fuse table
       (fuse-by-merge #/merge-table #/merge-by-dex #/dex-give-up)
@@ -134,7 +139,7 @@
 ; do about unaligned input tables.
 ;
 (define/contract (table-kv-zip-map-aligned a-table b-table kvv-to-v)
-  (-> table? table? (-> any/c any/c any/c) table?)
+  (-> table? table? (-> dexed? any/c any/c any/c) table?)
   (table-kv-map a-table #/fn k a
     (dissect (table-get k b-table) (just b)
     #/kvv-to-v k a b)))
@@ -183,13 +188,14 @@
   sink-struct
   'sink-struct (current-inspector) (auto-write) (#:gen gen:sink))
 
+
 (define/contract (make-sink-struct tags projs)
   (-> pair? (or/c (list) pair?) sink-struct?)
   ; NOTE: For efficiency, we don't do any checking here. The value of
-  ; `tags` should be a nonempty list of Interconfection name values,
-  ; beginning with the main tag name of the struct and then listing
-  ; the names of the projections. The projections' names should have
-  ; no duplicates. The value of `projs` should be a list of Cene
+  ; `tags` should be a nonempty list, beginning with the main tag
+  ; entry of the struct and then listing Interconfection dexed name
+  ; values designating the projections. The projection names should
+  ; have no duplicates. The value of `projs` should be a list of Cene
   ; values which are the values of the projections.
   (sink-struct tags projs))
 
@@ -425,6 +431,10 @@
   sink-dex
   sink-dex/t
   'sink-dex (current-inspector) (auto-write) (#:gen gen:sink))
+(define-imitation-simple-struct
+  (sink-dexed? sink-dexed-dexed)
+  sink-dexed
+  'sink-dexed (current-inspector) (auto-write) (#:gen gen:sink))
 (define-syntax-and-value-imitation-simple-struct
   (sink-name? sink-name-name)
   sink-name
@@ -560,17 +570,17 @@
   (-> immutable-string? sink-name?)
   (sink-name #/name-of-racket-string string))
 
-(define/contract (sink-table-get-maybe table name)
-  (-> sink-table? sink-name? #/maybe/c sink?)
-  (dissect table (sink-table table)
-  #/dissect name (sink-name name)
-  #/table-get name table))
+(define/contract (sink-table-get-maybe key table)
+  (-> sink-dexed? sink-table? #/maybe/c sink?)
+  (dissect key (sink-dexed key)
+  #/dissect table (sink-table table)
+  #/table-get key table))
 
-(define/contract (sink-table-put-maybe table name maybe-value)
-  (-> sink-table? sink-name? (maybe/c sink?) sink-table?)
-  (dissect table (sink-table table)
-  #/dissect name (sink-name name)
-  #/sink-table #/table-shadow name maybe-value table))
+(define/contract (sink-table-put-maybe key maybe-value table)
+  (-> sink-dexed? (maybe/c sink?) sink-table? sink-table?)
+  (dissect key (sink-dexed key)
+  #/dissect table (sink-table table)
+  #/sink-table #/table-shadow key maybe-value table))
 
 
 ; NOTE: We treat every two tag caches as `ordering-eq`. Cene
@@ -898,7 +908,7 @@
       #/cenegetfx-done #/make-sink-struct
         (cons main-tag-entry
         #/list-map projs #/dissectfn (list proj-name proj-cexpr)
-          proj-name)
+          (dexed-name proj-name))
         vals))
   ])
 
@@ -956,9 +966,6 @@
   ])
 
 (struct-easy (cexpr-opaque-fn-fault fault-param param body)
-  (#:guard-easy
-    (when (names-have-duplicate? #/list fault-param param)
-      (error "Expected fault-param and param to be mutually unique")))
   
   #:other
   
@@ -969,7 +976,7 @@
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-opaque-fn-fault fault-param param body)
-        (error "Expected this to be a cexpr-opaque-fn")
+        (error "Expected this to be a cexpr-opaque-fn-fault")
       #/-has-free-vars? body
       #/table-shadow fault-param (just #/trivial)
       #/table-shadow param (just #/trivial)
@@ -977,7 +984,7 @@
     
     (define (cenegetfx-cexpr-eval-in-env caller-fault this env)
       (expect this (cexpr-opaque-fn-fault fault-param param body)
-        (error "Expected this to be a cexpr-opaque-fn")
+        (error "Expected this to be a cexpr-opaque-fn-fault")
       #/cenegetfx-done
         (sink-opaque-fn-fault #/dissectfn (list explicit-fault arg)
           (-eval-in-env caller-fault body
@@ -1183,7 +1190,7 @@
 (define/contract (sink-cexpr-var name)
   (-> sink-name? sink-cexpr?)
   (dissect name (sink-name name)
-  #/sink-cexpr #/cexpr-var name))
+  #/sink-cexpr #/cexpr-var #/dexed-name name))
 
 (define/contract (sink-cexpr-reified result)
   (-> sink? sink-cexpr?)
@@ -1193,8 +1200,8 @@
 (define/contract (names-have-duplicate? names)
   (-> (listof name?) boolean?)
   (nothing?
-  #/assocs->table-if-mutually-unique #/list-map names #/fn name
-    (cons name #/trivial)))
+    (assocs->table-if-mutually-unique #/list-map names #/fn name
+      (cons (dexed-name name) #/trivial))))
 
 (define/contract (sink-names-have-duplicate? names)
   (-> (listof sink-name?) boolean?)
@@ -1246,14 +1253,18 @@
   (-> sink-name? sink-name? sink-cexpr? sink-cexpr?)
   (dissect fault-param (sink-name fault-param)
   #/dissect param (sink-name param)
+  #/if (names-have-duplicate? #/list fault-param param)
+    (error "Expected fault-param and param to be mutually unique")
   #/dissect body (sink-cexpr body)
-  #/sink-cexpr #/cexpr-opaque-fn-fault fault-param param body))
+  #/sink-cexpr
+    (cexpr-opaque-fn-fault (dexed-name fault-param) (dexed-name param)
+      body)))
 
 (define/contract (sink-cexpr-opaque-fn param body)
   (-> sink-name? sink-cexpr? sink-cexpr?)
   (dissect param (sink-name param)
   #/dissect body (sink-cexpr body)
-  #/sink-cexpr #/cexpr-opaque-fn param body))
+  #/sink-cexpr #/cexpr-opaque-fn (dexed-name param) body))
 
 ; TODO: This is only used in `cene/private/essentials`. See if this
 ; should be moved over there. It seems like it should be so core to
@@ -1270,7 +1281,7 @@
   #/sink-cexpr #/cexpr-let
     (list-map bindings
     #/dissectfn (list (sink-name var) (sink-cexpr val))
-      (list var val))
+      (list (dexed-name var) val))
     body))
 
 (define/contract
@@ -2123,8 +2134,8 @@
   (dissect dsl (concurrent-dsl state/c sink-extfx-state-split-table)
   #/sink-extfx-state-split-table state table on-err then))
 
-(define first-key (name-of-racket-string "first"))
-(define rest-key (name-of-racket-string "rest"))
+(define first-key (dexed-name #/name-of-racket-string "first"))
+(define rest-key (dexed-name #/name-of-racket-string "rest"))
 
 (define/contract
   (sink-extfx-concurrent-dsl-state-split-list dsl state n on-err then)
@@ -2795,9 +2806,10 @@
     
     cssm-clamor-err))
 
-(define (cenegetfx-tag-direct metadata)
+(define/contract (cenegetfx-tag-direct metadata)
   (-> core-sink-struct-metadata?
-    (cons/c sink-innate-main-tag-entry? #/listof name?))
+    (cenegetfx/c
+      (cons/c sink-innate-main-tag-entry? #/listof #/dexed/c name?)))
   (dissect metadata
     (core-sink-struct-metadata
       tag-cache-key main-tag-string proj-strings)
@@ -2805,26 +2817,29 @@
   #/dissectfn (cene-root-info ds lang-impl-qualify-root tag-cache)
   #/cenegetfx-done #/hash-ref tag-cache tag-cache-key))
 
-(define (cenegetfx-tag metadata then)
+(define/contract (cenegetfx-tag metadata then)
   (->
     core-sink-struct-metadata?
-    (-> (cons/c sink-innate-main-tag-entry? #/listof name?)
+    (-> (cons/c sink-innate-main-tag-entry? #/listof #/dexed/c name?)
       cenegetfx?)
     cenegetfx?)
   (cenegetfx-bind (cenegetfx-tag-direct metadata) #/fn tag
   #/then tag))
 
-(define (sink-extfx-tag metadata then)
+(define/contract (sink-extfx-tag metadata then)
   (->
     core-sink-struct-metadata?
-    (-> (cons/c sink-innate-main-tag-entry? #/listof name?)
+    (-> (cons/c sink-innate-main-tag-entry? #/listof #/dexed/c name?)
       sink-extfx?)
     sink-extfx?)
   (sink-extfx-run-cenegetfx (cenegetfx-tag-direct metadata) #/fn tag
   #/then tag))
 
-(define (make-cene-root-info ds lang-impl-qualify-root tags)
-  (-> dspace? authorized-name? (listof core-sink-struct-metadata?)
+(define/contract (make-cene-root-info ds lang-impl-qualify-root tags)
+  (->
+    dspace?
+    sink-authorized-name?
+    (listof core-sink-struct-metadata?)
     (cene-root-info/c))
   (cene-root-info
     ds
@@ -2845,7 +2860,7 @@
           (list-map proj-strings #/fn proj-string
             (dissect (sink-name-for-string #/sink-string proj-string)
               (sink-name name)
-              name)))))))
+              (dexed-name name))))))))
 
 (define/contract (sink-list->cenegetfx-maybe-racket sink-list)
   (-> sink? #/cenegetfx/c #/maybe/c #/listof sink?)

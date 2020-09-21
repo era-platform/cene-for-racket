@@ -60,7 +60,7 @@
 (require #/only-in interconfection/order/base
   cline-by-dex cline-default cline-fix cline-give-up cline-opaque
   cline-result? cline-tuple dex? dex-by-own-method dex-cline
-  dex-default dex-dex dexed? dexed-get-dex dexed-get-name
+  dex-default dex-dex dexed? dexed/c dexed-get-dex dexed-get-name
   dexed-get-value dex-fix dex-fuse dex-give-up dex-merge dex-name
   dex-opaque dex-table dex-tuple fusable-function? fuse-by-merge
   fuse-fix fuse-fusable-function fuse-opaque fuse-table fuse-tuple
@@ -286,10 +286,6 @@
   sink-internals-dummy/t
   'sink-internals-dummy (current-inspector) (auto-write)
   (#:gen gen:sink))
-(define-imitation-simple-struct
-  (sink-dexed? dexed)
-  sink-dexed
-  'sink-dexed (current-inspector) (auto-write) (#:gen gen:sink))
 (define-syntax-and-value-imitation-simple-struct
   (sink-cline? sink-cline-cline)
   sink-cline
@@ -650,13 +646,15 @@
   #/expect
     (assocs->table-if-mutually-unique
     #/list-map projs #/dissectfn (list string string-name name)
-      (cons string-name name))
+      ; TODO: Consider making this a table from strings to names, now
+      ; that tables can have strings as keys.
+      (cons (dexed-name string-name) name))
     (just proj-string-to-name)
     (cenegetfx-cene-err fault "Expected a defined struct metadata entry to have a projection list with mutually unique strings")
   #/expect
     (assocs->table-if-mutually-unique
     #/list-map projs #/dissectfn (list string string-name name)
-      (cons name string))
+      (cons (dexed-name name) string))
     (just proj-name-to-string)
     (cenegetfx-cene-err fault "Expected a defined struct metadata entry to have a projection list with mutually unique names")
   #/cenegetfx-done #/cene-struct-metadata
@@ -664,7 +662,7 @@
     maybe-i-am-a-user
     (cons main-tag-entry
       (list-map projs #/dissectfn (list string string-name name)
-        name))
+        (dexed-name name)))
     proj-string-to-name proj-name-to-string))
 
 (define/contract
@@ -723,7 +721,7 @@
 
 (define/contract (struct-metadata-tags metadata)
   (-> cene-struct-metadata?
-    (cons/c sink-innate-main-tag-entry? #/listof name?))
+    (cons/c sink-innate-main-tag-entry? #/listof #/dexed/c name?))
   (dissect metadata (cene-struct-metadata _ _ tags _ _)
     tags))
 
@@ -736,13 +734,13 @@
 
 ; Sorts `proj-tags` and `vals` to put them in a normalized order.
 (define/contract (normalize-proj-tags-and-vals proj-tags vals)
-  (->i ([proj-tags (listof name?)] [vals list?])
+  (->i ([proj-tags (listof #/dexed/c name?)] [vals list?])
     #:pre (proj-tags vals) (= (length proj-tags) (length vals))
-    [_ (list/c (listof name?) list?)])
+    [_ (list/c (listof #/dexed/c name?) list?)])
   (expect
     (assocs->table-if-mutually-unique #/map cons proj-tags vals)
     (just projs-table)
-    (error "Expected proj-tags to be a list of mutually unique names")
+    (error "Expected proj-tags to be a list of mutually unique dexed names")
   #/w- entries (unsafe:table->sorted-list projs-table)
   #/list
     (list-map entries #/dissectfn (list proj-tag val) proj-tag)
@@ -751,12 +749,13 @@
 (define/contract (normalize-tags-and-vals tags vals)
   (->i
     (
-      [tags (cons/c sink-innate-main-tag-entry? #/listof name?)]
+      [tags
+        (cons/c sink-innate-main-tag-entry? #/listof #/dexed/c name?)]
       [vals list?])
     #:pre (tags vals) (= (length tags) (add1 #/length vals))
     [_
       (list/c
-        (cons/c sink-innate-main-tag-entry? #/listof name?)
+        (cons/c sink-innate-main-tag-entry? #/listof #/dexed/c name?)
         list?)])
   (dissect tags (cons main-tag-entry proj-tags)
   #/dissect (normalize-proj-tags-and-vals proj-tags vals)
@@ -767,7 +766,8 @@
   (sink-struct-op-autoname tags fields name-tag autoname-field-method)
   (->i
     (
-      [tags (cons/c sink-innate-main-tag-entry? #/listof name?)]
+      [tags
+        (cons/c sink-innate-main-tag-entry? #/listof #/dexed/c name?)]
       [fields list?]
       [name-tag symbol?]
       [autoname-field-method (-> any/c any/c)])
@@ -785,7 +785,8 @@
         (just-value #/pure-run-getfx #/getfx-name-of
           (dex-sink-innate-main-tag-entry)
           main-tag-entry)
-        proj-tags)
+        (list-map proj-tags #/fn proj-tag
+          (dexed-get-value proj-tag)))
       (dissectfn (unsafe:name rep) rep))
     fields))
 
@@ -793,9 +794,11 @@
   (sink-struct-op-autodex a-tags a-fields b-tags b-fields dex-field)
   (->i
     (
-      [a-tags (cons/c sink-innate-main-tag-entry? #/listof name?)]
+      [a-tags
+        (cons/c sink-innate-main-tag-entry? #/listof #/dexed/c name?)]
       [a-fields list?]
-      [b-tags (cons/c sink-innate-main-tag-entry? #/listof name?)]
+      [b-tags
+        (cons/c sink-innate-main-tag-entry? #/listof #/dexed/c name?)]
       [b-fields list?]
       [dex-field dex?])
     #:pre (a-tags a-fields)
@@ -813,9 +816,13 @@
   #/maybe-ordering-or
     (pure-run-getfx #/getfx-compare-by-dex (dex-name)
       (unsafe:name
-        (list-map a-proj-tags #/dissectfn (unsafe:name tag) tag))
+        (list-map a-proj-tags #/fn tag
+          (dissect (dexed-get-value tag) (unsafe:name tag)
+            tag)))
       (unsafe:name
-        (list-map b-proj-tags #/dissectfn (unsafe:name tag) tag)))
+        (list-map b-proj-tags #/fn tag
+          (dissect (dexed-get-value tag) (unsafe:name tag)
+            tag))))
   #/maybe-compare-aligned-lists a-fields b-fields #/fn a-field b-field
     (pure-run-getfx
       (getfx-compare-by-dex dex-field a-field b-field))))
@@ -824,7 +831,8 @@
   (getfx-sink-struct-is-in tags comparators getfx-is-in-comparator x)
   (->i
     (
-      [tags (cons/c sink-innate-main-tag-entry? #/listof name?)]
+      [tags
+        (cons/c sink-innate-main-tag-entry? #/listof #/dexed/c name?)]
       [comparators list?]
       [getfx-is-in-comparator (-> any/c any/c #/getfx/c boolean?)]
       [x any/c])
@@ -853,7 +861,8 @@
     getfx-compare-by-comparator a b)
   (->i
     (
-      [tags (cons/c sink-innate-main-tag-entry? #/listof name?)]
+      [tags
+        (cons/c sink-innate-main-tag-entry? #/listof #/dexed/c name?)]
       [comparators list?]
       [getfx-is-in-comparator (-> any/c any/c #/getfx/c boolean?)]
       [getfx-compare-by-comparator
@@ -908,8 +917,9 @@
           (error "Expected tags to be a list where the first element was an innate main tag entry"))
         (unless
           (and (list? proj-tags)
-            (list-all proj-tags #/fn tag #/name? tag))
-          (error "Expected tags to be a list where the elements after the first were names"))))
+            (list-all proj-tags #/fn tag
+              (and (dexed? tag) (name? #/dexed-get-value tag))))
+          (error "Expected tags to be a list where the elements after the first were dexed names"))))
     (unless
       (and
         (list? fields)
@@ -963,7 +973,8 @@
                 (just-value #/pure-run-getfx #/getfx-name-of
                   (dex-sink-innate-main-tag-entry)
                   main-tag-entry)
-                proj-tags)
+                (list-map proj-tags #/fn proj-tag
+                  (dexed-get-value proj-tag)))
               (dissectfn (unsafe:name rep) rep))
             field-name-reps)
         #/dissect field-vals (cons field-val field-vals)
@@ -997,7 +1008,8 @@
                   (just-value #/pure-run-getfx #/getfx-name-of
                     (dex-sink-innate-main-tag-entry)
                     main-tag-entry)
-                  proj-tags)
+                  (list-map proj-tags #/fn proj-tag
+                    (dexed-get-value proj-tag)))
                 (dissectfn (unsafe:name rep) rep))
               (list-map field-dexeds
                 (dissectfn (unsafe:dexed dex (unsafe:name rep) val)
@@ -1017,7 +1029,8 @@
 (define/contract (dex-sink-struct tags fields)
   (->i
     (
-      [tags (cons/c sink-innate-main-tag-entry? #/listof name?)]
+      [tags
+        (cons/c sink-innate-main-tag-entry? #/listof #/dexed/c name?)]
       [fields (listof dex?)])
     #:pre (tags fields) (= (length tags) (add1 #/length fields))
     [_ dex?])
@@ -1026,7 +1039,8 @@
 (define/contract (sink-dex-struct tags fields)
   (->i
     (
-      [tags (cons/c sink-innate-main-tag-entry? #/listof name?)]
+      [tags
+        (cons/c sink-innate-main-tag-entry? #/listof #/dexed/c name?)]
       [fields (listof sink-dex?)])
     #:pre (tags fields) (= (length tags) (add1 #/length fields))
     [_ sink-dex?])
@@ -1075,8 +1089,9 @@
           (error "Expected tags to be a list where the first element was an innate main tag entry"))
         (unless
           (and (list? proj-tags)
-            (list-all proj-tags #/fn tag #/name? tag))
-          (error "Expected tags to be a list where the elements after the first were names"))))
+            (list-all proj-tags #/fn tag
+              (and (dexed? tag) (name? #/dexed-get-value tag))))
+          (error "Expected tags to be a list where the elements after the first were dexed names"))))
     (unless
       (and
         (list? fields)
@@ -1362,7 +1377,8 @@
   (->i
     (
       [subject-expr sink-cexpr?]
-      [tags (cons/c sink-innate-main-tag-entry? #/listof name?)]
+      [tags
+        (cons/c sink-innate-main-tag-entry? #/listof #/dexed/c name?)]
       [vars (listof sink-name?)]
       [then-expr sink-cexpr?]
       [else-expr sink-cexpr?])
@@ -1371,9 +1387,10 @@
   (dissect subject-expr (sink-cexpr subject-expr)
   #/dissect then-expr (sink-cexpr then-expr)
   #/dissect else-expr (sink-cexpr else-expr)
-  #/w- vars (list-map vars #/dissectfn (sink-name var) var)
+  #/w- vars
+    (list-map vars #/dissectfn (sink-name var) #/dexed-name var)
   #/sink-cexpr
-  #/cexpr-case subject-expr tags vars then-expr else-expr))
+    (cexpr-case subject-expr tags vars then-expr else-expr)))
 
 (define-syntax-and-value-imitation-simple-struct
   (fix-for-sink-dex-list?
@@ -2166,7 +2183,7 @@
     #/expect
       (assocs->table-if-mutually-unique
         (list-map proj-names #/dissectfn (sink-name proj-name)
-          (cons proj-name (trivial))))
+          (cons (dexed-name proj-name) (trivial))))
       (just proj-names-table)
       (error "Expected the projection strings to be mutually unique")
     #/sink-extfx-fuse
@@ -2999,7 +3016,7 @@
     (cenegetfx-verify-cexpr-struct-args
       fault i-am-a-user main-tag-entry projections)
     (-> sink-fault? sink? sink? sink?
-      (cenegetfx/c #/listof #/list/c name? cexpr?))
+      (cenegetfx/c #/listof #/list/c (dexed/c name?) cexpr?))
     
     (expect (sink-i-am? i-am-a-user) #t
       (cenegetfx-cene-err fault "Expected i-am-a-user to be an authorization witness")
@@ -3022,11 +3039,13 @@
           (cenegetfx-cene-err fault "Expected projections to be an association list with authorized names as keys")
         #/expect v (sink-cexpr v)
           (cenegetfx-cene-err fault "Expected projections to be an association list with expressions as values")
-        #/cenegetfx-done #/list (authorized-name-get-name k) v))
+        #/cenegetfx-done
+          (list (dexed-name #/authorized-name-get-name k) v)))
     #/fn projections
     #/if
       (names-have-duplicate?
-        (list-map projections #/dissectfn (list k v) k))
+        (list-map projections #/dissectfn (list k v)
+          (dexed-get-value k)))
       (cenegetfx-cene-err fault "Expected projections to be an association list with mutually unique names as keys")
     #/cenegetfx-done projections))
   
@@ -3045,7 +3064,7 @@
         sink-qualify?
         sink-text-input-stream?
         sink-innate-main-tag-entry?
-        (listof #/list/c name? cexpr?)
+        (listof #/list/c (dexed/c name?) cexpr?)
         sink-extfx?)
       sink-extfx?)
     
@@ -3084,7 +3103,7 @@
         sink-qualify?
         sink-text-input-stream?
         sink-innate-main-tag-entry?
-        (listof #/list/c name? cexpr?)
+        (listof #/list/c (dexed/c name?) cexpr?)
         sink-extfx?)
       sink-extfx?)
     ; TODO: See if we can avoid computing the qualified names since
@@ -3132,7 +3151,8 @@
               proj-name-located-string))
           (sink-name proj-name)
         #/dissect (id-or-expr->cexpr proj-expr) (sink-cexpr proj-expr)
-        #/next args (cons (list proj-name proj-expr) rev-projs)))
+        #/next args
+          (cons (list (dexed-name proj-name) proj-expr) rev-projs)))
     #/fn projs
     #/then
       unique-name qualify text-input-stream main-tag-entry projs))
@@ -3346,7 +3366,9 @@
           [unique-name sink-authorized-name?]
           [qualify sink-qualify?]
           [text-input-stream sink-text-input-stream?]
-          [tags (cons/c sink-innate-main-tag-entry? #/listof name?)]
+          [tags
+            (cons/c sink-innate-main-tag-entry?
+              (listof #/dexed/c name?))]
           [vars (listof sink-name?)])
         #:pre (tags vars) (= (length tags) (add1 #/length vars))
         [_ sink-extfx?])
@@ -3695,21 +3717,21 @@
   (def-nullary-func! "table-empty" (sink-table #/table-empty))
   
   (def-func-fault! "table-shadow" fault key maybe-val table
-    (expect (sink-name? key) #t
-      (cenegetfx-cene-err fault "Expected key to be a name")
+    (expect (sink-dexed? key) #t
+      (cenegetfx-cene-err fault "Expected key to be a dexed value")
     #/expect (sink-table? table) #t
       (cenegetfx-cene-err fault "Expected table to be a table")
     #/cenegetfx-bind (sink-maybe->cenegetfx-maybe-racket maybe-val)
     #/expectfn (just maybe-val)
       (cenegetfx-cene-err fault "Expected maybe-val to be a nothing or a just")
-    #/cenegetfx-done #/sink-table-put-maybe table key maybe-val))
+    #/cenegetfx-done #/sink-table-put-maybe key maybe-val table))
   
   (def-func-fault! "table-get" fault key table
-    (expect (sink-name? key) #t
-      (cenegetfx-cene-err fault "Expected key to be a name")
+    (expect (sink-dexed? key) #t
+      (cenegetfx-cene-err fault "Expected key to be a dexed value")
     #/expect (sink-table? table) #t
       (cenegetfx-cene-err fault "Expected table to be a table")
-    #/racket-maybe->cenegetfx-sink #/sink-table-get-maybe table key))
+    #/racket-maybe->cenegetfx-sink #/sink-table-get-maybe key table))
   
   (def-func-fault! "getfx-table-map-fuse"
     fault table fuse getfx-key-to-operand
@@ -3725,7 +3747,7 @@
         (getfx-run-cenegetfx rinfo
         #/cenegetfx-bind
           (cenegetfx-sink-call fault getfx-key-to-operand
-            (sink-name k))
+            (sink-dexed k))
         #/fn sink-getfx-result
         #/expect (sink-getfx? sink-getfx-result) #t
           (cenegetfx-cene-err fault "Expected the pure result of a getfx-table-map-fuse body to be a getfx effectful computation")
