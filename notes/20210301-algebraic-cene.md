@@ -62,3 +62,104 @@ I suppose, honestly speaking, the name of a lambda isn't specified yet. Maybe th
 Hmm... This could be the way the entire codebase is translated: Most things are translated into mystery names with some codebase-internals-specific name for clarifying them. Then only certain names are actually clarified, and that set of names to clarify is specified alongside the specification of which part of the codebase to include in the quine. As a (distantly) conservative approximation of the full expressiveness of this idea, we can initially design all our quine backends to require that every type constructed or matched in a quine be fully clarified, except for any that are immediately used for a function call or immediately used to construct an opaque function.
 
 Hmm... That might just leave the question of how clarified the names in the codebase itself are. Perhaps the codebase clarifies its own names the same way.
+
+
+# Strawman for a new language design
+
+Here's an experiment integrating a lot of the ideas we've been thinking about lately. This is a macro definition and a function definition in one. It uses `(~...)` notation to specify non-expression arguments in places where expressions would usually be the default. It defines a function-specific error type. It uses a type system where information in the positive positions of types flows backwards and information in the negative positions flows forwards (compared to the way run time values flow).
+
+(TODO: The recursive call to `list-map` should really use something more integrated like `(~binds-and-formula ...)` so that it can more easily specify the formula's free variables. This means the input to the function would also need to use some integrated operation like `(~~binds-and-formula ...)` so that it could treat the `(~binds-and-formula ...)` directive as a valid input. A side benefit of this is that `(~~binds-and-formula ...)` could allow a `match-lambda`-like series of pattern-matching branches instead of just a single set of forced patterns and a single formula. As a downside, the example would look a bit less informative since the `list-map` macro would essentially have only a single input.)
+
+```
+(define
+  
+  ; (In this language, we use ~ as a prefix for non-expression
+  ; operations that are part of the directly enclosing (...) macro
+  ; call's DSL, like optional arguments or grouping. We use ~~ as a
+  ; prefix for non-expression operations that are part of an enclosing
+  ; degree-2-hyperbracketed macro call's DSL (even if we don't
+  ; actually write the hyperbrackets explicitly).)
+  
+  ; The overall type is `(List b)` for any given `b`. (Macros in this
+  ; language receive all the details of their return type that are in
+  ; positive positions and compute the details that are in negative
+  ; positions. Since `b` is in a positive position in `(List b)`, it's
+  ; part of the information that flows into this macro.)
+  ;
+  ; The basic signature is `(list-map vars-and-lists body)`, where
+  ; `vars-and-lists` is any number of binding sets, bindings, and/or
+  ; identifier-expression juxtapositions with at least one binding
+  ; between them and `body` is a single term.
+  ;
+  ; The signature of `body` is an expression of type `b` with
+  ; additional free variables coming from the variables of
+  ; `vars-and-lists`. (This proceeds to macroexpand the body, which
+  ; determines the signatures of the variables.)
+  ;
+  ; The signature of each list in `vars-and-lists`, given that the
+  ; corresponding variable's signature is an expression of some type
+  ; `a`, is an expression of type `(List a)`.
+  ;
+  (~~the-error-prone (List b)
+    
+    ; (Here we define a constructor, `(mismatched-lengths)`, of errors
+    ; from a `list-map` call. This is specialized to `list-map`;
+    ; another operation with a `(mismatched-lengths)` error
+    ; constructor wouldn't have anything to do with this one.)
+    ;
+    (~case (mismatched-lengths)
+      
+      ; (This string literal, delimited by `("...)`, is
+      ; internationalizable by an ID formed from a combination of
+      ; `list-map` and `mismatched-lengths`.)
+      ;
+      ("Expected the input lists to have the same length.))
+    
+    (list-map
+      (~~the-nonempty-binds vars-and-lists (~~the-id var)
+        (~~let a (type-of var) (~~given a (~~the (List a) list))))
+      (~~given vars-and-lists
+        (~~the b (~~formula (body (binds-vars vars-and-lists)))))))
+  
+  ; (Each `(~case ...)` of a `(binds-match ...)` call checks that a
+  ; given pattern matches *every* value of the bindings. If it does,
+  ; the variables bound by the pattern are recollected into binding
+  ; collections.)
+  ;
+  ; (Even though it's written at the beginning, the `(~else ...)` of
+  ; this `(binds-match ...)` is only run if none of the other cases
+  ; match.)
+  ;
+  (binds-match vars-and-lists (~else (err (mismatched-lengths)))
+    (~case (empty-list) (empty-list))
+    (~case (nonempty-list vars-and-elems vars-and-rests)
+      (nonempty-list (body vars-and-elems)
+        
+        ; (This language doesn't have a way to *handle* errors, but it
+        ; does have a way to pattern-match on errors and translate
+        ; them into more direct errors.)
+        ;
+        (transforming-errors
+          (~case (mismatched-lengths) (err (mismatched-lengths)))
+          (list-map (~binds vars-and-rests)
+            (~formula (body (binds-vars vars-and-lists)))))))))
+
+; (Here's a version that lets `(a b .c d)` mean `(a b (c d))`.)
+(define
+  (~~the-error-prone (List b)
+    (~case (mismatched-lengths)
+      ("Expected the input lists to have the same length.))
+    (list-map
+      (~~the-nonempty-binds vars-and-lists (~~the-id var)
+        (~~let a (type-of var) .~~given a .~~the (List a) list))
+      (~~given vars-and-lists .~~the b .~~formula
+        (body .binds-vars vars-and-lists))))
+  (binds-match vars-and-lists (~else (err .mismatched-lengths))
+    (~case (empty-list) (empty-list))
+    (~case (nonempty-list vars-and-elems vars-and-rests)
+      (nonempty-list (body vars-and-elems)
+        (transforming-errors
+          (~case (mismatched-lengths) (err .mismatched-lengths))
+          (list-map (~binds vars-and-rests)
+            (~formula (body .binds-vars vars-and-lists))))))))
+```
