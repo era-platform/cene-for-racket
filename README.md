@@ -1,6 +1,6 @@
 # Cene for Racket
 
-[![Travis build](https://travis-ci.org/era-platform/cene-for-racket.svg?branch=master)](https://travis-ci.org/era-platform/cene-for-racket)
+[![Travis build](https://travis-ci.org/era-platform/cene-for-racket.svg?branch=main)](https://travis-ci.org/era-platform/cene-for-racket)
 
 (TODO: Write a blurb.)
 
