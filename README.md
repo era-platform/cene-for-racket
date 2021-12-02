@@ -1,6 +1,6 @@
 # Cene for Racket
 
-[![CI](https://github.com/lathe/cene-for-racket/actions/workflows/ci.yml/badge.svg)](https://github.com/lathe/cene-for-racket/actions/workflows/ci.yml)
+[![CI](https://github.com/era-platform/cene-for-racket/actions/workflows/ci.yml/badge.svg)](https://github.com/era-platform/cene-for-racket/actions/workflows/ci.yml)
 
 (TODO: Write a blurb.)
 
