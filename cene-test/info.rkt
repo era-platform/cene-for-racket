@@ -8,6 +8,5 @@
     "cene-lib"
     "interconfection-lib"
     "lathe-comforts-lib"
-    "parendown-lib"
     "rackunit-lib"))
-(define build-deps (list))
+(define build-deps (list "parendown-lib"))
