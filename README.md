@@ -1,6 +1,6 @@
 # Cene for Racket
 
-[![Travis build](https://travis-ci.org/era-platform/cene-for-racket.svg?branch=main)](https://travis-ci.org/era-platform/cene-for-racket)
+[![CI](https://github.com/lathe/cene-for-racket/actions/workflows/ci.yml/badge.svg)](https://github.com/lathe/cene-for-racket/actions/workflows/ci.yml)
 
 (TODO: Write a blurb.)
 
