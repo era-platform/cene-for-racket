@@ -54,9 +54,8 @@
   authorized-name-get-name fuse-extfx getfx? getfx-bind getfx/c
   getfx-done pure-run-getfx)
 (require #/only-in interconfection/order
-  assocs->table-if-mutually-unique cline-exact-rational
-  dex-exact-rational dex-immutable-string fuse-exact-rational-by-plus
-  fuse-exact-rational-by-times)
+  cline-exact-rational dex-exact-rational dex-immutable-string
+  fuse-exact-rational-by-plus fuse-exact-rational-by-times)
 (require #/only-in interconfection/order/base
   cline-by-dex cline-default cline-fix cline-give-up cline-opaque
   cline-result? cline-tuple dex? dex-by-own-method dex-cline
@@ -69,8 +68,7 @@
   getfx-is-in-cline getfx-is-in-dex getfx-name-of getfx-table-map-fuse
   getfx-table-sort make-fusable-function merge-by-dex merge-fix
   merge-opaque merge-table merge-tuple name? ordering-eq ordering-gt
-  ordering-lt ordering-private table? table-empty table-get
-  table-shadow)
+  ordering-lt ordering-private table? table-empty)
 (require #/prefix-in unsafe: #/only-in interconfection/order/unsafe
   autoname-cline autoname-dex autoname-fuse autoname-merge cline
   cline-by-own-method-thorough
@@ -648,13 +646,13 @@
       #/cenegetfx-done #/list proj-string proj-string-name proj-name))
   #/fn projs
   #/expect
-    (assocs->table-if-mutually-unique
+    (assocs->table-if-mutually-unique-names
     #/list-map projs #/dissectfn (list string string-name name)
       (cons string-name name))
     (just proj-string-to-name)
     (cenegetfx-cene-err fault "Expected a defined struct metadata entry to have a projection list with mutually unique strings")
   #/expect
-    (assocs->table-if-mutually-unique
+    (assocs->table-if-mutually-unique-names
     #/list-map projs #/dissectfn (list string string-name name)
       (cons name string))
     (just proj-name-to-string)
@@ -740,13 +738,17 @@
     #:pre (proj-tags vals) (= (length proj-tags) (length vals))
     [_ (list/c (listof name?) list?)])
   (expect
-    (assocs->table-if-mutually-unique #/map cons proj-tags vals)
+    (assocs->table-if-mutually-unique-names
+      (list-zip-map proj-tags vals #/fn proj-tag val
+        (cons proj-tag (cons proj-tag val))))
     (just projs-table)
     (error "Expected proj-tags to be a list of mutually unique names")
   #/w- entries (unsafe:table->sorted-list projs-table)
   #/list
-    (list-map entries #/dissectfn (list proj-tag val) proj-tag)
-    (list-map entries #/dissectfn (list proj-tag val) val)))
+    (list-map entries #/dissectfn (list _ #/cons proj-tag val)
+      proj-tag)
+    (list-map entries #/dissectfn (list _ #/cons proj-tag val)
+      val)))
 
 (define/contract (normalize-tags-and-vals tags vals)
   (->i
@@ -1340,7 +1342,7 @@
       #/or
         (-has-free-vars? subject-expr env)
         (-has-free-vars? then-expr #/list-foldl env vars #/fn env var
-          (table-shadow var (just #/trivial) env))
+          (table-shadow-by-name var (just #/trivial) env))
         (-has-free-vars? else-expr env)))
     
     (define (cenegetfx-cexpr-eval-in-env fault this env)
@@ -1353,7 +1355,7 @@
         (-eval-in-env fault then-expr
           (list-foldl env (map list vars vals) #/fn env entry
             (dissect entry (list var val)
-            #/table-shadow var (just val) env)))
+            #/table-shadow-by-name var (just val) env)))
         (-eval-in-env fault else-expr env)))
   ])
 
@@ -2164,7 +2166,7 @@
       #/dissectfn (list proj-string proj-name)
         proj-name)
     #/expect
-      (assocs->table-if-mutually-unique
+      (assocs->table-if-mutually-unique-names
         (list-map proj-names #/dissectfn (sink-name proj-name)
           (cons proj-name (trivial))))
       (just proj-names-table)

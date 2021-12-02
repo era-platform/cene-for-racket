@@ -69,8 +69,8 @@
   assocs->table-if-mutually-unique dex-immutable-string dex-trivial
   getfx-is-eq-by-dex ordering-eq)
 (require #/only-in interconfection/order/base
-  dex? dex-default dexed-first-order/c dex-give-up dex-name dex-table
-  dex-tuple fuse-by-merge getfx-call-fuse getfx-dexed-of
+  dex? dex-default dexed? dexed-first-order/c dex-give-up dex-name
+  dex-table dex-tuple fuse-by-merge getfx-call-fuse getfx-dexed-of
   getfx-is-in-dex getfx-name-of getfx-table-map-fuse
   make-fusable-function merge-by-dex merge-table name? ordering-eq?
   table? table-empty? table-empty table-get table-shadow table-v-of)
@@ -105,10 +105,28 @@
   (getmaybefx-bind effects #/fn intermediate
   #/getfx-done #/just #/func intermediate))
 
+(define/contract (dexed-of-name name)
+  (-> name? dexed?)
+  (just-value #/pure-run-getfx #/getfx-dexed-of (dex-name) name))
+
+(define/contract (table-get-by-name name table)
+  (-> name? table? maybe?)
+  (table-get (dexed-of-name name) table))
+
+(define/contract (table-shadow-by-name name maybe-value table)
+  (-> name? maybe? table? table?)
+  (table-shadow (dexed-of-name name) maybe-value table))
+
+(define/contract (assocs->table-if-mutually-unique-names assocs)
+  (-> (listof #/cons/c name? any/c) #/maybe/c table?)
+  (assocs->table-if-mutually-unique
+    (list-map assocs #/dissectfn (cons k v)
+      (cons (dexed-of-name k) v))))
+
 ; TODO: Put this into the `interconfection/order` module or something
 ; (maybe even `interconfection/order/base`).
 (define/contract (table-kv-map table kv-to-v)
-  (-> table? (-> name? any/c any/c) table?)
+  (-> table? (-> dexed? any/c any/c) table?)
   (mat
     (pure-run-getfx #/getfx-table-map-fuse table
       (fuse-by-merge #/merge-table #/merge-by-dex #/dex-give-up)
@@ -134,7 +152,7 @@
 ; do about unaligned input tables.
 ;
 (define/contract (table-kv-zip-map-aligned a-table b-table kvv-to-v)
-  (-> table? table? (-> any/c any/c any/c) table?)
+  (-> table? table? (-> dexed? any/c any/c any/c) table?)
   (table-kv-map a-table #/fn k a
     (dissect (table-get k b-table) (just b)
     #/kvv-to-v k a b)))
@@ -257,9 +275,10 @@
         #/just proj-table)
       #/expect s-projs (cons s-proj s-projs)
         (error "Encountered a sink-struct with more projection tags than projection values")
-      #/expect (table-get s-proj-tag proj-table) (nothing) (nothing)
+      #/expect (table-get-by-name s-proj-tag proj-table) (nothing)
+        (nothing)
       #/next s-proj-tags s-projs
-        (table-shadow s-proj-tag (just s-proj) proj-table)))
+        (table-shadow-by-name s-proj-tag (just s-proj) proj-table)))
     (just proj-table)
     (nothing)
   #/w-loop next
@@ -270,8 +289,9 @@
     (expect proj-tags (cons proj-tag proj-tags)
       (expect (table-empty? proj-table) #t (nothing)
       #/just #/reverse rev-projs)
-    #/maybe-bind (table-get proj-tag proj-table) #/fn s-proj
-    #/next (table-shadow proj-tag (nothing) proj-table) proj-tags
+    #/maybe-bind (table-get-by-name proj-tag proj-table) #/fn s-proj
+    #/next (table-shadow-by-name proj-tag (nothing) proj-table)
+      proj-tags
       (cons s-proj rev-projs))))
 
 
@@ -564,13 +584,13 @@
   (-> sink-table? sink-name? #/maybe/c sink?)
   (dissect table (sink-table table)
   #/dissect name (sink-name name)
-  #/table-get name table))
+  #/table-get-by-name name table))
 
 (define/contract (sink-table-put-maybe table name maybe-value)
   (-> sink-table? sink-name? (maybe/c sink?) sink-table?)
   (dissect table (sink-table table)
   #/dissect name (sink-name name)
-  #/sink-table #/table-shadow name maybe-value table))
+  #/sink-table #/table-shadow-by-name name maybe-value table))
 
 
 ; NOTE: We treat every two tag caches as `ordering-eq`. Cene
@@ -843,14 +863,14 @@
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-var name)
         (error "Expected this to be a cexpr-var")
-      #/expect (table-get name env) (just _)
+      #/expect (table-get-by-name name env) (just _)
         #t
         #f))
     
     (define (cenegetfx-cexpr-eval-in-env fault this env)
       (expect this (cexpr-var name)
         (error "Expected this to be a cexpr-var")
-      #/expect (table-get name env) (just value)
+      #/expect (table-get-by-name name env) (just value)
         (error "Tried to eval a cexpr that had a free variable")
       #/cenegetfx-done value))
   ])
@@ -971,8 +991,8 @@
       (expect this (cexpr-opaque-fn-fault fault-param param body)
         (error "Expected this to be a cexpr-opaque-fn")
       #/-has-free-vars? body
-      #/table-shadow fault-param (just #/trivial)
-      #/table-shadow param (just #/trivial)
+      #/table-shadow-by-name fault-param (just #/trivial)
+      #/table-shadow-by-name param (just #/trivial)
         env))
     
     (define (cenegetfx-cexpr-eval-in-env caller-fault this env)
@@ -981,8 +1001,8 @@
       #/cenegetfx-done
         (sink-opaque-fn-fault #/dissectfn (list explicit-fault arg)
           (-eval-in-env caller-fault body
-            (table-shadow fault-param (just explicit-fault)
-            #/table-shadow param (just arg)
+            (table-shadow-by-name fault-param (just explicit-fault)
+            #/table-shadow-by-name param (just arg)
               env)))))
   ])
 
@@ -999,14 +1019,14 @@
       (expect this (cexpr-opaque-fn param body)
         (error "Expected this to be a cexpr-opaque-fn")
       #/-has-free-vars? body
-      #/table-shadow param (just #/trivial) env))
+      #/table-shadow-by-name param (just #/trivial) env))
     
     (define (cenegetfx-cexpr-eval-in-env caller-fault this env)
       (expect this (cexpr-opaque-fn param body)
         (error "Expected this to be a cexpr-opaque-fn")
       #/cenegetfx-done #/sink-opaque-fn #/fn arg
         (-eval-in-env caller-fault body
-          (table-shadow param (just arg) env))))
+          (table-shadow-by-name param (just arg) env))))
   ])
 
 (struct-easy (cexpr-let bindings body)
@@ -1027,7 +1047,7 @@
       #/-has-free-vars? body
       #/list-foldl env bindings #/fn env binding
         (dissect binding (list var val)
-        #/table-shadow var (just #/trivial) env)))
+        #/table-shadow-by-name var (just #/trivial) env)))
     
     (define (cenegetfx-cexpr-eval-in-env fault this env)
       (expect this (cexpr-let bindings body)
@@ -1041,7 +1061,7 @@
       #/-eval-in-env fault body
         (list-foldl env bindings #/fn env binding
           (dissect binding (list var val)
-          #/table-shadow var (just val) env))))
+          #/table-shadow-by-name var (just val) env))))
   ])
 
 (struct-easy (cexpr-located location-definition-name body)
@@ -1193,7 +1213,7 @@
 (define/contract (names-have-duplicate? names)
   (-> (listof name?) boolean?)
   (nothing?
-  #/assocs->table-if-mutually-unique #/list-map names #/fn name
+  #/assocs->table-if-mutually-unique-names #/list-map names #/fn name
     (cons name #/trivial)))
 
 (define/contract (sink-names-have-duplicate? names)
@@ -1411,7 +1431,7 @@
           main-tag-entry
           (list-foldr proj-tags (table-empty)
           #/fn proj-tag rest
-            (table-shadow proj-tag (just #/trivial) rest)))
+            (table-shadow-by-name proj-tag (just #/trivial) rest)))
       #/fn authorized-name-for-impl
       #/cenegetfx-run-sink-getfx #/sink-getfx-get
         (sink-authorized-name-get-name authorized-name-for-impl))
@@ -2146,13 +2166,13 @@
     #/dissectfn _
     #/then #/list)
   #/sink-extfx-concurrent-dsl-state-split-table dsl state
-    (table-shadow first-key (just #/trivial)
-      (table-shadow rest-key (just #/trivial)
+    (table-shadow-by-name first-key (just #/trivial)
+      (table-shadow-by-name rest-key (just #/trivial)
       #/table-empty))
     on-err
   #/fn states
-  #/dissect (table-get first-key states) (just first-state)
-  #/dissect (table-get rest-key states) (just rest-state)
+  #/dissect (table-get-by-name first-key states) (just first-state)
+  #/dissect (table-get-by-name rest-key states) (just rest-state)
   #/sink-extfx-concurrent-dsl-state-split-list dsl rest-state rest-n
     (cenegetfx-cene-err (make-fault-internal) "Expected rest-state to be an unspent state of the given concurrent DSL")
   #/fn rest-states
