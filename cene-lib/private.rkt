@@ -23,16 +23,10 @@
 (require #/for-syntax racket/base)
 (require #/for-syntax #/only-in syntax/parse syntax-parse)
 
-; NOTE: The Racket documentation says `get/build-late-neg-projection`
-; is in `racket/contract/combinator`, but it isn't. It's in
-; `racket/contract/base`. Since it's also in `racket/contract` and the
-; documentation correctly says it is, we require it from there.
-(require #/only-in racket/contract get/build-late-neg-projection)
 (require #/only-in racket/contract/base
   -> ->* ->i and/c any any/c contract? cons/c contract-name list/c
   listof none/c or/c rename-contract)
-(require #/only-in racket/contract/combinator
-  blame-add-context coerce-contract make-contract raise-blame-error)
+(require #/only-in racket/contract/combinator coerce-contract)
 (require #/only-in racket/contract/region define/contract)
 (require #/only-in racket/control reset-at shift-at)
 (require #/only-in racket/generic define/generic define-generics)
@@ -700,24 +694,9 @@
 
 (define (cenegetfx/c result/c)
   (w- result/c (coerce-contract 'cenegetfx/c result/c)
-  #/make-contract
-    
-    #:name `(cenegetfx/c ,(contract-name result/c))
-    
-    #:first-order (fn v #/cenegetfx? v)
-    
-    #:late-neg-projection
-    (fn blame
-      (w- result/c-late-neg-projection
-        ( (get/build-late-neg-projection result/c)
-          (blame-add-context blame "the anticipated value of"))
-      #/fn v missing-party
-        (expect (cenegetfx? v) #t
-          (raise-blame-error blame #:missing-party missing-party v
-            '(expected: "a cenegetfx effectful computation" given: "~e")
-            v)
-        #/cenegetfx-map v #/fn result
-          (result/c-late-neg-projection result missing-party))))))
+  #/rename-contract
+    (match/c cenegetfx #/-> any/c #/getfx/c result/c)
+    `(cenegetfx/c ,(contract-name result/c))))
 
 (define/contract (cenegetfx-later then)
   (-> (-> cenegetfx?) cenegetfx?)
