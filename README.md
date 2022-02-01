@@ -1,5 +1,9 @@
 # Cene Mk. II
 
+<p align="center">
+  <img width="312" height="166" src="/era-platform/cene/assets/logo/cene-5-cropped-164.png" alt="Cene logo" title="Cene logo" />
+</p>
+
 [![CI](https://github.com/era-platform/cene-for-racket/actions/workflows/ci.yml/badge.svg)](https://github.com/era-platform/cene-for-racket/actions/workflows/ci.yml)
 
 > ℹ️ This language is a work in progress. If you're here, you might be interested in the latest usable incarnation of Cene, [Cene Mk. I](https://github.com/era-platform/cene).
