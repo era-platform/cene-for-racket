@@ -83,9 +83,15 @@
   #/just result))
 
 
+; TODO: Consider uncommenting several of these tests. For now, we have
+; a budget of approximately 5 of these tests before we exceed our
+; 1m30s of time in the package server's test runner.
+
+#;
 (check-equal? (cene-code-failure "") (nothing)
   "Running nothing works")
 
+#;
 (check-equal?
   (cene-code-failure
     "
@@ -97,6 +103,7 @@
   (nothing)
   "Running nothing but line comments works")
 
+;#;
 (check-equal?
   (dissect (cene-run-string-sample ")")
     (run-extfx-result-failure errors)
@@ -104,6 +111,7 @@
   #t
   "Running an unmatched closing paren causes a Cene error, not a Racket error")
 
+#;
 ; TODO: See if we can stop relying on the `write` behavior of the
 ; internal structure type `sink-struct` and the Interconfection
 ; internal structure types `run-extfx-errors`,
@@ -115,6 +123,7 @@
   #t
   "Calling this Cene implementation's `follow-heart` causes a Cene error with a message based on the given value")
 
+;#;
 ; TODO: See if we can stop relying on the `write` behavior of the
 ; Interconfection internal structure types `run-extfx-errors` and
 ; `error-definer-from-message` here.
@@ -131,12 +140,14 @@
   #t
   "Calling Cene's `follow-heart` with an appropriate `clamor-err` value causes a Cene error with a custom message")
 
+#;
 (check-equal?
   (cene-code-failure
     "(directive/fn unique-name qualify /extfx-noop)")
   (nothing)
   "Running a single top-level command that does nothing works")
 
+;#;
 (check-equal?
   (cene-code-failure
     "
