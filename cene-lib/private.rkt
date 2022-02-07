@@ -3113,10 +3113,10 @@
     ; TODO RUN-DECLS: Make use of `sink-extfx-eval-directive-cexpr`
     ; here to run all the contributions. Actually, we should be
     ; running them right away when they're contributed, rather than
-    ; waiting fo all the other contributions to come in. Also, figure
+    ; waiting for all the other contributions to come in. Also, figure
     ; out what to do with `api-contributions`; we'll probably want to
     ; aggregate them into another data structure that summarizes the
-    ; interface fo the lexical unit.
+    ; interface of the lexical unit.
     
     #/sink-extfx-noop)
   #/w-loop next

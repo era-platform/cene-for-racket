@@ -84,7 +84,7 @@
 
 
 ; TODO: Consider uncommenting several of these tests. For now, we have
-; a budget of approximately 5 of these tests before we exceed our
+; a budget of approximately 2 of these tests before we exceed our
 ; 1m30s of time in the package server's test runner.
 
 #;
@@ -103,7 +103,7 @@
   (nothing)
   "Running nothing but line comments works")
 
-;#;
+#;
 (check-equal?
   (dissect (cene-run-string-sample ")")
     (run-extfx-result-failure errors)
