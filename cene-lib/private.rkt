@@ -3060,7 +3060,7 @@
 
 (define/own-contract (cenegetfx-tag-direct metadata)
   (-> core-sink-struct-metadata?
-    (cons/c sink-innate-main-tag-entry? #/listof name?))
+    (cenegetfx/c #/cons/c sink-innate-main-tag-entry? #/listof name?))
   (dissect metadata
     (core-sink-struct-metadata
       tag-cache-key main-tag-string proj-strings)
