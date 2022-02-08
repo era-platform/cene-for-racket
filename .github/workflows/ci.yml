@@ -56,7 +56,9 @@ jobs:
       - name: Record the Racket version
         run: racket --version | tee .racket-version
       - name: Record the Racket catalog URLs
-        run: echo ${{ matrix.racket-catalogs }} | tee .racket-catalogs
+        run: echo "$SCRIPT_RACKET_CATALOGS" | tee .racket-catalogs
+        env:
+          SCRIPT_RACKET_CATALOGS: ${{ matrix.racket-catalogs }}
       - name: Obtain cached Racket packages, if available
         uses: actions/cache@v2
         with:
