@@ -7,7 +7,7 @@
 ; either a failure, a success (with a stop position), or a report that
 ; the end of the input was reached before a result was determined.
 
-;   Copyright 2018-2020 The Era Authors
+;   Copyright 2018-2020, 2022 The Era Authors
 ;
 ;   Licensed under the Apache License, Version 2.0 (the "License");
 ;   you may not use this file except in compliance with the License.
@@ -22,35 +22,24 @@
 ;   language governing permissions and limitations under the License.
 
 
-(require #/only-in racket/contract/base
-  -> ->* any/c contract-out ->i listof or/c)
-(require #/only-in racket/contract/region define/contract)
-(require #/only-in racket/math natural?)
-(require #/only-in racket/port peeking-input-port)
-(require #/only-in racket/string string-contains?)
+(require cene/private/shim)
+(init-shim)
 
-(require #/only-in lathe-comforts dissect expect fn mat w- w-loop)
-(require #/only-in lathe-comforts/list list-foldl list-foldr)
-(require #/only-in lathe-comforts/maybe
-  just maybe-bind maybe/c maybe-map nothing)
-(require #/only-in lathe-comforts/string immutable-string?)
-(require #/only-in lathe-comforts/struct
-  auto-equal auto-write define-imitation-simple-struct)
 
 ; Essential operations
 (provide
   
   textpat-result-matched
   textpat-result-failed
-  textpat-result-passed-end
-  (contract-out
-    [textpat-result-matched? (-> any/c boolean?)]
-    [textpat-result-matched-stop (-> textpat-result-matched? any/c)]
-    [textpat-result-failed? (-> any/c boolean?)]
-    [textpat-result-passed-end? (-> any/c boolean?)]
-    [textpat? (-> any/c boolean?)]
-    [productive-textpat? (-> any/c boolean?)]
-    [optimized-textpat? (-> any/c boolean?)])
+  textpat-result-passed-end)
+(provide #/own-contract-out
+  textpat-result-matched?
+  textpat-result-matched-stop
+  textpat-result-failed?
+  textpat-result-passed-end?
+  textpat?
+  productive-textpat?
+  optimized-textpat?
   textpat-result?
   
   textpat-give-up
@@ -63,16 +52,17 @@
   textpat-until
   textpat-one-in-range
   
-  (contract-out
-    [textpat-has-empty? (-> textpat? boolean?)])
+  textpat-has-empty?
   optimize-textpat
   optimized-textpat-match
   optimized-textpat-read!)
 
 ; Derived operations
-(provide
-  textpat-or-list textpat-or
-  textpat-append-list textpat-append
+(provide #/own-contract-out
+  textpat-or-list
+  textpat-or
+  textpat-append-list
+  textpat-append
   textpat-not
   textpat-lookahead
   textpat-one-not
@@ -86,7 +76,7 @@
 
 ; ===== Miscellaneous infrastructure =================================
 
-(define/contract (regexp-maybe code)
+(define/own-contract (regexp-maybe code)
   (-> string? #/maybe/c regexp?)
   ; TODO: See if there's any better way to work around the
   ; "regexp too big" error.
@@ -101,12 +91,12 @@
           (nothing))])
     (just #/regexp code)))
 
-(define/contract (port-next-position in)
+(define/own-contract (port-next-position in)
   (-> input-port? #/or/c #f exact-positive-integer?)
   (define-values (line column position) (port-next-location in))
   position)
 
-(define/contract (peeking-input-port-counting-bytes in)
+(define/own-contract (peeking-input-port-counting-bytes in)
   (-> input-port? input-port?)
   (peeking-input-port in))
 
@@ -119,7 +109,7 @@
 ; match success), this returns `(just n)`, where `n` is the number of
 ; bytes that were read from the modified input stream.
 ;
-(define/contract (read-stream-monitored read-stream! in)
+(define/own-contract (read-stream-monitored read-stream! in)
   (-> (-> input-port? boolean?) input-port? #/maybe/c natural?)
   
   ; NOTE: We get two properties we need from `peeking-input-port`: The
@@ -172,7 +162,7 @@
 ; is discarded, we simply call the `read-stream!` callee directly and
 ; pass it a `peeking-input-port`.
 ;
-(define/contract (read-stream-if-match read-stream! in)
+(define/own-contract (read-stream-if-match read-stream! in)
   (-> (-> input-port? boolean?) input-port? boolean?)
   (expect (read-stream-monitored read-stream! in) (just n) #f
   ; TODO: Since we don't use the result of `read-bytes`, see if
@@ -187,6 +177,8 @@
 (define-imitation-simple-struct
   (textpat? textpat-has-empty? textpat-get-data)
   textpat 'textpat (current-inspector) (auto-write))
+(ascribe-own-contract textpat? (-> any/c boolean?))
+(ascribe-own-contract textpat-has-empty? (-> textpat? boolean?))
 (define-imitation-simple-struct
   (textpat-data?
     
@@ -228,37 +220,45 @@
     optimized-textpat-read-stream!)
   optimized-textpat
   'optimized-textpat (current-inspector) (auto-write))
+(ascribe-own-contract optimized-textpat? (-> any/c boolean?))
 (define-imitation-simple-struct
   (textpat-result-matched? textpat-result-matched-stop)
   textpat-result-matched
   'textpat-result-matched (current-inspector)
   (auto-write)
   (auto-equal))
+(ascribe-own-contract textpat-result-matched? (-> any/c boolean?))
+(ascribe-own-contract textpat-result-matched-stop
+  (-> textpat-result-matched? any/c))
 (define-imitation-simple-struct
   (textpat-result-failed?)
   textpat-result-failed
   'textpat-result-failed (current-inspector)
   (auto-write)
   (auto-equal))
+(ascribe-own-contract textpat-result-failed? (-> any/c boolean?))
 (define-imitation-simple-struct
   (textpat-result-passed-end?)
   textpat-result-passed-end
   'textpat-result-passed-end (current-inspector)
   (auto-write)
   (auto-equal))
+(ascribe-own-contract textpat-result-passed-end? (-> any/c boolean?))
 
-(define (productive-textpat? v)
+(define/own-contract (productive-textpat? v)
+  (-> any/c boolean?)
   (expect v (textpat has-empty get-data) #f
   #/not has-empty))
 
-(define/contract (textpat-result? v)
+(define/own-contract (textpat-result? v)
   (-> any/c boolean?)
   (mat v (textpat-result-matched stop) (natural? stop)
   #/mat v (textpat-result-failed) #t
   #/mat v (textpat-result-passed-end) #t
     #f))
 
-(define/contract (textpat-one-trivial necessary maybe-make-optimized)
+(define/own-contract
+  (textpat-one-trivial necessary maybe-make-optimized)
   (->
     immutable-string?
     (maybe/c #/-> optimized-textpat?)
@@ -271,7 +271,7 @@
       (fn
         (error "Internal error: Expected the regexp to be small enough to compile")))))
 
-(define/contract (textpat-give-up)
+(define/own-contract (textpat-give-up)
   (-> textpat?)
   (textpat #f #/fn #/textpat-data
     (just ".^")
@@ -279,7 +279,7 @@
     (fn
       (error "Internal error: Expected the regexp to be small enough to compile"))))
 
-(define/contract (textpat-empty)
+(define/own-contract (textpat-empty)
   (-> textpat?)
   (textpat #t #/fn #/textpat-data
     (just ".^")
@@ -287,7 +287,7 @@
     (fn
       (error "Internal error: Expected the regexp to be small enough to compile"))))
 
-(define/contract (textpat-from-string str)
+(define/own-contract (textpat-from-string str)
   (-> immutable-string? textpat?)
   (w- n (string-length str)
   #/textpat (= 0 n) #/fn #/textpat-data
@@ -315,7 +315,7 @@
         (fn in
           (equal? str #/read-string n 0 in))))))
 
-(define/contract (textpat-one-in-string example-str)
+(define/own-contract (textpat-one-in-string example-str)
   (-> immutable-string? textpat?)
   (textpat-one-trivial
     (string->immutable-string #/string-append
@@ -341,11 +341,11 @@
           #/string-contains? example-str
             (string->immutable-string #/string ch)))))))
 
-(define/contract (textpat-one)
+(define/own-contract (textpat-one)
   (-> textpat?)
   (textpat-one-trivial "." (nothing)))
 
-(define/contract (compile-textpat-data data)
+(define/own-contract (compile-textpat-data data)
   (-> textpat-data? textpat-data?)
   (dissect data
     (textpat-data maybe-incomplete maybe-necessary make-optimized)
@@ -384,7 +384,7 @@
 ; prefer not to use it to derive other textpats even if that would be
 ; very convenient.
 ;
-(define/contract (textpat-if condition then else)
+(define/own-contract (textpat-if condition then else)
   (-> textpat? textpat? textpat? textpat?)
   (dissect condition (textpat c-has-empty c-get-data)
   #/dissect then (textpat t-has-empty t-get-data)
@@ -447,7 +447,7 @@
 ; to use it to derive other textpats even if that would be very
 ; convenient.
 ;
-(define/contract (textpat-while condition body)
+(define/own-contract (textpat-while condition body)
   (->i ([condition textpat?] [body textpat?])
     
     ; NOTE: When the concatenation of `c-nec` and `b-nec` can match
@@ -515,7 +515,7 @@
 ; to use it to derive other textpats even if that would be very
 ; convenient.
 ;
-(define/contract (textpat-until body condition)
+(define/own-contract (textpat-until body condition)
   
   ; NOTE: When `b-nec` can match the empty string, Racket doesn't let
   ; us use the * operator on it. But we don't allow that case.
@@ -579,10 +579,10 @@
 ; characteristics make it more expressive.
 ;
 #;
-(define/contract (textpat-or-binary a b)
+(define/own-contract (textpat-or-binary a b)
   (-> textpat? textpat? textpat?)
   (textpat-if a (textpat-empty) b))
-(define/contract (textpat-or-binary a b)
+(define/own-contract (textpat-or-binary a b)
   (-> textpat? textpat? textpat?)
   (dissect a (textpat a-has-empty a-get-data)
   #/dissect b (textpat b-has-empty b-get-data)
@@ -618,7 +618,7 @@
             (or (read-stream-if-match a-read-stream! in)
             #/b-read-stream! in)))))))
 
-(define/contract (textpat-one-in-range a b)
+(define/own-contract (textpat-one-in-range a b)
   (-> char? char? textpat?)
   (w- special-range-chars "]-%\\"
   #/w- an (char->integer a)
@@ -637,14 +637,14 @@
       "[" a-str "-" b-str "]")
     (nothing)))
 
-(define/contract (optimize-textpat t)
+(define/own-contract (optimize-textpat t)
   (-> textpat? optimized-textpat?)
   (dissect t (textpat has-empty get-data)
   #/dissect (compile-textpat-data #/get-data)
     (textpat-data inc nec make-optimized)
   #/make-optimized))
 
-(define/contract (optimized-textpat-match ot str start stop)
+(define/own-contract (optimized-textpat-match ot str start stop)
   (-> optimized-textpat? immutable-string? natural? natural?
     textpat-result?)
   (dissect ot (optimized-textpat match-string read-stream!)
@@ -657,7 +657,7 @@
     (error "Expected start to be less than or equal to stop")
   #/match-string str start stop))
 
-(define/contract (optimized-textpat-read! ot in)
+(define/own-contract (optimized-textpat-read! ot in)
   (-> optimized-textpat? input-port? #/maybe/c immutable-string?)
   (dissect ot (optimized-textpat match-string read-stream!)
   
@@ -675,11 +675,11 @@
 
 ; ===== Derived operations ===========================================
 
-(define/contract (textpat-or-list ts)
+(define/own-contract (textpat-or-list ts)
   (-> (listof textpat?) textpat?)
   (list-foldl (textpat-give-up) ts #/fn a b #/textpat-or-binary a b))
 
-(define/contract (textpat-or . ts)
+(define/own-contract (textpat-or . ts)
   (->* () #:rest (listof textpat?) textpat?)
   (textpat-or-list ts))
 
@@ -694,10 +694,10 @@
 ; characteristics make it more expressive.
 ;
 #;
-(define/contract (textpat-append-binary a b)
+(define/own-contract (textpat-append-binary a b)
   (-> textpat? textpat? textpat?)
   (textpat-if a b #/textpat-give-up))
-(define/contract (textpat-append-binary a b)
+(define/own-contract (textpat-append-binary a b)
   (-> textpat? textpat? textpat?)
   (dissect a (textpat a-has-empty a-get-data)
   #/dissect b (textpat b-has-empty b-get-data)
@@ -748,7 +748,7 @@
 ; long as its inputs' regexes. Because of this, we prefer not to use
 ; it to derive other textpats even if that would be very convenient.
 ;
-(define/contract (textpat-append-list ts)
+(define/own-contract (textpat-append-list ts)
   (-> (listof textpat?) textpat?)
   (list-foldr ts (textpat-empty) #/fn a b
     (textpat-append-binary a b)))
@@ -757,7 +757,7 @@
 ; long as its inputs' regexes. Because of this, we prefer not to use
 ; it to derive other textpats even if that would be very convenient.
 ;
-(define/contract (textpat-append . ts)
+(define/own-contract (textpat-append . ts)
   (->* () #:rest (listof textpat?) textpat?)
   (textpat-append-list ts))
 
@@ -768,10 +768,10 @@
 ; characteristics make it more expressive.
 ;
 #;
-(define/contract (textpat-not t)
+(define/own-contract (textpat-not t)
   (-> textpat? textpat?)
   (textpat-if t (textpat-give-up) (textpat-empty)))
-(define/contract (textpat-not t)
+(define/own-contract (textpat-not t)
   (-> textpat? textpat?)
   (dissect t (textpat t-has-empty t-get-data)
   #/textpat #t #/fn
@@ -797,7 +797,7 @@
           (fn in
             (not #/t-read-stream! #/peeking-input-port in)))))))
 
-(define/contract (textpat-lookahead t)
+(define/own-contract (textpat-lookahead t)
   (-> textpat? textpat?)
   (textpat-not #/textpat-not t))
 
@@ -808,10 +808,10 @@
 ; characteristics make it more expressive.
 ;
 #;
-(define/contract (textpat-one-not t)
+(define/own-contract (textpat-one-not t)
   (-> textpat? textpat?)
   (textpat-append (textpat-not t) (textpat-one)))
-(define/contract (textpat-one-not t)
+(define/own-contract (textpat-one-not t)
   (-> textpat? textpat?)
   (dissect t (textpat t-has-empty t-get-data)
   #/textpat #f #/fn
@@ -842,7 +842,7 @@
             (and (not #/t-read-stream! #/peeking-input-port in)
             #/not #/eof-object? #/read-char in)))))))
 
-(define/contract (textpat-one-not-in-string str)
+(define/own-contract (textpat-one-not-in-string str)
   (-> immutable-string? textpat?)
   (textpat-one-not #/textpat-one-in-string str))
 
@@ -859,10 +859,10 @@
 ; characteristics make it more expressive.
 ;
 #;
-(define/contract (textpat-star t)
+(define/own-contract (textpat-star t)
   (-> productive-textpat? textpat?)
   (textpat-while t #/textpat-empty))
-(define/contract (textpat-star t)
+(define/own-contract (textpat-star t)
   
   ; NOTE: When `b-nec` can match the empty string, Racket doesn't let
   ; us use the * operator on it. But we don't allow that case.
@@ -916,10 +916,10 @@
 ; characteristics make it more expressive.
 ;
 #;
-(define/contract (textpat-once-or-more t)
+(define/own-contract (textpat-once-or-more t)
   (-> productive-textpat? textpat?)
   (textpat-append t #/textpat-star t))
-(define/contract (textpat-once-or-more t)
+(define/own-contract (textpat-once-or-more t)
   
   ; NOTE: When `b-nec` can match the empty string, Racket doesn't let
   ; us use the * and + operators on it. But we don't allow that case.

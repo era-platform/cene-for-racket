@@ -5,7 +5,7 @@
 ; An assortment of utilities for parsing Cene reader macro bodies
 ; (implementation details).
 
-;   Copyright 2018-2020 The Era Authors
+;   Copyright 2018-2020, 2022 The Era Authors
 ;
 ;   Licensed under the Apache License, Version 2.0 (the "License");
 ;   you may not use this file except in compliance with the License.
@@ -20,28 +20,23 @@
 ;   language governing permissions and limitations under the License.
 
 
-(require #/only-in racket/contract/base -> any/c list/c listof)
-(require #/only-in racket/contract/region define/contract)
-(require #/only-in racket/math natural?)
+(require cene/private/shim)
+(init-shim)
 
-(require #/only-in lathe-comforts
-  dissect dissectfn expect fn mat w- w-loop)
-(require #/only-in lathe-comforts/list list-map nat->maybe)
-(require #/only-in lathe-comforts/maybe just)
-(require #/only-in lathe-comforts/struct struct-easy)
-(require #/only-in lathe-comforts/trivial trivial)
-
-(require cene/private)
+(require #/only-in cene/private
+  cenegetfx-cene-err make-fault-internal make-fault-read |pat "["| |pat "]"| |pat "("| |pat ")"| sink-authorized-name? sink-authorized-name-get-name sink-cexpr? sink-cexpr-var sink-extfx? sink-extfx-cene-err sink-extfx-claim-and-split sink-extfx-claim-freshen sink-extfx-make-cexpr-sequence-output-stream sink-extfx-peek-whether-closing-bracket sink-extfx-peek-whether-eof sink-extfx-read-cexprs sink-extfx-read-fault sink-extfx-read-maybe-identifier sink-extfx-read-whitespace sink-extfx-optimized-textpat-read-located sink-extfx-sink-text-input-stream-freshen sink-extfx-sink-text-input-stream-split sink-fault? sink-located-string? sink-name? sink-name-rep-map sink-qualify? sink-text-input-stream?)
 (require #/only-in cene/private/textpat
   optimized-textpat? optimize-textpat textpat-one-not-in-string
   textpat-star)
 
 
-(provide
+(provide #/own-contract-out
   sink-name-for-local-variable
-  id-or-expr?
+  id-or-expr?)
+(provide
   id-or-expr-id
-  id-or-expr-expr
+  id-or-expr-expr)
+(provide #/own-contract-out
   id-or-expr->cexpr
   sink-extfx-read-bounded-ids-and-exprs
   sink-extfx-read-bounded-cexprs
@@ -51,18 +46,18 @@
 
 
 
-(define/contract (sink-name-for-local-variable inner-name)
+(define/own-contract (sink-name-for-local-variable inner-name)
   (-> sink-name? sink-name?)
   (sink-name-rep-map inner-name #/fn n #/list 'name:local-variable n))
 
 (struct-easy (id-or-expr-id located-string qualified-name))
 (struct-easy (id-or-expr-expr expr))
 
-(define/contract (id-or-expr? v)
+(define/own-contract (id-or-expr? v)
   (-> any/c boolean?)
   (or (id-or-expr-id? v) (id-or-expr-expr? v)))
 
-(define/contract (id-or-expr->cexpr id-or-expr)
+(define/own-contract (id-or-expr->cexpr id-or-expr)
   (-> id-or-expr? sink-cexpr?)
   (mat id-or-expr (id-or-expr-id located-string qualified-name)
     ; TODO CEXPR-LOCATED: Wrap this in a located cexpr.
@@ -70,7 +65,7 @@
   #/dissect id-or-expr (id-or-expr-expr cexpr)
     cexpr))
 
-(define/contract
+(define/own-contract
   (sink-extfx-read-ids-and-exprs-onto
     read-fault unique-name qualify text-input-stream rev-results
     pre-qualify then)
@@ -115,7 +110,7 @@
 
 ; This reads identifiers and cexprs until it gets to a closing
 ; bracket.
-(define/contract
+(define/own-contract
   (sink-extfx-read-bounded-ids-and-exprs
     read-fault expr-fault unique-name qualify text-input-stream
     pre-qualify then)
@@ -162,7 +157,7 @@
     #/next unique-name qualify text-input-stream rev-results)))
 
 ; This reads cexprs until it gets to a closing bracket.
-(define/contract
+(define/own-contract
   (sink-extfx-read-bounded-cexprs
     read-fault expr-fault unique-name qualify text-input-stream then)
   (->
@@ -192,7 +187,7 @@
 
 ; This reads cexprs until it gets to a closing bracket, and it
 ; verifies that there are precisely `n` of them.
-(define/contract
+(define/own-contract
   (sink-extfx-read-bounded-specific-number-of-cexprs
     read-fault expr-fault unique-name qualify text-input-stream n
     then)
@@ -228,7 +223,7 @@
 ; This reads precisely `n` identifiers and cexprs, and it causes an
 ; error if it reaches a closing bracket first or if it reads too many
 ; cexprs in one cexpr read.
-(define/contract
+(define/own-contract
   (sink-extfx-read-leading-specific-number-of-ids-and-exprs
     read-fault expr-fault unique-name qualify text-input-stream n
     pre-qualify then)
@@ -290,7 +285,7 @@
 ; This reads precisely `n` cexprs, and it causes an error if it
 ; reaches a closing bracket first or if it reads too many cexprs in
 ; one cexpr read.
-(define/contract
+(define/own-contract
   (sink-extfx-read-leading-specific-number-of-cexprs
     read-fault expr-fault unique-name qualify text-input-stream n
     then)
@@ -323,7 +318,7 @@
 ; This reads precisely `n` whitespace-and-comment-separated
 ; identifiers, and it causes an error if it reaches a closing bracket
 ; first or if it encounters a cexpr when it's trying to skip comments.
-(define/contract
+(define/own-contract
   (sink-extfx-read-leading-specific-number-of-identifiers
     read-fault unique-name qualify text-input-stream n pre-qualify
     then)
@@ -393,7 +388,7 @@
     
     #/next unique-name qualify text-input-stream n rev-results)))
 
-(define/contract
+(define/own-contract
   (sink-extfx-sink-text-input-stream-split-after-custom-matching-brackets
     text-input-stream
     non-bracket-characters-pattern
@@ -510,7 +505,7 @@
 ;   export-metadata-op-and-bounded-expr-op
 ;   def-unexportable-unceremonious-export-metadata-op-as-constant
 ;
-(define/contract
+(define/own-contract
   (sink-extfx-sink-text-input-stream-split-after-matching-brackets
     read-fault
     text-input-stream
