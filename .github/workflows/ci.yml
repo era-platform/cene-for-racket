@@ -99,13 +99,13 @@ jobs:
         run: raco pkg install --auto --no-docs --batch --link "./${{ needs.vars.outputs.package }}-test/"
       - name: Install `${{ needs.vars.outputs.package }}` and its dependencies
         run: raco pkg install --auto --no-docs --batch --link "./${{ needs.vars.outputs.package }}/"
-
+      
       # We recompile the collection (the single collection which all
       # these packages populate) and check that the package
       # dependencies declared in each info.rkt are correct.
       - name: Recompile to check dependencies, and build documentation
         run: raco setup --check-pkg-deps --unused-pkg-deps "${{ needs.vars.outputs.package }}"
-
+      
       # We run tests according to the way the DrDr continuous testing
       # system does. This imitates the settings used by the Racket
       # package index at <https://pkgs.racket-lang.org/>.
