@@ -1,6 +1,9 @@
-#lang parendown racket/base
+; NOTE: We don't need a `#lang` line for this file because it's
+; referenced with `include`.
+;
+; #lang parendown racket/base
 
-; cene/private/reader-utils
+; (lib "cene/private/reader-utils.rkti")
 ;
 ; An assortment of utilities for parsing Cene reader macro bodies
 ; (implementation details).
@@ -18,31 +21,6 @@
 ;   "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
 ;   either express or implied. See the License for the specific
 ;   language governing permissions and limitations under the License.
-
-
-(require cene/private/shim)
-(init-shim)
-
-(require #/only-in cene/private
-  cenegetfx-cene-err make-fault-internal make-fault-read |pat "["| |pat "]"| |pat "("| |pat ")"| sink-authorized-name? sink-authorized-name-get-name sink-cexpr? sink-cexpr-var sink-extfx? sink-extfx-cene-err sink-extfx-claim-and-split sink-extfx-claim-freshen sink-extfx-make-cexpr-sequence-output-stream sink-extfx-peek-whether-closing-bracket sink-extfx-peek-whether-eof sink-extfx-read-cexprs sink-extfx-read-fault sink-extfx-read-maybe-identifier sink-extfx-read-whitespace sink-extfx-optimized-textpat-read-located sink-extfx-sink-text-input-stream-freshen sink-extfx-sink-text-input-stream-split sink-fault? sink-located-string? sink-name? sink-name-rep-map sink-qualify? sink-text-input-stream?)
-(require #/only-in cene/private/textpat
-  optimized-textpat? optimize-textpat textpat-one-not-in-string
-  textpat-star)
-
-
-(provide #/own-contract-out
-  sink-name-for-local-variable
-  id-or-expr?)
-(provide
-  id-or-expr-id
-  id-or-expr-expr)
-(provide #/own-contract-out
-  id-or-expr->cexpr
-  sink-extfx-read-bounded-ids-and-exprs
-  sink-extfx-read-bounded-cexprs
-  sink-extfx-read-bounded-specific-number-of-cexprs
-  sink-extfx-read-leading-specific-number-of-cexprs
-  sink-extfx-read-leading-specific-number-of-identifiers)
 
 
 

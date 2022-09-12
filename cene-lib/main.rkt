@@ -34,8 +34,9 @@
   sink-extfx-fuse
   sink-extfx-run-directive-cexprs-in-string
   sink-name-of-racket-string
-  sink-qualify)
-(require /only-in cene/private/essentials
+  sink-qualify
+  
+  ; Defined in `(lib "cene/private/essentials.rkti")`:
   minimal-and-essential-tags
   sink-extfx-init-essentials
   sink-extfx-init-package)

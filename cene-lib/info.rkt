@@ -7,5 +7,6 @@
     "base"
     "interconfection-lib"
     "lathe-comforts-lib"
+    "parendown-lib"
     "reprovide-lang-lib"))
 (define build-deps (list "parendown-lib"))

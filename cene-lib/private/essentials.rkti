@@ -1,6 +1,9 @@
-#lang parendown racket/base
+; NOTE: We don't need a `#lang` line for this file because it's
+; referenced with `include`.
+;
+; #lang parendown racket/base
 
-; cene/private/essentials
+; (lib "cene/private/essentials.rkti")
 ;
 ; A sufficient set of essential built-in operations for the Cene
 ; programming language (implementation details).
@@ -20,38 +23,7 @@
 ;   language governing permissions and limitations under the License.
 
 
-(require cene/private/shim)
-(init-shim)
-
-(require cene/private)
-(require #/only-in cene/private/reader-utils
-  id-or-expr?
-  id-or-expr->cexpr
-  id-or-expr-id
-  sink-extfx-read-bounded-cexprs
-  sink-extfx-read-bounded-ids-and-exprs
-  sink-extfx-read-bounded-specific-number-of-cexprs
-  sink-extfx-read-leading-specific-number-of-cexprs
-  sink-extfx-read-leading-specific-number-of-identifiers
-  sink-name-for-local-variable)
-; NOTE: This is all the "essential operations" from
-; `cene/private/textpat` except for the struct predicates and
-; accessors. This also includes `textpat-one-not-in-string` and
-; `textpat-star`.
-(require #/only-in cene/private/textpat
-  productive-textpat? textpat? textpat-empty textpat-from-string
-  textpat-give-up textpat-has-empty? textpat-if textpat-one
-  textpat-one-in-range textpat-one-in-string textpat-one-not-in-string
-  textpat-result? textpat-result-failed textpat-result-matched
-  textpat-result-passed-end textpat-star textpat-until textpat-while
-  optimized-textpat? optimized-textpat-match optimize-textpat)
-
-(define-runtime-path prelude-path "prelude.cene")
-
-(provide #/own-contract-out
-  minimal-and-essential-tags
-  sink-extfx-init-essentials
-  sink-extfx-init-package)
+(define-runtime-path prelude-path '(lib "cene/private/prelude.cene"))
 
 
 

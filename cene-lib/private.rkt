@@ -23,12 +23,22 @@
 (require cene/private/shim)
 (init-shim)
 
+(require #/for-syntax #/only-in parendown parendown-readtable-handler)
+
+(require #/only-in racket/include include/reader)
+
+; NOTE: This is all the "essential operations" from
+; `cene/private/textpat` except for the struct predicates and
+; accessors. This also includes most of the "derived operations."
 (require #/only-in cene/private/textpat
-  textpat? textpat-from-string textpat-lookahead
-  textpat-once-or-more textpat-one textpat-one-in-range
-  textpat-one-in-string textpat-one-not textpat-one-not-in-string
-  textpat-or textpat-star optimized-textpat? optimized-textpat-read!
-  optimize-textpat)
+  optimized-textpat? optimized-textpat-match optimized-textpat-read!
+  optimize-textpat productive-textpat? textpat? textpat-empty
+  textpat-from-string textpat-give-up textpat-has-empty? textpat-if
+  textpat-lookahead textpat-once-or-more textpat-one
+  textpat-one-in-range textpat-one-in-string textpat-one-not
+  textpat-one-not-in-string textpat-or textpat-result?
+  textpat-result-failed textpat-result-matched
+  textpat-result-passed-end textpat-star textpat-until textpat-while)
 
 
 (provide #/own-contract-out
@@ -249,6 +259,27 @@
   cenegetfx-cexpr-eval
   sink-extfx-read-and-run-directive-cexprs
   sink-extfx-run-directive-cexprs-in-string)
+
+; Defined in `(lib "cene/private/reader-utils.rkti")`:
+(provide #/own-contract-out
+  sink-name-for-local-variable
+  id-or-expr?)
+(provide
+  id-or-expr-id
+  id-or-expr-expr)
+(provide #/own-contract-out
+  id-or-expr->cexpr
+  sink-extfx-read-bounded-ids-and-exprs
+  sink-extfx-read-bounded-cexprs
+  sink-extfx-read-bounded-specific-number-of-cexprs
+  sink-extfx-read-leading-specific-number-of-cexprs
+  sink-extfx-read-leading-specific-number-of-identifiers)
+
+; Defined in `(lib "cene/private/essentials.rkti")`:
+(provide #/own-contract-out
+  minimal-and-essential-tags
+  sink-extfx-init-essentials
+  sink-extfx-init-package)
 
 
 
@@ -1482,10 +1513,10 @@
   #/dissect body (sink-cexpr body)
   #/sink-cexpr #/cexpr-opaque-fn param body))
 
-; TODO: This is only used in `cene/private/essentials`. See if this
-; should be moved over there. It seems like it should be so core to
-; the language semantics that this file, `cene/private`, is the place
-; for it, but maybe not.
+; TODO: This is only used in `(lib "cene/private/essentials.rkti")`.
+; See if this should be moved over there. It seems like it should be
+; so core to the language semantics that this file, `cene/private`, is
+; the place for it, but maybe not.
 (define/own-contract (sink-cexpr-let bindings body)
   (-> (listof #/list/c sink-name? sink-cexpr?) sink-cexpr?
     sink-cexpr?)
@@ -3323,7 +3354,7 @@
 ; it only reads and performs side effects.
 ;
 ; TODO RUN-DECLS: Finish implementing this, and use it in
-; `cene/private/essentials` to read the prelude.
+; `(lib "cene/private/essentials.rkti")` to read the prelude.
 ;
 (define/own-contract
   (sink-extfx-read-and-run-decls
@@ -3436,3 +3467,25 @@
   (sink-extfx-read-and-run-directive-cexprs
     read-fault unique-name qualify
     (sink-text-input-stream-for-string string)))
+
+
+; NOTE: Using `racket/include` is typically discouraged in favor of
+; `require`. However, we expect the Cene language implementation to be
+; made up of a lot of interdependent code. Using `racket/include` lets
+; us split it into multiple files without circular dependencies. It
+; also potentially lets us use compile-time mutation and
+; `syntax-local-lift-module-end-declaration` to be able to declare a
+; structure type or generic interface in one file and additional
+; information about it (such as specific
+; structure-type-and-generic-interface interactions) in other files.
+
+(define-for-syntax parendown-readtable
+  (make-readtable #f #\/ 'dispatch-macro parendown-readtable-handler))
+(define-for-syntax (parendown-read-syntax source in)
+  (parameterize ([current-readtable parendown-readtable])
+    (read-syntax source in)))
+
+(include/reader (lib "cene/private/reader-utils.rkti")
+  parendown-read-syntax)
+(include/reader (lib "cene/private/essentials.rkti")
+  parendown-read-syntax)
