@@ -1,0 +1,5 @@
+# We use Racket's `include` on certain files, which we give the
+# extension .rkti to. These look nice when they're highlighted as
+# Racket code.
+#
+*.rkti linguist-language=Racket
