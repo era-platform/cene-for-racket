@@ -8,7 +8,7 @@
 ; A sufficient set of essential built-in operations for the Cene
 ; programming language (implementation details).
 
-;   Copyright 2018-2022 The Era Authors
+;   Copyright 2018-2022, 2025 The Era Authors
 ;
 ;   Licensed under the Apache License, Version 2.0 (the "License");
 ;   you may not use this file except in compliance with the License.
@@ -108,7 +108,8 @@
 
 ; TODO: We used this in `interconfection/order/base`, and we're using
 ; it again here. See if it should be an export of Interconfection.
-(define-syntax-parse-rule (maybe-ordering-or first:expr second:expr)
+(define-syntax-parse-rule/autoptic
+  (maybe-ordering-or first:expr second:expr)
   (w- result first
   #/expect result (just #/ordering-eq) result
     second))
@@ -124,7 +125,7 @@
 ; TODO: We use this in Interconfection, too. See if we should export
 ; it from there.
 (define-syntax (dexed-tuple stx)
-  (syntax-parse stx #/ (_ _ field-to-count ...)
+  (syntax-parse stx #/ {~autoptic-list (_ _ field-to-count ...)}
   #/w- n (length #/syntax->list #'(field-to-count ...))
   #/syntax-parse stx #/ (_ tupler dexed-field ...)
     
@@ -1338,9 +1339,9 @@
   #/sink-dex #/dex-tuple sink-table/t #/dex-table dex-val))
 
 
-(define-syntax-rule
-  (define-fix-converter
-    converter-for-type-fix/t sink-type expected-getfx expected-method)
+(define-syntax-parse-rule/autoptic
+  (define-fix-converter converter-for-type-fix/t:id sink-type:id
+    expected-getfx:string expected-method:string)
   (define-syntax-and-value-imitation-simple-struct
     (converter-for-type-fix?
       converter-for-type-fix-fault
@@ -1443,16 +1444,20 @@
       (cenegetfx-cene-err fault "Expected the result of a cline-by-own-method body to be a maybe of a cline")
     #/cenegetfx-done #/just method)))
 
-(define-syntax-rule
+(define-syntax-parse-rule/autoptic
   (define-furge-by-own-method-converter
-    sink-furge-by-own-method-unthorough/t
-    sink-furge
-    unsafe:furge-by-own-method::getfx-err-cannot-get-output-method
-    unsafe:furge-by-own-method::getfx-err-different-output-method
-    unsafe:furge-by-own-method::getfx-get-method
-    expected-getfx
-    expected-maybe
-    expected-method)
+    sink-furge-by-own-method-unthorough/t:id
+    sink-furge:id
+    {~var
+      unsafe:furge-by-own-method::getfx-err-cannot-get-output-method
+      id}
+    {~var
+      unsafe:furge-by-own-method::getfx-err-different-output-method
+      id}
+    {~var unsafe:furge-by-own-method::getfx-get-method id}
+    expected-getfx:string
+    expected-maybe:string
+    expected-method:string)
   (define-syntax-and-value-imitation-simple-struct
     (sink-furge-by-own-method-unthorough?
       sink-furge-by-own-method-unthorough-fault
@@ -1961,7 +1966,8 @@
   
   (define-syntax (def-func-fault! stx)
     (syntax-parse stx #/
-      (_ main-tag-string:expr fault:id param:id ... body:expr)
+      {~autoptic-list
+        (_ main-tag-string:expr fault:id param:id ... body:expr)}
       #`(def-func-verbose! sink-extfx-def-value-for-package
           main-tag-string
           '#,(length (syntax->list #'(param ...)))
@@ -1969,7 +1975,7 @@
   
   (define-syntax (def-func! stx)
     (syntax-parse stx #/
-      (_ main-tag-string:expr param:id ... body:expr)
+      {~autoptic-list (_ main-tag-string:expr param:id ... body:expr)}
       #`(def-func-fault! main-tag-string fault param ... body)))
   
   (define/own-contract

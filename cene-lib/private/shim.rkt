@@ -5,7 +5,7 @@
 ; Import lists, debugging constants, and other utilities that are
 ; useful primarily for this codebase.
 
-;   Copyright 2022 The Era Authors
+;   Copyright 2022, 2025 The Era Authors
 ;
 ;   Licensed under the Apache License, Version 2.0 (the "License");
 ;   you may not use this file except in compliance with the License.
@@ -46,9 +46,9 @@
 ;
 (define-for-syntax activating-internal-contracts? #f)
 
-(define-syntax-parse-rule
+(define-syntax-parse-rule/autoptic
   (init-shim
-    {~optional {~seq #:antecedent-land antecedent-land}
+    {~optional {~seq {~autoptic #:antecedent-land} antecedent-land}
       #:defaults ([antecedent-land (datum->syntax this-syntax '())])})
   
   #:with result

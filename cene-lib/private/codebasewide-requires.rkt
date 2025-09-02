@@ -4,7 +4,7 @@
 ;
 ; An import list that's useful primarily for this codebase.
 
-;   Copyright 2022 The Era Authors
+;   Copyright 2022, 2025 The Era Authors
 ;
 ;   Licensed under the Apache License, Version 2.0 (the "License");
 ;   you may not use this file except in compliance with the License.
@@ -21,9 +21,10 @@
 
 (for-syntax /combine-in/fallback
   (combine-in
-    (only-in syntax/parse expr expr/c id nat syntax-parse)
+    (only-in syntax/parse ~var expr expr/c id nat syntax-parse)
     
-    (only-in lathe-comforts w-))
+    (only-in lathe-comforts w-)
+    (only-in lathe-comforts/syntax ~autoptic ~autoptic-list))
   racket/base)
 
 (only-in racket/contract/base
@@ -39,7 +40,7 @@
 (only-in syntax/parse/define define-syntax-parse-rule)
 
 (only-in lathe-comforts
-  dissect dissectfn expect expectfn fn mat w- w-loop)
+  define-syntax-parse-rule/autoptic dissect dissectfn expect expectfn fn mat w- w-loop)
 (only-in lathe-comforts/list
   list-all list-any list-foldl list-foldr list-kv-map list-map list-zip-map nat->maybe)
 (only-in lathe-comforts/match

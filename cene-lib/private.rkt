@@ -5,7 +5,7 @@
 ; A Racket library with entrypoints to the Cene programming language
 ; (implementation details).
 
-;   Copyright 2018-2022 The Era Authors
+;   Copyright 2018-2022, 2025 The Era Authors
 ;
 ;   Licensed under the Apache License, Version 2.0 (the "License");
 ;   you may not use this file except in compliance with the License.
@@ -1590,7 +1590,7 @@
       (cenegetfx-done #/next n-args-after-next #/cons arg rev-args))))
 
 (define-syntax (make-fault-internal stx)
-  (syntax-parse stx #/ (_)
+  (syntax-parse stx #/ {~autoptic-list (_)}
     #`(sink-fault #/cene-fault-rep-internal-srcloc
         (srcloc
           #,(syntax-source stx)
