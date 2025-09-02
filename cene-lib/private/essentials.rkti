@@ -4923,6 +4923,22 @@
           (verify-callback-extfx! fault
             (cenegetfx-sink-call fault step unique-name qualify))))))
   
+  (def-func-fault! "directive-for-prelude-to-everyone-def-func-blame"
+    fault main-tag-string arity func
+    
+    (expect main-tag-string (sink-string main-tag-string)
+      (cenegetfx-cene-err fault "Expected main-tag-string to be a string")
+    #/expect arity (sink-int arity)
+      (cenegetfx-cene-err fault "Expected arity to be an integer")
+    #/cenegetfx-done
+      (sink-directive #/sink-fn-curried 2 #/fn unique-name qualify
+        (cenegetfx-done
+          (sink-extfx-claim-freshen unique-name #/fn unique-name
+          #/sink-extfx-def-func-verbose
+            unique-name sink-extfx-def-value-for-package
+            main-tag-string arity
+            func)))))
+  
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-cexpr-op-verbose! sink-extfx-def-value-for-prelude
     "prelude-to-everyone-def-func-blame"
@@ -4959,27 +4975,13 @@
       #/expect (cexpr-is-closed? func-expr) #t
         ; TODO FAULT: Make this `syntax-error-fault` more specific.
         (sink-extfx-cene-err syntax-error-fault "Expected the function body of a prelude-to-everyone-def-func-blame form to have no free variables")
-      #/sink-extfx-run-cenegetfx
-        ; TODO FAULT: See if this `syntax-error-fault` is *the right
-        ; kind of* specific. Maybe we shouldn't build this one out of
-        ; `make-fault-read`.
-        (cenegetfx-cexpr-eval syntax-error-fault func-expr)
-      #/fn func
       #/then unique-name qualify text-input-stream
-        (sink-cexpr-built-in-call "directive"
-          ; TODO MOBILE: Stop using `sink-cexpr-reified` here so that
-          ; we can compile the prelude by compiling the expressions of
-          ; the directives it generates.
+        (sink-cexpr-built-in-call
+          "directive-for-prelude-to-everyone-def-func-blame"
+          (sink-cexpr-reified #/sink-string main-tag-string)
           (sink-cexpr-reified
-            (sink-fn-curried 2 #/fn unique-name qualify
-              (cenegetfx-done
-                (sink-extfx-claim-freshen unique-name
-                #/fn unique-name
-                #/sink-extfx-def-func-verbose
-                  unique-name sink-extfx-def-value-for-package
-                  main-tag-string
-                  (length #/cons last-param rev-past-params)
-                  func))))))))
+            (sink-int #/length #/cons last-param rev-past-params))
+          (sink-cexpr func-expr)))))
   
   ; NOTE: The JavaScript version of Cene doesn't have this.
   (def-cexpr-op-verbose! sink-extfx-def-value-for-prelude

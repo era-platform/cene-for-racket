@@ -1088,7 +1088,9 @@
 
 (define-generics cexpr
   (cexpr-has-free-vars? cexpr env)
-  (cenegetfx-cexpr-eval-in-env fault cexpr env))
+  (cenegetfx-cexpr-eval-in-env fault cexpr env)
+  (sink-perffx-cexpr-mobile-in-env cexpr env)
+  (cenegetfx-cexpr-compile-to-racket-in-env fault cexpr env))
 (ascribe-own-contract cexpr? (-> any/c boolean?))
 
 (struct-easy (cexpr-var name)
@@ -1110,6 +1112,20 @@
       #/expect (table-get-by-name name env) (just value)
         (error "Tried to eval a cexpr that had a free variable")
       #/cenegetfx-done value))
+    
+    (define (sink-perffx-cexpr-mobile-in-env this env)
+      (expect this (cexpr-var name)
+        (error "Expected this to be a cexpr-var")
+      #/expect (table-get-by-name name env) (just value)
+        (error "Tried to eval a cexpr that had a free variable")
+      #/sink-perffx-done value))
+    
+    (define (cenegetfx-cexpr-compile-to-racket-in-env fault this env)
+      (expect this (cexpr-var name)
+        (error "Expected this to be a cexpr-var")
+      #/expect (table-get-by-name name env) (just value)
+        (error "Tried to compile a cexpr that had a free variable")
+      #/cenegetfx-done value))
   ])
 
 (struct-easy (cexpr-reified result)
@@ -1127,6 +1143,20 @@
       (expect this (cexpr-reified result)
         (error "Expected this to be a cexpr-reified")
       #/cenegetfx-done result))
+    
+    (define (sink-perffx-cexpr-mobile-in-env this env)
+      (expect this (cexpr-reified result)
+        (error "Expected this to be a cexpr-reified")
+      #/sink-perffx-done #/sink-mobile-reified result))
+    
+    (define (cenegetfx-cexpr-compile-to-racket-in-env fault this env)
+      (expect this (cexpr-reified result)
+        (error "Expected this to be a cexpr-reified")
+      #/mat result (sink-string result)
+        (cenegetfx-done `(sink-perffx-done #/sink-string ,result))
+      #/mat result (sink-int result)
+        (cenegetfx-done `(sink-perffx-done #/sink-int ,result))
+      #/error "Tried to compile an expression containing a reified value that wasn't a string or an integer"))
   ])
 
 (struct-easy (cexpr-construct main-tag-entry projs)
@@ -1137,6 +1167,9 @@
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
     (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
+    (define/generic -mobile-in-env sink-perffx-cexpr-mobile-in-env)
+    (define/generic -compile-to-racket-in-env
+      cenegetfx-cexpr-compile-to-racket-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-construct main-tag-entry projs)
@@ -1157,6 +1190,33 @@
         #/list-map projs #/dissectfn (list proj-name proj-cexpr)
           proj-name)
         vals))
+    
+    (define (sink-perffx-cexpr-mobile-in-env this env)
+      (expect this (cexpr-construct main-tag-entry projs)
+        (error "Expected this to be a cexpr-construct")
+      #/sink-perffx-run-cenegetfx
+        (cenegetfx-sink-mobile-built-in-call "expr-construct"
+          '|TODO NOW i-am-a-user|
+          ('|TODO NOW| main-tag-entry)
+          ('|TODO NOW| projs))))
+    
+    (define (cenegetfx-cexpr-compile-to-racket-in-env fault this env)
+      (expect this (cexpr-construct main-tag-entry projs)
+        (error "Expected this to be a cexpr-construct")
+      #/cenegetfx-bind
+        (cenegetfx-list-map #/list-map projs
+        #/dissectfn (list proj-name proj-cexpr)
+          (cenegetfx-bind
+            (-compile-to-racket-in-env fault proj-cexpr env)
+          #/fn proj-cexpr
+          #/cenegetfx-done
+            `(list (|TODO NOW| ,proj-name) (,'unquote ,proj-cexpr))))
+      #/fn projs
+      #/cenegetfx-done
+        `(sink-perffx-quasibind
+           (,'quasiquote
+             (cexpr-construct (|TODO NOW| ,main-tag-entry)
+               (list ,@projs))))))
   ])
 
 (struct-easy (cexpr-call-fault read-fault fault-arg func arg)
@@ -1167,6 +1227,9 @@
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
     (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
+    (define/generic -mobile-in-env sink-perffx-cexpr-mobile-in-env)
+    (define/generic -compile-to-racket-in-env
+      cenegetfx-cexpr-compile-to-racket-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-call-fault read-fault fault-arg func arg)
@@ -1197,6 +1260,9 @@
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
     (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
+    (define/generic -mobile-in-env sink-perffx-cexpr-mobile-in-env)
+    (define/generic -compile-to-racket-in-env
+      cenegetfx-cexpr-compile-to-racket-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-call read-fault func arg)
@@ -1223,6 +1289,9 @@
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
     (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
+    (define/generic -mobile-in-env sink-perffx-cexpr-mobile-in-env)
+    (define/generic -compile-to-racket-in-env
+      cenegetfx-cexpr-compile-to-racket-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-opaque-fn-fault fault-param param body)
@@ -1251,6 +1320,9 @@
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
     (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
+    (define/generic -mobile-in-env sink-perffx-cexpr-mobile-in-env)
+    (define/generic -compile-to-racket-in-env
+      cenegetfx-cexpr-compile-to-racket-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-opaque-fn param body)
@@ -1274,6 +1346,9 @@
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
     (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
+    (define/generic -mobile-in-env sink-perffx-cexpr-mobile-in-env)
+    (define/generic -compile-to-racket-in-env
+      cenegetfx-cexpr-compile-to-racket-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-let bindings body)
@@ -1309,6 +1384,9 @@
   [
     (define/generic -has-free-vars? cexpr-has-free-vars?)
     (define/generic -eval-in-env cenegetfx-cexpr-eval-in-env)
+    (define/generic -mobile-in-env sink-perffx-cexpr-mobile-in-env)
+    (define/generic -compile-to-racket-in-env
+      cenegetfx-cexpr-compile-to-racket-in-env)
     
     (define (cexpr-has-free-vars? this env)
       (expect this (cexpr-located location-definition-name body)
@@ -3325,6 +3403,14 @@
         ; TODO FAULT: Make this `read-fault` more specific.
         (sink-extfx-cene-err read-fault "Encountered a top-level expression with at least one free variable")
       #/sink-extfx-fuse (then unique-name-rest)
+;      ; TODO NOW: Remove this.
+;      #/begin (writeln cexpr)
+;      ; TODO NOW: Remove this.
+;      #/sink-extfx-run-cenegetfx
+;        ; TODO FAULT: Make this `read-fault` more specific.
+;        (cenegetfx-cexpr-compile-to-racket-in-env read-fault cexpr
+;          (table-empty))
+;      #/fn racket-expr
       #/sink-extfx-run-cenegetfx
         (cenegetfx-cexpr-eval read-fault cexpr)
       #/expectfn (sink-directive directive)
