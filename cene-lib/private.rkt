@@ -5,7 +5,7 @@
 ; A Racket library with entrypoints to the Cene programming language
 ; (implementation details).
 
-;   Copyright 2018-2022, 2025 The Era Authors
+;   Copyright 2018-2022, 2025-2026 The Era Authors
 ;
 ;   Licensed under the Apache License, Version 2.0 (the "License");
 ;   you may not use this file except in compliance with the License.
@@ -23,7 +23,8 @@
 (require cene/private/shim)
 (init-shim)
 
-(require #/for-syntax #/only-in parendown parendown-readtable-handler)
+(require #/for-syntax #/only-in parendown/reader
+  parendown-readtable-handler)
 
 (require #/only-in racket/include include/reader)
 
